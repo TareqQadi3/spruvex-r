@@ -112,6 +112,7 @@ export function OnboardingWizard() {
   const emptyStaff = { name: "", email: "", password: "" };
   const [manager, setManager] = useState({ ...emptyStaff });
   const [cashier, setCashier] = useState({ ...emptyStaff });
+  const [kitchen, setKitchen] = useState({ ...emptyStaff });
 
   function submitStaff(event: FormEvent) {
     event.preventDefault();
@@ -119,6 +120,7 @@ export function OnboardingWizard() {
       const users = [
         ...(manager.email ? [{ ...manager, role: "manager" as const }] : []),
         ...(cashier.email ? [{ ...cashier, role: "cashier" as const }] : []),
+        ...(kitchen.email ? [{ ...kitchen, role: "kitchen" as const }] : []),
       ];
       if (users.length > 0) {
         await post("/onboarding/staff", { users });
@@ -333,10 +335,12 @@ export function OnboardingWizard() {
             {step === 4 && (
               <form onSubmit={submitStaff} className="space-y-6">
                 <p className="text-sm text-muted-foreground">{t("onboarding.staffHint")}</p>
+                <Alert>{t("onboarding.staffKitchenHint")}</Alert>
                 {(
                   [
                     { key: "staffManager", state: manager, set: setManager },
                     { key: "staffCashier", state: cashier, set: setCashier },
+                    { key: "staffKitchen", state: kitchen, set: setKitchen },
                   ] as const
                 ).map(({ key, state, set }) => (
                   <fieldset key={key} className="space-y-3 rounded-lg border p-4">

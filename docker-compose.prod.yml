@@ -126,6 +126,34 @@ services:
     ports:
       - "3002:3002"
 
+  # Automatic periodic database backup — no host crontab needed. Runs one
+  # backup immediately on startup (to fail fast if credentials are wrong),
+  # then on BACKUP_SCHEDULE (default daily at 03:00). Dumps land in the
+  # `backups` volume; still copy them off this host periodically (S3 or
+  # similar) — a backup that only lives on the machine it protects
+  # against isn't one. See infra/scripts/backup-once.sh.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: spruvex_admin
+      PGPASSWORD: ${SPRUVEX_ADMIN_PASSWORD:?required}
+      PGDATABASE: spruvex_r
+      BACKUP_DIR: /backups
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 3 * * *}
+      RETENTION_DAYS: ${RETENTION_DAYS:-14}
+    volumes:
+      - backups:/backups
+      - ./infra/scripts/backup-once.sh:/usr/local/bin/backup-once.sh:ro
+      - ./infra/scripts/backup-cron-entrypoint.sh:/usr/local/bin/backup-cron-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup-cron-entrypoint.sh"]
+
 volumes:
   pgdata:
   redisdata:
+  backups:

@@ -132,17 +132,32 @@ endpoint (rows are created directly, e.g. via the seed's
    (RDS/Cloud SQL/Supabase-postgres or similar) — automated snapshots +
    point-in-time recovery come for free, matching the architecture plan's
    "start with Docker Compose, move to managed Postgres" decision (§8.2).
-2. **If self-hosting Postgres** (the `docker-compose.prod.yml` path): run
-   `infra/scripts/backup-db.sh` on a daily cron — it wraps `pg_dump
-   --format=custom`, fails loudly (non-zero exit) on an empty/truncated
-   dump instead of silently keeping a useless file, and prunes local dumps
-   older than `RETENTION_DAYS` (default 14). The `pg_dump`/`pg_restore`
-   round-trip has been verified in this repo (dump → restore into a scratch
-   database → table count matches). The script only writes locally — copy
-   `BACKUP_DIR` off the host (S3 or similar) yourself; a backup that lives
-   only on the machine it protects against isn't one. Enable WAL archiving
-   too if you need point-in-time recovery rather than daily-granularity
-   restore.
+2. **If self-hosting Postgres** (the `docker-compose.prod.yml` path): backups
+   run **automatically**, no host crontab needed — `docker-compose.prod.yml`
+   includes a `backup` sidecar service (`postgres:16-alpine` + busybox
+   `crond`) that connects to the `postgres` service directly over the
+   compose network and runs `infra/scripts/backup-once.sh` on
+   `BACKUP_SCHEDULE` (default `0 3 * * *`, i.e. daily at 03:00 UTC — set in
+   `.env.production`). It fails loudly (non-zero exit, logged) on an
+   empty/truncated dump instead of silently keeping a useless file, runs one
+   backup immediately on container start (so a bad password/connection
+   fails fast instead of silently on the first scheduled run), and prunes
+   local dumps older than `RETENTION_DAYS` (default 14). The `pg_dump`/
+   `pg_restore` round-trip has been verified in this repo (dump → restore
+   into a scratch database → table count matches) — the sidecar service
+   itself has not been build/run-verified end-to-end yet, since this
+   repo's Docker builds are blocked in every sandbox available so far (see
+   `docs/PILOT_LAUNCH_FINAL_REPORT.md`); smoke-test it (`docker compose
+   -f docker-compose.prod.yml up -d backup && docker compose -f
+   docker-compose.prod.yml logs -f backup`) on the real deployment host
+   before relying on it. Dumps land in the `backups` named volume — copy
+   them off the host yourself (S3 or similar); a backup that lives only on
+   the machine it protects against isn't one. Enable WAL archiving too if
+   you need point-in-time recovery rather than daily-granularity restore.
+
+   For an ad hoc one-off dump (or if you'd rather drive backups from the
+   host's own cron instead of the sidecar), `infra/scripts/backup-db.sh`
+   still works the same way it always has, via `docker compose exec`:
    ```bash
    # cron, run from the directory containing docker-compose.prod.yml:
    0 3 * * * BACKUP_DIR=/var/backups/spruvex-r infra/scripts/backup-db.sh >> /var/log/spruvex-backup.log 2>&1
