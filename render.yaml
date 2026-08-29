@@ -26,8 +26,8 @@ services:
   - type: web
     name: spruvex-r-api
     runtime: docker
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./spruvex-r/apps/api/Dockerfile
+    dockerContext: ./spruvex-r
     plan: free
     healthCheckPath: /api/v1/health
     envVars:
@@ -66,8 +66,8 @@ services:
   - type: web
     name: spruvex-r-dashboard
     runtime: docker
-    dockerfilePath: ./apps/dashboard/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./spruvex-r/apps/dashboard/Dockerfile
+    dockerContext: ./spruvex-r
     plan: free
     envVars:
       - key: API_INTERNAL_ORIGIN
@@ -79,8 +79,8 @@ services:
   - type: web
     name: spruvex-r-pos
     runtime: docker
-    dockerfilePath: ./apps/pos/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./spruvex-r/apps/pos/Dockerfile
+    dockerContext: ./spruvex-r
     plan: free
     envVars:
       - key: API_INTERNAL_ORIGIN
@@ -92,8 +92,8 @@ services:
   - type: web
     name: spruvex-r-kds
     runtime: docker
-    dockerfilePath: ./apps/kds/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./spruvex-r/apps/kds/Dockerfile
+    dockerContext: ./spruvex-r
     plan: free
     envVars:
       - key: API_INTERNAL_ORIGIN
@@ -105,8 +105,8 @@ services:
   - type: web
     name: spruvex-r-platform
     runtime: docker
-    dockerfilePath: ./apps/platform/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./spruvex-r/apps/platform/Dockerfile
+    dockerContext: ./spruvex-r
     plan: free
     envVars:
       - key: API_INTERNAL_ORIGIN
@@ -118,8 +118,8 @@ services:
   - type: web
     name: spruvex-r-ordering
     runtime: docker
-    dockerfilePath: ./apps/ordering/Dockerfile
-    dockerContext: .
+    dockerfilePath: ./spruvex-r/apps/ordering/Dockerfile
+    dockerContext: ./spruvex-r
     plan: free
     envVars:
       - key: API_ORIGIN
@@ -129,3 +129,6 @@ services:
           property: hostport
       - key: PUBLIC_API_ORIGIN
         value: https://spruvex-r-api.onrender.com
+
+# Redeploy trigger: force all services to rebuild with the corrected
+# dockerContext/dockerfilePath (the 5 that failed were built before that fix).

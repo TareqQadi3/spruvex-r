@@ -1,10 +1,12 @@
 import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 
+import { ResendService } from "../../shared/email/resend.service";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { DevOtpSender, OTP_SENDER } from "./otp/otp-sender";
 import { OtpService } from "./otp/otp.service";
+import { ResendOtpSender } from "./otp/resend-otp-sender";
 import { TokenService } from "./token.service";
 
 /**
@@ -17,6 +19,11 @@ import { TokenService } from "./token.service";
       global: true,
       useFactory: () => ({
         secret: process.env.JWT_SECRET,
+        // Pin the algorithm on both sign and verify — defense-in-depth
+        // against algorithm-confusion attacks even though jsonwebtoken
+        // already rejects "none" by default.
+        signOptions: { algorithm: "HS256" },
+        verifyOptions: { algorithms: ["HS256"] },
       }),
     }),
   ],
@@ -25,8 +32,14 @@ import { TokenService } from "./token.service";
     AuthService,
     TokenService,
     OtpService,
-    { provide: OTP_SENDER, useClass: DevOtpSender },
+    ResendService,
+    // Real email once a Resend key is configured; falls back to logging the
+    // code (never a real send) so local dev/CI never needs one.
+    {
+      provide: OTP_SENDER,
+      useClass: process.env.RESEND_API_KEY ? ResendOtpSender : DevOtpSender,
+    },
   ],
-  exports: [AuthService, TokenService],
+  exports: [AuthService, TokenService, ResendService],
 })
 export class IdentityModule {}

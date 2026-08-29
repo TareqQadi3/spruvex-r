@@ -131,3 +131,6 @@ export class CreateStaffDto {
   @Type(() => StaffUserDto)
   users!: StaffUserDto[];
 }
+
+/** Add one team member after onboarding (Team page "add member" action). */
+export class AddTeamMemberDto extends StaffUserDto {}

@@ -55,6 +55,8 @@ export interface ReceiptData {
   vatAmount: string;
   total: string;
   issuedAt: string;
+  /** ZATCA Phase 1 simplified-invoice QR content (Base64 TLV) — null if the restaurant has no VAT number. */
+  qrPayload: string | null;
   payload: {
     restaurant: {
       name: string;

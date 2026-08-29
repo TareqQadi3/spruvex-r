@@ -31,7 +31,14 @@
     "otpResend": "Resend code",
     "otpDevHint": "Development mode — code:",
     "verify": "Verify",
-    "passwordRule": "At least 8 characters including a letter and a digit"
+    "passwordRule": "At least 8 characters including a letter and a digit",
+    "forgotLink": "Forgot password?",
+    "forgotTitle": "Reset your password",
+    "forgotSubtitle": "Enter your email and we'll send you a verification code",
+    "forgotSend": "Send code",
+    "forgotNewPassword": "New password",
+    "forgotSubmit": "Set password",
+    "backToLogin": "Back to sign in"
   },
   "onboarding": {
     "title": "Set up your restaurant",
@@ -105,11 +112,14 @@
   },
   "team": {
     "title": "Team",
+    "add": "Add member",
     "role": "Role",
     "branch": "Branch",
     "allBranches": "All branches",
     "lastLogin": "Last sign-in",
-    "never": "Never signed in"
+    "never": "Never signed in",
+    "passwordHint": "At least 8 characters, with a letter and a digit",
+    "confirmRemove": "Remove this member from the team?"
   },
   "catalog": {
     "tabs": { "categories": "Categories", "products": "Products", "modifiers": "Modifiers" },

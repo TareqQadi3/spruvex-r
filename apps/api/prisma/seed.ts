@@ -85,6 +85,20 @@ async function main() {
       data: { onboardingCompletedAt: new Date() },
     });
 
+    // Keep the demo tenant permanently usable: provisionTenant starts a
+    // 14-day trial, which expires and then the billing gate blocks all
+    // writes (402 Payment Required) whenever the demo is tried weeks later.
+    // A demo account should never expire — mark it active with a far-future
+    // period. Real signups still get the normal trial from provisionTenant.
+    await db.subscription.updateMany({
+      where: { tenantId: provisioned.tenantId },
+      data: {
+        status: "active",
+        trialEndsAt: new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000),
+        currentPeriodEnd: new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000),
+      },
+    });
+
     // A cashier with a POS PIN so later phases are demoable out of the box.
     const cashier = await db.user.create({
       data: {

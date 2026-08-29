@@ -83,6 +83,11 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+              <p className="text-end text-sm">
+                <Link to="/forgot-password" className="text-primary hover:underline">
+                  {t("auth.forgotLink")}
+                </Link>
+              </p>
             </div>
             <Button type="submit" className="w-full" disabled={busy}>
               {busy ? <Spinner className="border-primary-foreground" /> : t("auth.login")}

@@ -10,6 +10,7 @@ import { Spinner } from "@spruvex-r/ui";
 
 import { AuthProvider, useAuth } from "./lib/auth";
 import { DashboardLayout } from "./layouts/DashboardLayout";
+import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { BillingPage } from "./pages/dashboard/BillingPage";
@@ -80,6 +81,14 @@ const router = createBrowserRouter([
     element: (
       <GuestOnly>
         <RegisterPage />
+      </GuestOnly>
+    ),
+  },
+  {
+    path: "/forgot-password",
+    element: (
+      <GuestOnly>
+        <ForgotPasswordPage />
       </GuestOnly>
     ),
   },

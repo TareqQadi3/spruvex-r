@@ -1,0 +1,16 @@
+app = "spruvex-r-dashboard"
+primary_region = "fra"
+
+[build]
+  dockerfile = "apps/dashboard/Dockerfile"
+
+[http_service]
+  internal_port = 80
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

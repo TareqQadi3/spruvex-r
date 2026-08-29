@@ -96,6 +96,40 @@ export class AuthService {
     return { devOtp: devCode };
   }
 
+  /** Issues a password-reset OTP. Silent no-op for unknown/unverified emails — never discloses account existence. */
+  async forgotPassword(email: string): Promise<{ devOtp?: string }> {
+    const user = await this.db.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (!user || !user.emailVerifiedAt || !user.isActive) {
+      return {};
+    }
+    const { devCode } = await this.otp.issue(user.email, "password_reset", user.id);
+    return { devOtp: devCode };
+  }
+
+  /**
+   * Verifies the reset code and sets a new password. Revokes every existing
+   * refresh-token family so a stolen session can't survive a reset.
+   */
+  async resetPassword(input: { email: string; code: string; newPassword: string }): Promise<void> {
+    const email = input.email.toLowerCase();
+    const user = await this.db.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new UnauthorizedException("Invalid or expired code");
+    }
+
+    await this.otp.verify(email, "password_reset", input.code);
+
+    const passwordHash = await hashPassword(input.newPassword);
+    await this.db.user.update({
+      where: { id: user.id },
+      data: { passwordHash, failedLoginAttempts: 0, lockedUntil: null },
+    });
+    await this.db.refreshToken.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   async login(
     input: { email: string; password: string },
     meta?: { ip?: string; userAgent?: string },

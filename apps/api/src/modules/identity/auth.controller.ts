@@ -7,10 +7,12 @@ import { RequireAuthenticated } from "../../shared/rbac/require-authenticated.de
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
 import { AuthService } from "./auth.service";
 import {
+  ForgotPasswordDto,
   LoginDto,
   RefreshDto,
   RegisterDto,
   ResendOtpDto,
+  ResetPasswordDto,
   VerifyOtpDto,
 } from "./dto/auth.dto";
 
@@ -69,6 +71,22 @@ export class AuthController {
   @Post("logout")
   async logout(@Body() dto: RefreshDto) {
     await this.auth.logout(dto.refreshToken);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post("forgot-password")
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(204)
+  @Post("reset-password")
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.auth.resetPassword(dto);
   }
 
   @RequireAuthenticated()

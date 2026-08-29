@@ -9,12 +9,18 @@ import { DOMAIN_EVENTS, type SystemRole } from "@spruvex-r/types";
 
 import { AuditService } from "../../shared/audit/audit.service";
 import { LimitsService } from "../../shared/billing/limits.service";
+import { ResendService } from "../../shared/email/resend.service";
+import { staffCredentialsEmail, welcomeEmail } from "../../shared/email/templates";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
 import { hashPassword } from "../identity/password";
 import { TokenService, type TokenPair } from "../identity/token.service";
 import { provisionTenant } from "./tenant-provisioning";
+
+function dashboardUrl(): string {
+  return process.env.DASHBOARD_BASE_URL ?? "http://localhost:5173";
+}
 
 function slugify(value: string): string {
   const base = value
@@ -49,6 +55,7 @@ export class OnboardingService {
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
     private readonly limits: LimitsService,
+    private readonly resend: ResendService,
   ) {}
 
   /** Step 2 — create the restaurant. Returns fresh tokens carrying the new tenant context. */
@@ -88,8 +95,12 @@ export class OnboardingService {
 
     const user = await this.platformDb.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, email: true },
+      select: { id: true, email: true, name: true },
     });
+
+    const { subject, html } = welcomeEmail(user.name, input.name, dashboardUrl());
+    await this.resend.send(user.email, subject, html);
+
     return {
       tenantId: provisioned.tenantId,
       tokens: await this.tokens.issueTokenPair(user),
@@ -147,7 +158,10 @@ export class OnboardingService {
 
     await this.limits.assertCanAddUsers(tenantId, users.length);
 
-    const roles = await this.prisma.scoped.role.findMany({ where: { deletedAt: null } });
+    const [roles, tenant] = await Promise.all([
+      this.prisma.scoped.role.findMany({ where: { deletedAt: null } }),
+      this.prisma.scoped.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true } }),
+    ]);
     const roleByKey = new Map(roles.map((r) => [r.key, r]));
 
     const created: Array<{ userId: string; email: string; role: string }> = [];
@@ -188,6 +202,8 @@ export class OnboardingService {
         entityId: user.id,
         meta: { email, role: input.role, branchId: input.branchId ?? null },
       });
+      const { subject, html } = staffCredentialsEmail(input.name, tenant.name, email, input.password, dashboardUrl());
+      await this.resend.send(email, subject, html);
       created.push({ userId: user.id, email, role: input.role });
     }
     return { created };
