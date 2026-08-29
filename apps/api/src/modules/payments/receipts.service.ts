@@ -146,6 +146,14 @@ export class ReceiptsService {
                   address: tenant.address,
                   logoUrl: tenant.logoUrl,
                   currency: tenant.currency,
+                  themeColor: tenant.themeColor,
+                  // Snapshotted as of issuance — changing these later never
+                  // retroactively alters an already-issued invoice.
+                  receiptTemplate: tenant.receiptTemplate,
+                  receiptLogoPosition: tenant.receiptLogoPosition,
+                  receiptLogoSize: tenant.receiptLogoSize,
+                  receiptHeaderNote: tenant.receiptHeaderNote,
+                  receiptFooterNote: tenant.receiptFooterNote,
                 },
                 branch: {
                   name: branch?.name,

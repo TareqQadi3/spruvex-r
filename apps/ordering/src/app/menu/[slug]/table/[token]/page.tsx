@@ -4,10 +4,12 @@ import { CartProvider } from "@/components/CartProvider";
 import { CartBar } from "@/components/CartBar";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import { MenuHeader } from "@/components/MenuHeader";
+import { MenuThemeStyle } from "@/components/MenuThemeStyle";
 import { MenuView } from "@/components/MenuView";
 import { apiGet, ApiError } from "@/lib/api";
 import type { Locale } from "@/lib/dictionaries";
 import type { Menu, TableInfo } from "@/lib/types";
+import { menuScopeClassName } from "@/lib/menu-theme-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -41,14 +43,17 @@ export default async function TableMenuPage({
   return (
     <LocaleProvider initialLocale={info.restaurant.defaultLocale as Locale}>
       <CartProvider scope={`table:${token}`}>
-        <MenuHeader
-          logoUrl={info.restaurant.logoUrl}
-          name={info.restaurant.name}
-          nameEn={info.restaurant.nameEn}
-          subtitle={`${info.branch.name} · ${info.table.number}`}
-        />
-        <MenuView menu={menu} currency={info.restaurant.currency} />
-        <CartBar href={`/menu/${slug}/table/${token}/cart`} currency={info.restaurant.currency} />
+        <div className={menuScopeClassName(info.restaurant.menuTemplate)}>
+          <MenuThemeStyle template={info.restaurant.menuTemplate} customCss={info.restaurant.menuCustomCss} />
+          <MenuHeader
+            logoUrl={info.restaurant.logoUrl}
+            name={info.restaurant.name}
+            nameEn={info.restaurant.nameEn}
+            subtitle={`${info.branch.name} · ${info.table.number}`}
+          />
+          <MenuView menu={menu} currency={info.restaurant.currency} />
+          <CartBar href={`/menu/${slug}/table/${token}/cart`} currency={info.restaurant.currency} />
+        </div>
       </CartProvider>
     </LocaleProvider>
   );

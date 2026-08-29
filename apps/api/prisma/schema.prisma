@@ -69,6 +69,22 @@ model Tenant {
   themeColor          String  @default("green") @map("theme_color")
   receiptHeaderNote   String? @map("receipt_header_note")
   receiptFooterNote   String? @map("receipt_footer_note")
+  /// One of RECEIPT_TEMPLATE_KEYS (@spruvex-r/types) — snapshotted into
+  /// Receipt.payload at issuance, so changing it never retroactively alters
+  /// an already-issued invoice.
+  receiptTemplate     String  @default("classic") @map("receipt_template")
+  /// One of RECEIPT_LOGO_POSITIONS.
+  receiptLogoPosition String  @default("top-center") @map("receipt_logo_position")
+  /// One of RECEIPT_LOGO_SIZES.
+  receiptLogoSize     String  @default("medium") @map("receipt_logo_size")
+
+  /// Public digital-menu (apps/ordering) appearance. One of MENU_TEMPLATE_KEYS
+  /// (@spruvex-r/types), or "custom" to use menuCustomCss instead of a preset.
+  menuTemplate   String  @default("classic") @map("menu_template")
+  /// Sanitized (never raw) CSS — see shared/security/menu-css-sanitizer.ts.
+  /// Only meaningful when menuTemplate = "custom". Already scoped under
+  /// .spx-menu-custom by the sanitizer before it's ever stored.
+  menuCustomCss  String? @map("menu_custom_css") @db.Text
 
   /// ZATCA Phase 2 (Fatoora integration) — opt-in per restaurant (plan
   /// decision: owner enables it only once their revenue wave actually

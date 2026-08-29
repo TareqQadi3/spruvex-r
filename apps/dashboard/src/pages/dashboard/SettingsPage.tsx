@@ -16,9 +16,16 @@ import {
   Spinner,
   Switch,
   Textarea,
+  cn,
 } from "@spruvex-r/ui";
+// Namespace import — see packages/ui/src/apply-theme.ts for why a named
+// import of a const re-exported through @spruvex-r/types' barrel file
+// breaks Vite/Rollup's static CJS-interop analysis.
+import * as SpruvexTypes from "@spruvex-r/types";
 
 import { api, ApiError } from "../../lib/api";
+
+const { MENU_PRESET_KEYS, MENU_TEMPLATES } = SpruvexTypes;
 
 interface TenantInfo {
   id: string;
@@ -36,6 +43,13 @@ interface TenantInfo {
   address?: string;
   vatRate: string;
   publicBaseUrl: string;
+  menuTemplate: string;
+  menuCustomCss: string | null;
+}
+
+interface MenuDesignForm {
+  menuTemplate: string;
+  menuCustomCss: string;
 }
 
 interface ZatcaForm {
@@ -74,7 +88,7 @@ const EMPTY_ZATCA_FORM: ZatcaSettingsForm = {
 };
 
 export function SettingsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["tenant"],
@@ -166,6 +180,39 @@ export function SettingsPage() {
   function submitZatca(event: FormEvent) {
     event.preventDefault();
     saveZatca.mutate();
+  }
+
+  const [menuForm, setMenuForm] = useState<MenuDesignForm>({ menuTemplate: "classic", menuCustomCss: "" });
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [menuSaved, setMenuSaved] = useState(false);
+
+  useEffect(() => {
+    if (data) {
+      setMenuForm({ menuTemplate: data.menuTemplate, menuCustomCss: data.menuCustomCss ?? "" });
+    }
+  }, [data]);
+
+  const saveMenuDesign = useMutation({
+    mutationFn: () =>
+      api("/tenant", {
+        method: "PATCH",
+        body: JSON.stringify({
+          menuTemplate: menuForm.menuTemplate,
+          ...(menuForm.menuTemplate === "custom" ? { menuCustomCss: menuForm.menuCustomCss } : {}),
+        }),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["tenant"] });
+      setMenuSaved(true);
+      setMenuError(null);
+      setTimeout(() => setMenuSaved(false), 3000);
+    },
+    onError: (e) => setMenuError(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
+  function submitMenuDesign(event: FormEvent) {
+    event.preventDefault();
+    saveMenuDesign.mutate();
   }
 
   const rows: Array<[string, string | undefined]> = data
@@ -349,6 +396,84 @@ export function SettingsPage() {
                   </Button>
                 </form>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>{t("settings.menuDesignTitle")}</CardTitle>
+              <CardDescription>{t("settings.menuDesignHint")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={submitMenuDesign} className="space-y-4">
+                {menuError && <Alert variant="destructive">{menuError}</Alert>}
+                {menuSaved && <Alert>{t("settings.saved")}</Alert>}
+
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {MENU_PRESET_KEYS.map((key) => {
+                    const preset = MENU_TEMPLATES[key];
+                    const name = i18n.language === "en" ? preset.nameEn : preset.nameAr;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-pressed={menuForm.menuTemplate === key}
+                        onClick={() => setMenuForm({ ...menuForm, menuTemplate: key })}
+                        className={cn(
+                          "rounded-lg border p-2 text-center text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          menuForm.menuTemplate === key
+                            ? "border-primary ring-2 ring-primary/40"
+                            : "border-input hover:bg-muted/40",
+                        )}
+                      >
+                        <span
+                          className="mx-auto mb-1 block h-5 w-5 rounded-full border"
+                          style={{ backgroundColor: `hsl(${preset.primary})` }}
+                          aria-hidden="true"
+                        />
+                        {name}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    aria-pressed={menuForm.menuTemplate === "custom"}
+                    onClick={() => setMenuForm({ ...menuForm, menuTemplate: "custom" })}
+                    className={cn(
+                      "rounded-lg border p-2 text-center text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      menuForm.menuTemplate === "custom"
+                        ? "border-primary ring-2 ring-primary/40"
+                        : "border-input hover:bg-muted/40",
+                    )}
+                  >
+                    <span className="mx-auto mb-1 block h-5 w-5 rounded-full border border-dashed" aria-hidden="true" />
+                    {t("settings.menuDesignCustomOption")}
+                  </button>
+                </div>
+
+                {menuForm.menuTemplate === "custom" && (
+                  <div className="space-y-2 rounded-lg border border-dashed p-3">
+                    <p className="text-xs text-muted-foreground">{t("settings.menuDesignCustomDescription")}</p>
+                    <Label htmlFor="menu-css">{t("settings.menuDesignCssLabel")}</Label>
+                    <Textarea
+                      id="menu-css"
+                      dir="ltr"
+                      rows={8}
+                      placeholder={t("settings.menuDesignCssPlaceholder")}
+                      value={menuForm.menuCustomCss}
+                      onChange={(e) => setMenuForm({ ...menuForm, menuCustomCss: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">{t("settings.menuDesignCssHint")}</p>
+                    <p className="text-xs text-muted-foreground" dir="ltr">
+                      {t("settings.menuDesignCssTargetingHint")}
+                    </p>
+                  </div>
+                )}
+
+                <Button type="submit" disabled={saveMenuDesign.isPending}>
+                  {saveMenuDesign.isPending ? <Spinner className="border-primary-foreground" /> : t("common.save")}
+                </Button>
+              </form>
             </CardContent>
           </Card>
 

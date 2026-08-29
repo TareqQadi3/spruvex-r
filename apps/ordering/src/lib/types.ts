@@ -48,6 +48,8 @@ export interface TableInfo {
     logoUrl: string | null;
     currency: string;
     defaultLocale: string;
+    menuTemplate: string;
+    menuCustomCss: string | null;
   };
   branch: { name: string; nameEn: string | null };
   table: { number: string; status: string };
@@ -61,6 +63,8 @@ export interface RestaurantInfo {
     logoUrl: string | null;
     currency: string;
     defaultLocale: string;
+    menuTemplate: string;
+    menuCustomCss: string | null;
   };
   branches: Array<{
     id: string;

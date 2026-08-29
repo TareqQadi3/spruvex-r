@@ -162,7 +162,19 @@
     "staffAdded": "تمت إضافة {{count}} من أعضاء الفريق",
     "completeTitle": "كل شيء جاهز!",
     "completeSubtitle": "مطعمك مهيأ الآن — ادخل إلى لوحة التحكم وابدأ.",
-    "enterDashboard": "الدخول إلى لوحة التحكم"
+    "enterDashboard": "الدخول إلى لوحة التحكم",
+    "receiptTemplateLabel": "شكل الفاتورة",
+    "receiptTemplateHint": "شكل الفاتورة المطبوعة — يؤثر فقط على الفواتير الجديدة من الآن، مو الفواتير المطبوعة سابقًا.",
+    "receiptLogoPositionLabel": "الشعار على الفاتورة",
+    "receiptLogoPositionHint": "مكان ظهور شعارك أعلى الفاتورة المطبوعة.",
+    "logoPositionTop-center": "في المنتصف",
+    "logoPositionTop-start": "على الجانب",
+    "logoPositionNone": "بدون شعار بالفاتورة",
+    "receiptLogoSizeLabel": "حجم الشعار",
+    "receiptLogoSizeHint": "حجم الشعار عند الطباعة على الفاتورة.",
+    "logoSizeSmall": "صغير",
+    "logoSizeMedium": "متوسط",
+    "logoSizeLarge": "كبير"
   },
   "nav": {
     "home": "الرئيسية",
@@ -457,6 +469,14 @@
     "zatcaCredentialsHint": "من إعداد منصة فاتورة الحكومية. اترك أي حقل فارغًا للإبقاء على قيمته الحالية — لا تُعرض هذه البيانات مجددًا بعد الحفظ.",
     "zatcaStatus": "الحالة",
     "zatcaConfigured": "مكتمل الإعداد — جاهز لتوقيع الفواتير وإرسالها",
-    "zatcaNotConfigured": "البيانات ناقصة — ستستمر الفواتير بالعمل بنظام المرحلة الأولى فقط حتى تكتمل البيانات الأربعة"
+    "zatcaNotConfigured": "البيانات ناقصة — ستستمر الفواتير بالعمل بنظام المرحلة الأولى فقط حتى تكتمل البيانات الأربعة",
+    "menuDesignTitle": "تصميم المنيو الإلكتروني",
+    "menuDesignHint": "شكل صفحة المنيو العامة اللي يشوفها الزبون (الصفحة اللي تفتح من رمز QR على الطاولة أو رابط الاستلام).",
+    "menuDesignCustomOption": "مخصص (متقدم)",
+    "menuDesignCustomDescription": "اكتب كود CSS خاص بدل القوالب الجاهزة — لمطوّر توظّفه، أو إذا كنت تعرف CSS بنفسك.",
+    "menuDesignCssLabel": "كود CSS مخصص",
+    "menuDesignCssPlaceholder": ".product-card { border-radius: 4px; }",
+    "menuDesignCssHint": "يعمل فقط بصفحة المنيو، ولا يؤثر على أي مكان ثاني. للأمان، يتم فحصه تلقائيًا قبل الحفظ: url(...) وقواعد @ (مثل @import) وأشياء ثانية خطرة تُرفض — بيوضح لك بالضبط أي شي تحتاج تصلحه لو فيه شي غير مسموح.",
+    "menuDesignCssTargetingHint": "استهدف العناصر عبر [data-menu-part=\"header\"]، وكذلك \"logo\" و\"title\" و\"category-nav\" و\"category-button\" و\"product-card\" و\"product-image\" و\"product-name\" و\"product-description\" و\"product-price\"."
   }
 }

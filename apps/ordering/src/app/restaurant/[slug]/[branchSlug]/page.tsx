@@ -4,10 +4,12 @@ import { CartBar } from "@/components/CartBar";
 import { CartProvider } from "@/components/CartProvider";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import { MenuHeader } from "@/components/MenuHeader";
+import { MenuThemeStyle } from "@/components/MenuThemeStyle";
 import { MenuView } from "@/components/MenuView";
 import { apiGet, ApiError } from "@/lib/api";
 import type { Locale } from "@/lib/dictionaries";
 import type { Menu, RestaurantInfo } from "@/lib/types";
+import { menuScopeClassName } from "@/lib/menu-theme-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -39,17 +41,23 @@ export default async function BranchMenuPage({
   return (
     <LocaleProvider initialLocale={restaurant.restaurant.defaultLocale as Locale}>
       <CartProvider scope={`pickup:${slug}:${branchSlug}`}>
-        <MenuHeader
-          logoUrl={restaurant.restaurant.logoUrl}
-          name={restaurant.restaurant.name}
-          nameEn={restaurant.restaurant.nameEn}
-          subtitle={menu.branch.name}
-        />
-        <MenuView menu={menu} currency={restaurant.restaurant.currency} />
-        <CartBar
-          href={`/restaurant/${slug}/${branchSlug}/cart`}
-          currency={restaurant.restaurant.currency}
-        />
+        <div className={menuScopeClassName(restaurant.restaurant.menuTemplate)}>
+          <MenuThemeStyle
+            template={restaurant.restaurant.menuTemplate}
+            customCss={restaurant.restaurant.menuCustomCss}
+          />
+          <MenuHeader
+            logoUrl={restaurant.restaurant.logoUrl}
+            name={restaurant.restaurant.name}
+            nameEn={restaurant.restaurant.nameEn}
+            subtitle={menu.branch.name}
+          />
+          <MenuView menu={menu} currency={restaurant.restaurant.currency} />
+          <CartBar
+            href={`/restaurant/${slug}/${branchSlug}/cart`}
+            currency={restaurant.restaurant.currency}
+          />
+        </div>
       </CartProvider>
     </LocaleProvider>
   );

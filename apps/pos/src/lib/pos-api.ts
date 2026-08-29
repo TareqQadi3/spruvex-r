@@ -63,6 +63,13 @@ export interface ReceiptData {
       nameEn: string | null;
       vatNumber: string | null;
       currency: string;
+      logoUrl: string | null;
+      themeColor: string;
+      receiptTemplate: string;
+      receiptLogoPosition: string;
+      receiptLogoSize: string;
+      receiptHeaderNote: string | null;
+      receiptFooterNote: string | null;
     };
     branch: { name: string; address: string | null; phone: string | null };
     order: {

@@ -72,7 +72,14 @@ export function OnboardingWizard() {
     api<StatusResponse>("/onboarding/status")
       .then((s) => {
         if (s.step === "done") {
-          navigate("/", { replace: true });
+          // Already finished the wizard once — the dashboard's "missing
+          // settings" banner still deep-links back in via ?step=X, so only
+          // bounce home when there's nowhere specific to jump to.
+          if (jumpTo && (HUB_STEPS as readonly string[]).includes(jumpTo)) {
+            setView(jumpTo as HubStep);
+          } else {
+            navigate("/", { replace: true });
+          }
         } else if (s.step === 2) {
           setView("welcome");
         } else if (s.step === 3) {

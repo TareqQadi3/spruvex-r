@@ -162,7 +162,19 @@
     "staffAdded": "{{count}} team member(s) added",
     "completeTitle": "You're all set!",
     "completeSubtitle": "Your restaurant is configured — enter the dashboard and get going.",
-    "enterDashboard": "Enter dashboard"
+    "enterDashboard": "Enter dashboard",
+    "receiptTemplateLabel": "Receipt template",
+    "receiptTemplateHint": "How the printed receipt looks — this only affects new receipts from now on, not ones already printed.",
+    "receiptLogoPositionLabel": "Logo on receipt",
+    "receiptLogoPositionHint": "Where your logo appears at the top of the printed receipt.",
+    "logoPositionTop-center": "Centered",
+    "logoPositionTop-start": "To the side",
+    "logoPositionNone": "No logo on receipt",
+    "receiptLogoSizeLabel": "Logo size",
+    "receiptLogoSizeHint": "How big the logo prints on the receipt.",
+    "logoSizeSmall": "Small",
+    "logoSizeMedium": "Medium",
+    "logoSizeLarge": "Large"
   },
   "nav": {
     "home": "Home",
@@ -457,6 +469,14 @@
     "zatcaCredentialsHint": "From ZATCA's Fatoora portal onboarding. Leave a field blank to keep its current value — nothing here is ever shown back to you once saved.",
     "zatcaStatus": "Status",
     "zatcaConfigured": "Fully configured — ready to sign and submit invoices",
-    "zatcaNotConfigured": "Credentials incomplete — invoices will keep using Phase 1 only until all four are provided"
+    "zatcaNotConfigured": "Credentials incomplete — invoices will keep using Phase 1 only until all four are provided",
+    "menuDesignTitle": "Digital menu design",
+    "menuDesignHint": "How your public online menu looks to customers (the page opened from a table QR code or your pickup link).",
+    "menuDesignCustomOption": "Custom (advanced)",
+    "menuDesignCustomDescription": "Write your own CSS instead of a ready template — for a developer you hire, or if you know CSS yourself.",
+    "menuDesignCssLabel": "Custom CSS",
+    "menuDesignCssPlaceholder": ".product-card { border-radius: 4px; }",
+    "menuDesignCssHint": "Runs only on your menu page, never anywhere else. For safety, it is checked automatically before saving: url(...), @-rules (like @import), and a few other risky bits are rejected — you will see exactly what to fix if something is not allowed.",
+    "menuDesignCssTargetingHint": "Target elements with [data-menu-part=\"header\"], \"logo\", \"title\", \"category-nav\", \"category-button\", \"product-card\", \"product-image\", \"product-name\", \"product-description\", or \"product-price\"."
   }
 }

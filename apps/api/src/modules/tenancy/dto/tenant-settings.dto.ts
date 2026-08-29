@@ -7,7 +7,13 @@ import {
   MaxLength,
 } from "class-validator";
 
-import { THEME_PRESET_KEYS } from "@spruvex-r/types";
+import {
+  MENU_TEMPLATE_KEYS,
+  RECEIPT_LOGO_POSITIONS,
+  RECEIPT_LOGO_SIZES,
+  RECEIPT_TEMPLATE_KEYS,
+  THEME_PRESET_KEYS,
+} from "@spruvex-r/types";
 
 /** Establishment (ZATCA) data + appearance/receipt customization — editable from dashboard settings. */
 export class UpdateTenantDto {
@@ -91,4 +97,33 @@ export class UpdateTenantDto {
   @IsString()
   @MaxLength(200)
   receiptFooterNote?: string;
+
+  /** One of RECEIPT_TEMPLATE_KEYS. Snapshotted into each receipt at issuance. */
+  @IsOptional()
+  @IsIn(RECEIPT_TEMPLATE_KEYS as unknown as string[])
+  receiptTemplate?: string;
+
+  @IsOptional()
+  @IsIn(RECEIPT_LOGO_POSITIONS as unknown as string[])
+  receiptLogoPosition?: string;
+
+  @IsOptional()
+  @IsIn(RECEIPT_LOGO_SIZES as unknown as string[])
+  receiptLogoSize?: string;
+
+  /** One of MENU_TEMPLATE_KEYS ("custom" pairs with menuCustomCss below). */
+  @IsOptional()
+  @IsIn(MENU_TEMPLATE_KEYS as unknown as string[])
+  menuTemplate?: string;
+
+  /**
+   * Raw CSS from the tenant (or a developer they hired) for the "custom"
+   * menu template. Untrusted input — sanitized server-side in
+   * TenancyService before it's ever persisted or served; never trust this
+   * DTO value directly (see shared/security/menu-css-sanitizer.ts).
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20_000)
+  menuCustomCss?: string;
 }
