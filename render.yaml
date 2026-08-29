@@ -62,6 +62,10 @@ services:
       # Optional error tracking — leave unset, zero behavior change.
       - key: SENTRY_DSN
         sync: false
+      # Only needed once some tenant enables ZATCA Phase 2 e-invoicing —
+      # encrypts their CSID credentials at rest. Generate a long random value.
+      - key: ZATCA_CREDENTIALS_ENCRYPTION_KEY
+        sync: false
 
   - type: web
     name: spruvex-r-dashboard

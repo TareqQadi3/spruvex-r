@@ -114,4 +114,11 @@ export const posApi = {
   applyDiscount: (orderId: string, body: { type: "percentage" | "fixed"; value: string; reason: string }) =>
     post<ActiveOrder>(`/orders/${orderId}/discount`, body),
   receipt: (orderId: string) => api<ReceiptData>(`/orders/${orderId}/receipt`),
+  refund: (
+    orderId: string,
+    body: { amount: string; method: "cash" | "card"; reason: string; reference?: string },
+  ) => post<{ creditNote: { id: string; total: string }; refund: { id: string } }>(
+    `/orders/${orderId}/refund`,
+    body,
+  ),
 };

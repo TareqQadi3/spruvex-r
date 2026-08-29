@@ -8,6 +8,7 @@ export const ORDER_STATUSES = [
   "served",
   "completed",
   "cancelled",
+  "refunded",
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
@@ -21,6 +22,10 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
  * (counter orders paid before/without table service). Every transition to
  * `completed` is guarded by FULL PAYMENT at the service level, and
  * cancellation is blocked once payments exist.
+ *
+ * Refunds: `completed` -> `refunded` only when a credit note refunds the
+ * FULL receipt total (payments.refund permission, see refunds.service.ts);
+ * a partial refund keeps the order `completed`.
  */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   new: ["confirmed", "cancelled"],
@@ -28,8 +33,9 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[
   preparing: ["ready", "cancelled"],
   ready: ["served", "completed"],
   served: ["completed"],
-  completed: [],
+  completed: ["refunded"],
   cancelled: [],
+  refunded: [],
 };
 
 export function canTransition(from: OrderStatus, to: OrderStatus): boolean {

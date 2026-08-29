@@ -160,6 +160,9 @@ export class OrderingService {
     if (to === "cancelled" && !ctx.permissions.has("orders.void")) {
       throw new ForbiddenException("Cancelling an order requires the orders.void permission");
     }
+    if (to === "refunded" && !ctx.permissions.has("payments.refund")) {
+      throw new ForbiddenException("Refunding an order requires the payments.refund permission");
+    }
 
     const order = await this.prisma.scopedTransaction(async (tx) => {
       const current = await tx.order.findFirst({ where: { id, deletedAt: null } });

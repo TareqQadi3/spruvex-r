@@ -4,16 +4,15 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { createHash } from "node:crypto";
 
 import { AuditService } from "../../shared/audit/audit.service";
-import { halalasToSar, sarToHalalas } from "../../shared/common/money";
+import { halalasToSar, sarToHalalas, vatFromGross } from "../../shared/common/money";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import {
   actorOrNull,
   TenantContextService,
 } from "../../shared/tenancy/tenant-context.service";
-import { buildZatcaQrPayload } from "./zatca/tlv";
+import { ZatcaInvoiceService } from "./zatca/zatca-invoice.service";
 
 const NUMBER_CONFLICT_RETRIES = 3;
 
@@ -21,8 +20,10 @@ const NUMBER_CONFLICT_RETRIES = 3;
  * Receipt foundation: sequential per-branch numbering with a frozen snapshot
  * of restaurant info, order lines, VAT fields and payments. Idempotent
  * get-or-create — the POS fetches the receipt after completing an order.
- * The ZATCA invoice service (Phase 7) builds on this structure; thermal
- * print layouts consume `payload`.
+ * ZatcaInvoiceService fills in the QR/hash-chain/XML/signature (Phase 1
+ * always; Phase 2 only for tenants who opted in and have CSID credentials
+ * configured — see docs on the /tenant/zatca-settings endpoint).
+ * Thermal print layouts consume `payload`.
  */
 @Injectable()
 export class ReceiptsService {
@@ -30,6 +31,7 @@ export class ReceiptsService {
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     private readonly audit: AuditService,
+    private readonly zatca: ZatcaInvoiceService,
   ) {}
 
   async getOrCreate(orderId: string) {
@@ -48,11 +50,11 @@ export class ReceiptsService {
 
     for (let attempt = 1; ; attempt++) {
       try {
-        const receipt = await this.prisma.scopedTransaction(async (tx) => {
+        const { receipt, pendingSubmission } = await this.prisma.scopedTransaction(async (tx) => {
           // Concurrent issuance guard: re-check inside the transaction.
           const raced = await tx.receipt.findUnique({ where: { orderId } });
           if (raced) {
-            return raced;
+            return { receipt: raced, pendingSubmission: null };
           }
 
           const order = await tx.order.findFirst({
@@ -77,51 +79,52 @@ export class ReceiptsService {
               orderBy: { createdAt: "asc" },
             }),
           ]);
+          if (!tenant) {
+            throw new NotFoundException("Tenant not found");
+          }
 
           const last = await tx.receipt.findFirst({
             where: { branchId: order.branchId },
             orderBy: { receiptNumber: "desc" },
-            select: { receiptNumber: true, invoiceHash: true },
+            select: { receiptNumber: true },
           });
 
           const issuedAt = new Date();
           const receiptNumber = (last?.receiptNumber ?? 0) + 1;
-          const sellerName = tenant?.legalName ?? tenant?.name ?? "";
           const totalBeforeVat = halalasToSar(
             sarToHalalas(order.total.toString()) - sarToHalalas(order.vatAmount.toString()),
           );
+          const vatRatePercent = Number(order.vatRate.toString());
 
-          // ZATCA Phase 1 simplified-invoice QR (TLV/Base64). Only issued
-          // when the establishment has a VAT registration number.
-          const qrPayload = tenant?.vatNumber
-            ? buildZatcaQrPayload({
-                sellerName,
-                vatNumber: tenant.vatNumber,
-                timestamp: issuedAt.toISOString(),
-                total: order.total.toString(),
-                vatAmount: order.vatAmount.toString(),
-              })
-            : null;
+          const zatcaFields = await this.zatca.issue(tx, {
+            tenant,
+            branchId: order.branchId,
+            kind: "invoice",
+            documentNumber: receiptNumber,
+            issueDateTime: issuedAt,
+            lines: order.items.map((item) => {
+              const lineTotalHalalas = sarToHalalas(item.lineTotal.toString());
+              const lineVatHalalas = vatFromGross(lineTotalHalalas, vatRatePercent);
+              return {
+                nameAr: (item.productSnapshot as { name: string }).name,
+                nameEn: (item.productSnapshot as { nameEn: string | null }).nameEn,
+                quantity: item.quantity,
+                unitPriceExclVat: halalasToSar(
+                  Math.round((lineTotalHalalas - lineVatHalalas) / item.quantity),
+                ),
+                lineExtensionAmount: halalasToSar(lineTotalHalalas - lineVatHalalas),
+                vatRate: order.vatRate.toString(),
+                vatAmount: halalasToSar(lineVatHalalas),
+              };
+            }),
+            subtotal: totalBeforeVat,
+            vatRate: order.vatRate.toString(),
+            vatAmount: order.vatAmount.toString(),
+            total: order.total.toString(),
+          });
+          const { pendingSubmission, ...zatcaColumns } = zatcaFields;
 
-          // ZATCA Phase 2 readiness: per-branch hash chain over the
-          // invoice's canonical fields, linked to the previous invoice.
-          const previousInvoiceHash = last?.invoiceHash ?? null;
-          const invoiceHash = createHash("sha256")
-            .update(
-              JSON.stringify({
-                tenantId,
-                branchId: order.branchId,
-                receiptNumber,
-                orderId,
-                issuedAt: issuedAt.toISOString(),
-                total: order.total.toString(),
-                vatAmount: order.vatAmount.toString(),
-                previousInvoiceHash,
-              }),
-            )
-            .digest("hex");
-
-          return tx.receipt.create({
+          const receipt = await tx.receipt.create({
             data: {
               tenantId,
               branchId: order.branchId,
@@ -132,19 +135,17 @@ export class ReceiptsService {
               total: order.total,
               issuedAt,
               issuedBy: actorOrNull(ctx.userId),
-              qrPayload,
-              invoiceHash,
-              previousInvoiceHash,
+              ...zatcaColumns,
               payload: {
                 restaurant: {
-                  name: tenant?.name,
-                  nameEn: tenant?.nameEn,
-                  legalName: sellerName,
-                  vatNumber: tenant?.vatNumber,
-                  crNumber: tenant?.crNumber,
-                  address: tenant?.address,
-                  logoUrl: tenant?.logoUrl,
-                  currency: tenant?.currency,
+                  name: tenant.name,
+                  nameEn: tenant.nameEn,
+                  legalName: tenant.legalName ?? tenant.name,
+                  vatNumber: tenant.vatNumber,
+                  crNumber: tenant.crNumber,
+                  address: tenant.address,
+                  logoUrl: tenant.logoUrl,
+                  currency: tenant.currency,
                 },
                 branch: {
                   name: branch?.name,
@@ -185,6 +186,7 @@ export class ReceiptsService {
               },
             },
           });
+          return { receipt, pendingSubmission };
         });
 
         await this.audit.log({
@@ -194,6 +196,11 @@ export class ReceiptsService {
           branchId: receipt.branchId,
           meta: { receiptNumber: receipt.receiptNumber, orderId },
         });
+
+        if (pendingSubmission) {
+          await this.zatca.submitAndRecordResult(tenantId, pendingSubmission, receipt.id);
+        }
+
         return receipt;
       } catch (error) {
         if (

@@ -40,3 +40,36 @@ export class ApplyDiscountDto {
   @MaxLength(500)
   reason!: string;
 }
+
+export class RefundOrderDto {
+  /** VAT-inclusive amount to credit back, SAR. Must not exceed what's left to refund on the receipt. */
+  @IsString()
+  @Matches(AMOUNT_RULE, { message: AMOUNT_MESSAGE })
+  amount!: string;
+
+  @IsIn(["cash", "card"])
+  method!: "cash" | "card";
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  reason!: string;
+
+  /** Card refund authorization code / external reference. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  reference?: string;
+}
+
+export class IssueDebitNoteDto {
+  /** Additional VAT-inclusive amount owed, SAR. */
+  @IsString()
+  @Matches(AMOUNT_RULE, { message: AMOUNT_MESSAGE })
+  amount!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  reason!: string;
+}

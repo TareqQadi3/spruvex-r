@@ -6,6 +6,7 @@ import { Button, Dialog, Spinner } from "@spruvex-r/ui";
 
 import { posApi, type ReceiptData } from "../lib/pos-api";
 import { printHtml } from "../lib/print";
+import { RefundDialog } from "./RefundDialog";
 
 /**
  * Every string below comes from tenant-entered data (product/branch/restaurant
@@ -67,6 +68,9 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
   const { t } = useTranslation();
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  // Mutually exclusive with the receipt Dialog below — never render both at
+  // once (two stacked focus-trapping dialogs would fight over Tab/Escape).
+  const [refunding, setRefunding] = useState(false);
 
   useEffect(() => {
     void posApi.receipt(orderId).then(async (data) => {
@@ -76,6 +80,20 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
       }
     });
   }, [orderId]);
+
+  if (refunding && receipt) {
+    return (
+      <RefundDialog
+        orderId={orderId}
+        maxAmount={receipt.total}
+        onClose={() => setRefunding(false)}
+        onRefunded={() => {
+          setRefunding(false);
+          onClose();
+        }}
+      />
+    );
+  }
 
   return (
     <Dialog
@@ -107,6 +125,9 @@ export function ReceiptView({ orderId, onClose }: { orderId: string; onClose: ()
               {t("receipt.newOrder")}
             </Button>
           </div>
+          <Button variant="ghost" className="w-full" onClick={() => setRefunding(true)}>
+            {t("receipt.refund")}
+          </Button>
         </div>
       )}
     </Dialog>

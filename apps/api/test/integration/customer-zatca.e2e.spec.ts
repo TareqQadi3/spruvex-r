@@ -216,8 +216,11 @@ describe("customer experience + ZATCA foundation (e2e)", () => {
       expect(receipt.body.payload.restaurant.legalName).toBe("شركة مطاعم ألف المحدودة");
       expect(receipt.body.payload.restaurant.address).toBe("شارع العليا، الرياض");
 
-      // Phase 2 readiness: hash chain fields present.
-      expect(receipt.body.invoiceHash).toMatch(/^[0-9a-f]{64}$/);
+      // Phase 2 is opt-in (see zatca-phase2.e2e.spec.ts) — a tenant that
+      // hasn't enabled it gets exactly Phase 1 behavior: no hash chain, no
+      // XML, submission status stays "not_submitted".
+      expect(receipt.body.invoiceHash).toBeNull();
+      expect(receipt.body.xmlContent).toBeNull();
       expect(receipt.body.zatcaStatus).toBe("not_submitted");
 
       // QR image endpoint serves a PNG of the payload.

@@ -14,15 +14,19 @@ import type { Response } from "express";
 import * as QRCode from "qrcode";
 
 import { RequirePermission } from "../../shared/rbac/require-permission.decorator";
-import { RecordPaymentDto } from "./dto/payments.dto";
+import { DebitNotesService } from "./debit-notes.service";
+import { IssueDebitNoteDto, RecordPaymentDto, RefundOrderDto } from "./dto/payments.dto";
 import { PaymentsService } from "./payments.service";
 import { ReceiptsService } from "./receipts.service";
+import { RefundsService } from "./refunds.service";
 
 @Controller("orders/:orderId")
 export class PaymentsController {
   constructor(
     private readonly payments: PaymentsService,
     private readonly receipts: ReceiptsService,
+    private readonly refunds: RefundsService,
+    private readonly debitNotes: DebitNotesService,
   ) {}
 
   @RequirePermission("orders.view")
@@ -65,5 +69,17 @@ export class PaymentsController {
       errorCorrectionLevel: "M",
     });
     res.send(png);
+  }
+
+  @RequirePermission("payments.refund")
+  @Post("refund")
+  refund(@Param("orderId", ParseUUIDPipe) orderId: string, @Body() dto: RefundOrderDto) {
+    return this.refunds.refund(orderId, dto);
+  }
+
+  @RequirePermission("payments.refund")
+  @Post("debit-note")
+  debitNote(@Param("orderId", ParseUUIDPipe) orderId: string, @Body() dto: IssueDebitNoteDto) {
+    return this.debitNotes.issue(orderId, dto);
   }
 }
