@@ -113,6 +113,38 @@ export function HomePage() {
               </CardContent>
             </Card>
           )}
+
+          {summary.data.autoHiddenAlerts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm text-muted-foreground">{t("home.autoHiddenAlerts")}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {summary.data.autoHiddenAlerts.map((alert, index) => (
+                  <div key={index} className="flex flex-wrap items-center gap-2 text-sm">
+                    <Badge variant="destructive">
+                      {localizedName(
+                        { name: alert.productName, nameEn: alert.productNameEn },
+                        i18n.language,
+                      )}
+                    </Badge>
+                    <span className="text-muted-foreground">
+                      {t("home.autoHiddenReason", {
+                        branch: localizedName(
+                          { name: alert.branchName, nameEn: alert.branchNameEn },
+                          i18n.language,
+                        ),
+                        ingredient: localizedName(
+                          { name: alert.ingredientName, nameEn: alert.ingredientNameEn },
+                          i18n.language,
+                        ),
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

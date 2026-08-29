@@ -201,6 +201,8 @@
     "todaySales": "Today's sales",
     "bestSeller": "Best seller",
     "inventoryAlerts": "Inventory alerts",
+    "autoHiddenAlerts": "Auto-hidden items (out of stock)",
+    "autoHiddenReason": "hidden at {{branch}} — {{ingredient}} is out of stock",
     "missingSetupTitle": "Missing settings",
     "missingSetupHint": "You skipped a few setup steps earlier — finish them whenever you're ready:"
   },
@@ -386,7 +388,9 @@
       "cost": "Cost",
       "margin": "Gross margin",
       "quantity": "Quantity",
-      "addIngredient": "Add ingredient"
+      "addIngredient": "Add ingredient",
+      "criticalToggle": "Critical — hide product when out of stock",
+      "criticalThreshold": "Hide at/below (optional, default 0)"
     }
   },
   "reports": {
@@ -417,6 +421,19 @@
       "quantity": "Quantity",
       "revenue": "Revenue",
       "empty": "No data for this period"
+    },
+    "ratings": {
+      "title": "Customer ratings",
+      "avg": "Average rating",
+      "count": "{{count}} rating(s)",
+      "noRatings": "No ratings yet for this period",
+      "byBranch": "By branch",
+      "lowRatings": {
+        "title": "Ratings needing follow-up (3★ or below)",
+        "empty": "No low ratings — nice work",
+        "order": "Order #{{number}}",
+        "comment": "Comment"
+      }
     }
   },
   "billing": {

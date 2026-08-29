@@ -142,4 +142,11 @@ export class InventoryController {
   recordAdjustment(@Body() dto: RecordAdjustmentDto) {
     return this.inventory.recordAdjustment(dto);
   }
+
+  /** Products currently auto-hidden by the critical-ingredient stockout engine — dashboard alert list. */
+  @RequirePermission("inventory.view")
+  @Get("auto-hidden")
+  listAutoHidden(@Query("branchId") branchId?: string) {
+    return this.inventory.listAutoHidden(branchId);
+  }
 }

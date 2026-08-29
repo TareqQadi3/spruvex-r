@@ -148,6 +148,8 @@ model Tenant {
   integrationConnections    IntegrationConnection[]
   deliveryProductMappings   DeliveryProductMapping[]
   whatsappTemplateOverrides WhatsappTemplateOverride[]
+  productStockHides         ProductStockHide[]
+  orderFeedbackRequests     OrderFeedbackRequest[]
 
   @@map("tenants")
 }
@@ -188,6 +190,8 @@ model Branch {
   stockMovements         StockMovement[]
   invoiceChain           BranchInvoiceChain?
   integrationConnections IntegrationConnection[]
+  productStockHides      ProductStockHide[]
+  feedbackRequests       OrderFeedbackRequest[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -457,6 +461,8 @@ model Product {
   orderItems              OrderItem[]
   recipeItems             RecipeItem[]
   deliveryProductMappings DeliveryProductMapping[]
+  stockHides              ProductStockHide[]
+  feedbackRequests        OrderFeedbackRequest[]
 
   @@unique([tenantId, sku])
   @@index([tenantId, categoryId])
@@ -767,15 +773,16 @@ model Order {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant        Tenant               @relation(fields: [tenantId], references: [id])
-  branch        Branch               @relation(fields: [branchId], references: [id])
-  table         Table?               @relation(fields: [tableId], references: [id])
-  tableSession  TableSession?        @relation(fields: [tableSessionId], references: [id])
-  items         OrderItem[]
-  statusHistory OrderStatusHistory[]
-  payments      Payment[]
-  receipt       Receipt?
-  refunds       Refund[]
+  tenant          Tenant                @relation(fields: [tenantId], references: [id])
+  branch          Branch                @relation(fields: [branchId], references: [id])
+  table           Table?                @relation(fields: [tableId], references: [id])
+  tableSession    TableSession?         @relation(fields: [tableSessionId], references: [id])
+  items           OrderItem[]
+  statusHistory   OrderStatusHistory[]
+  payments        Payment[]
+  receipt         Receipt?
+  refunds         Refund[]
+  feedbackRequest OrderFeedbackRequest?
 
   @@unique([branchId, orderDate, orderNumber])
   @@unique([tenantId, idempotencyKey])
@@ -1224,10 +1231,11 @@ model Ingredient {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  tenant         Tenant             @relation(fields: [tenantId], references: [id])
   stockLevels    StockLevel[]
   stockMovements StockMovement[]
   recipeItems    RecipeItem[]
+  stockHides     ProductStockHide[]
 
   @@index([tenantId])
   @@map("ingredients")
@@ -1347,6 +1355,15 @@ model RecipeItem {
   quantity Decimal @db.Decimal(10, 3)
   notes    String?
 
+  /// Marks this ingredient as make-or-break for the product: when its total
+  /// branch stock falls to/below criticalThreshold (base units, null = 0),
+  /// the product is auto-hidden at that branch (see ProductStockHide /
+  /// InventoryService.reevaluateStockGating) — real availability gating,
+  /// the same isAvailable flag POS/digital-menu already read, not a
+  /// separate cosmetic flag.
+  isCritical        Boolean  @default(false) @map("is_critical")
+  criticalThreshold Decimal? @map("critical_threshold") @db.Decimal(14, 3)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by") @db.Uuid
@@ -1360,6 +1377,68 @@ model RecipeItem {
   @@unique([productId, ingredientId])
   @@index([tenantId, productId])
   @@map("recipe_items")
+}
+
+/// Tracks a product currently auto-hidden by the system because a critical
+/// recipe ingredient (RecipeItem.isCritical) fell to/below its threshold at
+/// this branch. The row's existence is the single source of truth for "the
+/// SYSTEM, not the merchant, turned this off": InventoryService only ever
+/// flips a product back on for a branch where a row is present, and a
+/// merchant's own manual re-enable (products.service.setBranchSetting)
+/// deletes the row so the system never fights their override. Deleted the
+/// moment either stock recovers or the merchant manually re-enables.
+model ProductStockHide {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  ingredientId String   @map("ingredient_id") @db.Uuid
+  hiddenAt     DateTime @default(now()) @map("hidden_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  product    Product    @relation(fields: [productId], references: [id])
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@unique([productId, branchId])
+  @@index([tenantId, branchId])
+  @@map("product_stock_hides")
+}
+
+/// Post-order WhatsApp rating request. Created the moment an order reaches
+/// "completed" (FeedbackOrderListener), sent ~30 minutes later once
+/// sendAfter passes (FeedbackService's polling sender — a due row is one
+/// with sendAfter <= now and sentAt still null), and answered through the
+/// public capability-token link the WhatsApp template carries (id doubles
+/// as the token, same convention as Receipt/public order tracking).
+/// rating/comment stay null until the customer actually responds.
+model OrderFeedbackRequest {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  orderId  String @unique @map("order_id") @db.Uuid
+
+  /// Best-effort "main item" of the order (highest line total) — purely
+  /// informational context for the dashboard, never enforced.
+  primaryProductId String? @map("primary_product_id") @db.Uuid
+
+  sendAfter DateTime  @map("send_after")
+  sentAt    DateTime? @map("sent_at")
+
+  rating  Int?      @db.SmallInt
+  comment String?
+  ratedAt DateTime? @map("rated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  branch         Branch   @relation(fields: [branchId], references: [id])
+  order          Order    @relation(fields: [orderId], references: [id])
+  primaryProduct Product? @relation(fields: [primaryProductId], references: [id])
+
+  @@index([tenantId, branchId, ratedAt])
+  @@index([sendAfter, sentAt])
+  @@map("order_feedback_requests")
 }
 
 // ---------------------------------------------------------------------------

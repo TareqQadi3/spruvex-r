@@ -455,6 +455,8 @@ interface RecipeRow {
   ingredientId: string;
   unitId: string;
   quantity: string;
+  isCritical: boolean;
+  criticalThreshold: string;
 }
 
 /** Food-cost recipe editor (Phase 7) — full-replace list of ingredient lines + live cost/margin preview. */
@@ -486,6 +488,8 @@ function RecipeEditor({ productId }: { productId: string }) {
           ingredientId: item.ingredientId,
           unitId: item.unitId,
           quantity: item.quantity,
+          isCritical: item.isCritical,
+          criticalThreshold: item.criticalThreshold ?? "",
         })),
       );
     }
@@ -495,7 +499,15 @@ function RecipeEditor({ productId }: { productId: string }) {
     mutationFn: () =>
       inventoryApi.setRecipe(
         productId,
-        rows.filter((row) => row.ingredientId && row.unitId && row.quantity),
+        rows
+          .filter((row) => row.ingredientId && row.unitId && row.quantity)
+          .map((row) => ({
+            ingredientId: row.ingredientId,
+            unitId: row.unitId,
+            quantity: row.quantity,
+            isCritical: row.isCritical,
+            criticalThreshold: row.isCritical && row.criticalThreshold ? row.criticalThreshold : undefined,
+          })),
       ),
     onSuccess: async () => {
       setError(null);
@@ -510,7 +522,16 @@ function RecipeEditor({ productId }: { productId: string }) {
   function addRow() {
     const firstIngredient = ingredients.data?.[0];
     const firstUnit = units.data?.find((u) => u.type === firstIngredient?.unitType);
-    setRows([...rows, { ingredientId: firstIngredient?.id ?? "", unitId: firstUnit?.id ?? "", quantity: "" }]);
+    setRows([
+      ...rows,
+      {
+        ingredientId: firstIngredient?.id ?? "",
+        unitId: firstUnit?.id ?? "",
+        quantity: "",
+        isCritical: false,
+        criticalThreshold: "",
+      },
+    ]);
   }
 
   function updateRow(index: number, patch: Partial<RecipeRow>) {
@@ -549,56 +570,77 @@ function RecipeEditor({ productId }: { productId: string }) {
             const selectedIngredient = ingredients.data?.find((i) => i.id === row.ingredientId);
             const compatibleUnits = units.data?.filter((u) => u.type === selectedIngredient?.unitType) ?? [];
             return (
-              <div key={index} className="flex flex-wrap items-center gap-2">
-                <Select
-                  className="w-48"
-                  value={row.ingredientId}
-                  onChange={(e) => {
-                    const ingredient = ingredients.data?.find((i) => i.id === e.target.value);
-                    const compatible = units.data?.find((u) => u.type === ingredient?.unitType);
-                    updateRow(index, { ingredientId: e.target.value, unitId: compatible?.id ?? "" });
-                  }}
-                >
-                  <option value="" disabled>
-                    —
-                  </option>
-                  {ingredients.data?.map((ingredient) => (
-                    <option key={ingredient.id} value={ingredient.id}>
-                      {localizedName(ingredient, i18n.language)}
+              <div key={index} className="space-y-2 rounded-md border p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    className="w-48"
+                    value={row.ingredientId}
+                    onChange={(e) => {
+                      const ingredient = ingredients.data?.find((i) => i.id === e.target.value);
+                      const compatible = units.data?.find((u) => u.type === ingredient?.unitType);
+                      updateRow(index, { ingredientId: e.target.value, unitId: compatible?.id ?? "" });
+                    }}
+                  >
+                    <option value="" disabled>
+                      —
                     </option>
-                  ))}
-                </Select>
-                <Input
-                  className="w-28"
-                  dir="ltr"
-                  inputMode="decimal"
-                  placeholder={t("inventory.recipe.quantity")}
-                  value={row.quantity}
-                  onChange={(e) => updateRow(index, { quantity: e.target.value })}
-                />
-                <Select
-                  className="w-32"
-                  value={row.unitId}
-                  onChange={(e) => updateRow(index, { unitId: e.target.value })}
-                >
-                  <option value="" disabled>
-                    —
-                  </option>
-                  {compatibleUnits.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {localizedName(unit, i18n.language)}
+                    {ingredients.data?.map((ingredient) => (
+                      <option key={ingredient.id} value={ingredient.id}>
+                        {localizedName(ingredient, i18n.language)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input
+                    className="w-28"
+                    dir="ltr"
+                    inputMode="decimal"
+                    placeholder={t("inventory.recipe.quantity")}
+                    value={row.quantity}
+                    onChange={(e) => updateRow(index, { quantity: e.target.value })}
+                  />
+                  <Select
+                    className="w-32"
+                    value={row.unitId}
+                    onChange={(e) => updateRow(index, { unitId: e.target.value })}
+                  >
+                    <option value="" disabled>
+                      —
                     </option>
-                  ))}
-                </Select>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  title={t("catalog.delete")}
-                  aria-label={t("catalog.delete")}
-                  onClick={() => removeRow(index)}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                    {compatibleUnits.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {localizedName(unit, i18n.language)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title={t("catalog.delete")}
+                    aria-label={t("catalog.delete")}
+                    onClick={() => removeRow(index)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 ps-1 text-sm">
+                  <Switch
+                    checked={row.isCritical}
+                    onCheckedChange={(checked) => updateRow(index, { isCritical: checked })}
+                    aria-label={t("inventory.recipe.criticalToggle")}
+                  />
+                  <span className="text-muted-foreground">{t("inventory.recipe.criticalToggle")}</span>
+                  {row.isCritical && (
+                    <Input
+                      className="w-32"
+                      dir="ltr"
+                      inputMode="decimal"
+                      placeholder={t("inventory.recipe.criticalThreshold")}
+                      value={row.criticalThreshold}
+                      onChange={(e) => updateRow(index, { criticalThreshold: e.target.value })}
+                    />
+                  )}
+                </div>
               </div>
             );
           })}

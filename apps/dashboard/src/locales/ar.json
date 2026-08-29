@@ -201,6 +201,8 @@
     "todaySales": "مبيعات اليوم",
     "bestSeller": "الأكثر مبيعاً",
     "inventoryAlerts": "تنبيهات المخزون",
+    "autoHiddenAlerts": "أصناف مخفية تلقائيًا (نفد مخزونها)",
+    "autoHiddenReason": "مخفي بفرع {{branch}} — {{ingredient}} نفد من المخزون",
     "missingSetupTitle": "إعدادات ناقصة",
     "missingSetupHint": "أجّلت بعض خطوات الإعداد سابقًا — أكملها في أي وقت يناسبك:"
   },
@@ -386,7 +388,9 @@
       "cost": "التكلفة",
       "margin": "هامش الربح",
       "quantity": "الكمية",
-      "addIngredient": "إضافة مكوّن"
+      "addIngredient": "إضافة مكوّن",
+      "criticalToggle": "مكوّن حرج — أخفِ المنتج عند نفاده",
+      "criticalThreshold": "الإخفاء عند الوصول لـ (اختياري، الافتراضي صفر)"
     }
   },
   "reports": {
@@ -417,6 +421,19 @@
       "quantity": "الكمية",
       "revenue": "الإيراد",
       "empty": "لا توجد بيانات لهذه الفترة"
+    },
+    "ratings": {
+      "title": "تقييمات العملاء",
+      "avg": "متوسط التقييم",
+      "count": "{{count}} تقييم",
+      "noRatings": "لا توجد تقييمات لهذه الفترة بعد",
+      "byBranch": "حسب الفرع",
+      "lowRatings": {
+        "title": "تقييمات تحتاج متابعة (3 نجوم أو أقل)",
+        "empty": "لا توجد تقييمات منخفضة — عمل ممتاز",
+        "order": "طلب رقم #{{number}}",
+        "comment": "الملاحظة"
+      }
     }
   },
   "billing": {

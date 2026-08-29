@@ -36,10 +36,16 @@ export class ReportsController {
     return this.reports.financial(query.branchId, query.from, query.to);
   }
 
-  /** Dashboard summary card: today's sales, best sellers, low-stock alerts. */
+  /** Dashboard summary card: today's sales, best sellers, low-stock + auto-hidden-item alerts. */
   @RequirePermission("reports.view")
   @Get("dashboard-summary")
   dashboardSummary(@Query("branchId") branchId?: string) {
     return this.reports.dashboardSummary(branchId);
+  }
+
+  @RequirePermission("reports.view")
+  @Get("ratings")
+  ratings(@Query() query: DateRangeQueryDto) {
+    return this.reports.ratingsSummary(query.branchId, query.from, query.to);
   }
 }

@@ -209,6 +209,16 @@ export class ProductsService {
       },
     });
 
+    // A merchant re-enabling a product always wins immediately, even if the
+    // system had it hidden for a critical-ingredient stockout — see
+    // InventoryService.reevaluateStockGating's doc comment. Without this,
+    // the next unrelated stock movement for some OTHER ingredient could
+    // still find the stale ProductStockHide row and treat it as still
+    // system-owned.
+    if (dto.isAvailable) {
+      await this.prisma.scoped.productStockHide.deleteMany({ where: { productId: id, branchId } });
+    }
+
     await this.audit.log({
       action: "product.branch_setting_updated",
       entityType: "product",

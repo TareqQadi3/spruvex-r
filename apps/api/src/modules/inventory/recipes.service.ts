@@ -8,6 +8,7 @@ import { AuditService } from "../../shared/audit/audit.service";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
 import { SetRecipeDto } from "./dto/recipe-item.dto";
+import { InventoryService } from "./inventory.service";
 
 @Injectable()
 export class RecipesService {
@@ -15,6 +16,7 @@ export class RecipesService {
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     private readonly audit: AuditService,
+    private readonly inventory: InventoryService,
   ) {}
 
   async get(productId: string) {
@@ -80,6 +82,16 @@ export class RecipesService {
       }
     }
 
+    // Captured before the replace below, so we know which ingredients this
+    // product is dropping "critical" tracking for (see the cleanup call at
+    // the end — a merchant unchecking "critical" must release any product
+    // this system currently has hidden for that ingredient, not leave it
+    // stuck hidden forever).
+    const previouslyCritical = await this.prisma.scoped.recipeItem.findMany({
+      where: { productId, isCritical: true },
+      select: { ingredientId: true },
+    });
+
     await this.prisma.scopedTransaction(async (tx) => {
       await tx.recipeItem.deleteMany({ where: { productId } });
       if (dto.items.length > 0) {
@@ -91,6 +103,8 @@ export class RecipesService {
             unitId: item.unitId,
             quantity: item.quantity,
             notes: item.notes,
+            isCritical: item.isCritical ?? false,
+            criticalThreshold: item.criticalThreshold,
             createdBy: ctx.userId,
           })),
         });
@@ -103,6 +117,17 @@ export class RecipesService {
       entityId: productId,
       meta: { ingredientCount: dto.items.length },
     });
+
+    const nowCriticalIngredientIds = dto.items.filter((i) => i.isCritical).map((i) => i.ingredientId);
+    const droppedCriticalIngredientIds = previouslyCritical
+      .map((r) => r.ingredientId)
+      .filter((id) => !nowCriticalIngredientIds.includes(id));
+    await this.inventory.onRecipeCriticalLinksChanged(
+      productId,
+      nowCriticalIngredientIds,
+      droppedCriticalIngredientIds,
+    );
+
     return this.get(productId);
   }
 }

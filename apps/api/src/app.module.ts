@@ -1,11 +1,13 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
 
 import { validateEnv } from "./config/env.validation";
 import { HealthModule } from "./health/health.module";
 import { AuthContextMiddleware } from "./modules/identity/auth-context.middleware";
 import { BillingModule } from "./modules/billing/billing.module";
 import { CatalogModule } from "./modules/catalog/catalog.module";
+import { FeedbackModule } from "./modules/feedback/feedback.module";
 import { IdentityModule } from "./modules/identity/identity.module";
 import { IntegrationsModule } from "./modules/integrations/integrations.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
@@ -29,6 +31,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    ScheduleModule.forRoot(),
     EventsModule,
     TenantContextModule,
     PrismaModule,
@@ -51,6 +54,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
     PlatformModule,
     UploadsModule,
     IntegrationsModule,
+    FeedbackModule,
   ],
 })
 export class AppModule implements NestModule {

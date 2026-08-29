@@ -57,6 +57,18 @@ const rawDictionaries: Record<Locale, Dict> = {
       pickupTitle: "استلام من الفرع",
       chooseBranch: "اختر الفرع",
       viewMenu: "عرض المنيو"
+    },
+    feedback: {
+      title: "قيّم تجربتك",
+      order: "طلب رقم #{{number}}",
+      question: "كيف كانت تجربتك؟",
+      commentLabel: "ملاحظة (اختياري)",
+      commentPlaceholder: "أخبرنا بالمزيد...",
+      submit: "إرسال التقييم",
+      submitting: "جارٍ الإرسال...",
+      thankYou: "شكرًا لتقييمك!",
+      alreadyRated: "تم إرسال تقييمك مسبقًا لهذا الطلب — شكرًا لك",
+      notFound: "رابط التقييم غير صالح"
     }
   },
   en: {
@@ -111,6 +123,18 @@ const rawDictionaries: Record<Locale, Dict> = {
       pickupTitle: "Pickup from branch",
       chooseBranch: "Choose a branch",
       viewMenu: "View menu"
+    },
+    feedback: {
+      title: "Rate your experience",
+      order: "Order #{{number}}",
+      question: "How was your experience?",
+      commentLabel: "Note (optional)",
+      commentPlaceholder: "Tell us more...",
+      submit: "Submit rating",
+      submitting: "Sending...",
+      thankYou: "Thanks for your feedback!",
+      alreadyRated: "You've already rated this order — thank you",
+      notFound: "This feedback link is not valid"
     }
   },
 };

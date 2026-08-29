@@ -53,6 +53,6 @@ import { WhatsappService } from "./whatsapp/whatsapp.service";
     WhatsappService,
     WhatsappOrderListener,
   ],
-  exports: [ConnectionsService],
+  exports: [ConnectionsService, WhatsappService],
 })
 export class IntegrationsModule {}

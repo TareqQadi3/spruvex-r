@@ -63,6 +63,8 @@ export interface RecipeItemRow {
   unitId: string;
   quantity: string;
   notes: string | null;
+  isCritical: boolean;
+  criticalThreshold: string | null;
   ingredient: { id: string; name: string; nameEn: string | null; unitType: UnitType };
   unit: UnitOfMeasure;
 }
@@ -113,8 +115,17 @@ export const inventoryApi = {
   recordAdjustment: (body: unknown) => post<StockMovement>("/inventory/stock/adjustment", body),
 
   getRecipe: (productId: string) => api<Recipe>(`/products/${productId}/recipe`),
-  setRecipe: (productId: string, items: Array<{ ingredientId: string; unitId: string; quantity: string; notes?: string }>) =>
-    api<Recipe>(`/products/${productId}/recipe`, { method: "PUT", body: JSON.stringify({ items }) }),
+  setRecipe: (
+    productId: string,
+    items: Array<{
+      ingredientId: string;
+      unitId: string;
+      quantity: string;
+      notes?: string;
+      isCritical?: boolean;
+      criticalThreshold?: string;
+    }>,
+  ) => api<Recipe>(`/products/${productId}/recipe`, { method: "PUT", body: JSON.stringify({ items }) }),
   getProductCost: (productId: string) => api<ProductCost>(`/products/${productId}/recipe/cost`),
 };
 
@@ -159,6 +170,45 @@ export interface DashboardSummary {
   todaySales: { orderCount: number; total: string; avgOrderValue: string };
   bestSellers: BestSeller[];
   lowStockAlerts: Array<{ ingredientId: string; name: string; nameEn: string | null; quantity: string; reorderLevel: string }>;
+  autoHiddenAlerts: Array<{
+    productId: string;
+    productName: string;
+    productNameEn: string | null;
+    branchName: string;
+    branchNameEn: string | null;
+    ingredientName: string;
+    ingredientNameEn: string | null;
+    hiddenAt: string;
+  }>;
+}
+
+export interface RatingsBranchRow {
+  branchId: string;
+  name: string;
+  nameEn: string | null;
+  count: number;
+  avgRating: number;
+}
+
+export interface LowRatingRow {
+  id: string;
+  orderId: string;
+  orderNumber: number;
+  customerName: string | null;
+  rating: number;
+  comment: string | null;
+  ratedAt: string;
+  branchName: string;
+  branchNameEn: string | null;
+  productName: string | null;
+  productNameEn: string | null;
+}
+
+export interface RatingsSummary {
+  avgRating: number | null;
+  count: number;
+  byBranch: RatingsBranchRow[];
+  lowRatings: LowRatingRow[];
 }
 
 export const reportsApi = {
@@ -195,4 +245,12 @@ export const reportsApi = {
   },
   dashboardSummary: (branchId?: string) =>
     api<DashboardSummary>(`/reports/dashboard-summary${branchId ? `?branchId=${branchId}` : ""}`),
+  ratings: (branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return api<RatingsSummary>(`/reports/ratings${qs ? `?${qs}` : ""}`);
+  },
 };

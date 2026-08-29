@@ -28,6 +28,14 @@ export interface CompletedOrderItem {
   quantity: number;
 }
 
+/** One auto-hide/auto-show decision made by reevaluateStockGating, for the caller to audit-log after commit. */
+interface StockGatingEvent {
+  action: "hidden" | "shown";
+  productId: string;
+  branchId: string;
+  ingredientId: string;
+}
+
 @Injectable()
 export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
@@ -110,6 +118,14 @@ export class InventoryService {
         branchId: dto.branchId,
         meta: { ingredientId: dto.ingredientId, quantity: dto.quantity, unitCost: dto.unitCost },
       });
+
+      const gatingEvents = await this.reevaluateStockGating(
+        tx,
+        this.tenantContext.tenantIdOrThrow,
+        dto.branchId,
+        dto.ingredientId,
+      );
+      await this.logGatingEvents(dto.branchId, gatingEvents);
       return movement;
     });
   }
@@ -141,6 +157,14 @@ export class InventoryService {
         branchId: dto.branchId,
         meta: { ingredientId: dto.ingredientId, quantity: dto.quantity, reason: dto.reason },
       });
+
+      const gatingEvents = await this.reevaluateStockGating(
+        tx,
+        this.tenantContext.tenantIdOrThrow,
+        dto.branchId,
+        dto.ingredientId,
+      );
+      await this.logGatingEvents(dto.branchId, gatingEvents);
       return movement;
     });
   }
@@ -188,6 +212,14 @@ export class InventoryService {
           reason: dto.reason,
         },
       });
+
+      const gatingEvents = await this.reevaluateStockGating(
+        tx,
+        this.tenantContext.tenantIdOrThrow,
+        dto.branchId,
+        dto.ingredientId,
+      );
+      await this.logGatingEvents(dto.branchId, gatingEvents);
       return movement;
     });
   }
@@ -242,8 +274,9 @@ export class InventoryService {
         return; // none of the sold products have a recipe — nothing to deduct
       }
 
-      await this.prisma.scopedTransaction(async (tx) => {
+      const gatingEvents = await this.prisma.scopedTransaction(async (tx) => {
         const locationId = (await this.locations.getOrCreateDefault(branchId, tx)).id;
+        const touchedIngredientIds = new Set<string>();
 
         for (const item of items) {
           const lines = recipeItems.filter((line) => line.productId === item.productId);
@@ -260,9 +293,17 @@ export class InventoryService {
               performedBy: null,
             });
             await this.upsertLevel(tx, branchId, locationId, line.ingredientId, -quantityBase);
+            touchedIngredientIds.add(line.ingredientId);
           }
         }
+
+        const events: StockGatingEvent[] = [];
+        for (const ingredientId of touchedIngredientIds) {
+          events.push(...(await this.reevaluateStockGating(tx, tenantId, branchId, ingredientId)));
+        }
+        return events;
       }, tenantId);
+      await this.logGatingEvents(branchId, gatingEvents);
     } catch (error) {
       // Non-blocking by design: inventory failures must never affect an
       // already-completed order. Surface loudly in logs for operators.
@@ -355,6 +396,170 @@ export class InventoryService {
         quantity: delta.toFixed(3),
       },
       update: { quantity: { increment: delta.toFixed(3) } },
+    });
+  }
+
+  // --- Automatic "86'd item" gating (critical-ingredient stockout) ------ //
+
+  /**
+   * Re-checks every product whose recipe marks `ingredientId` as critical
+   * against this branch's CURRENT total stock (summed across every stock
+   * location at the branch — a merchant may run more than one), and flips
+   * ProductBranchSetting.isAvailable — the exact same flag POS order
+   * creation and the digital menu already gate on — accordingly:
+   *
+   * - stock <= threshold and not already system-hidden → hide it, and
+   *   record a ProductStockHide row so a later restock knows to undo this
+   *   exact hide (never restocked by state we didn't create — see below);
+   * - stock > threshold and a ProductStockHide row exists → show it again
+   *   and delete the row.
+   *
+   * A product the merchant already hid manually (no ProductStockHide row,
+   * isAvailable already false) is left alone — this system only ever
+   * touches availability it itself is tracking, so a merchant's own manual
+   * hide is never silently overwritten, and a manual re-enable (see
+   * ProductsService.setBranchSetting) always wins immediately.
+   *
+   * Must run inside the SAME transaction as the stock movement that
+   * triggered it, so the hide/show decision is always consistent with the
+   * quantity actually committed. Returns the decisions made so the caller
+   * can audit-log them (see logGatingEvents) — this method itself never
+   * calls the audit service, since AuditService writes on ITS OWN prisma
+   * connection, never through `tx`, and would otherwise land outside this
+   * transaction's atomicity.
+   */
+  private async reevaluateStockGating(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    branchId: string,
+    ingredientId: string,
+  ): Promise<StockGatingEvent[]> {
+    const criticalLinks = await tx.recipeItem.findMany({
+      where: { ingredientId, isCritical: true },
+      select: { productId: true, criticalThreshold: true },
+    });
+    if (criticalLinks.length === 0) {
+      return [];
+    }
+
+    const levels = await tx.stockLevel.findMany({
+      where: { branchId, ingredientId },
+      select: { quantity: true },
+    });
+    const totalQty = levels.reduce((sum, level) => sum + Number(level.quantity), 0);
+
+    const events: StockGatingEvent[] = [];
+    for (const link of criticalLinks) {
+      const threshold = link.criticalThreshold ? Number(link.criticalThreshold) : 0;
+      const belowThreshold = totalQty <= threshold;
+
+      const existingHide = await tx.productStockHide.findUnique({
+        where: { productId_branchId: { productId: link.productId, branchId } },
+      });
+
+      if (belowThreshold && !existingHide) {
+        const setting = await tx.productBranchSetting.findUnique({
+          where: { productId_branchId: { productId: link.productId, branchId } },
+        });
+        if (setting && !setting.isAvailable) {
+          continue; // already hidden by the merchant themselves — not ours to track
+        }
+
+        await tx.productBranchSetting.upsert({
+          where: { productId_branchId: { productId: link.productId, branchId } },
+          create: { tenantId, productId: link.productId, branchId, isAvailable: false },
+          update: { isAvailable: false },
+        });
+        await tx.productStockHide.create({
+          data: { tenantId, productId: link.productId, branchId, ingredientId },
+        });
+        events.push({ action: "hidden", productId: link.productId, branchId, ingredientId });
+      } else if (!belowThreshold && existingHide) {
+        await tx.productBranchSetting.update({
+          where: { productId_branchId: { productId: link.productId, branchId } },
+          data: { isAvailable: true },
+        });
+        await tx.productStockHide.delete({ where: { id: existingHide.id } });
+        events.push({ action: "shown", productId: link.productId, branchId, ingredientId });
+      }
+    }
+    return events;
+  }
+
+  private async logGatingEvents(branchId: string, events: StockGatingEvent[]): Promise<void> {
+    for (const event of events) {
+      await this.audit.log({
+        action: event.action === "hidden" ? "product.auto_hidden_stockout" : "product.auto_shown_restocked",
+        entityType: "product",
+        entityId: event.productId,
+        branchId,
+        meta: { ingredientId: event.ingredientId },
+      });
+    }
+  }
+
+  /**
+   * Called after a recipe update changes which ingredients are marked
+   * critical for a product (RecipesService.set). Ingredients newly (or
+   * still) critical are re-checked against real stock right away — marking
+   * an already-out-of-stock ingredient critical hides the product
+   * immediately, without waiting for the next stock movement. Ingredients
+   * no longer critical release any hide this system was tracking for them,
+   * across every branch, so a merchant unchecking "critical" never leaves a
+   * product stuck invisible.
+   */
+  async onRecipeCriticalLinksChanged(
+    productId: string,
+    criticalIngredientIds: string[],
+    droppedCriticalIngredientIds: string[],
+  ): Promise<void> {
+    if (criticalIngredientIds.length === 0 && droppedCriticalIngredientIds.length === 0) {
+      return;
+    }
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const branches = await this.prisma.scoped.branch.findMany({
+      where: { deletedAt: null },
+      select: { id: true },
+    });
+
+    const gatingEvents = await this.prisma.scopedTransaction(async (tx) => {
+      const events: StockGatingEvent[] = [];
+      for (const branch of branches) {
+        for (const ingredientId of criticalIngredientIds) {
+          events.push(...(await this.reevaluateStockGating(tx, tenantId, branch.id, ingredientId)));
+        }
+        for (const ingredientId of droppedCriticalIngredientIds) {
+          const hide = await tx.productStockHide.findUnique({
+            where: { productId_branchId: { productId, branchId: branch.id } },
+          });
+          if (hide && hide.ingredientId === ingredientId) {
+            await tx.productBranchSetting.update({
+              where: { productId_branchId: { productId, branchId: branch.id } },
+              data: { isAvailable: true },
+            });
+            await tx.productStockHide.delete({ where: { id: hide.id } });
+            events.push({ action: "shown", productId, branchId: branch.id, ingredientId });
+          }
+        }
+      }
+      return events;
+    });
+
+    for (const event of gatingEvents) {
+      await this.logGatingEvents(event.branchId, [event]);
+    }
+  }
+
+  /** Products currently auto-hidden by the stockout engine — dashboard alert list. */
+  listAutoHidden(branchId?: string) {
+    return this.prisma.scoped.productStockHide.findMany({
+      where: { ...(branchId ? { branchId } : {}) },
+      include: {
+        product: { select: { id: true, name: true, nameEn: true } },
+        branch: { select: { id: true, name: true, nameEn: true } },
+        ingredient: { select: { id: true, name: true, nameEn: true } },
+      },
+      orderBy: { hiddenAt: "desc" },
     });
   }
 }

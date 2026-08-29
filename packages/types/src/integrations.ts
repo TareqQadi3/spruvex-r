@@ -97,6 +97,7 @@ export const WHATSAPP_TEMPLATE_KEYS = [
   "order_preparing",
   "order_ready",
   "invoice_sent",
+  "order_feedback_request",
 ] as const;
 export type WhatsappTemplateKey = (typeof WHATSAPP_TEMPLATE_KEYS)[number];
 
@@ -192,5 +193,23 @@ export const WHATSAPP_MESSAGE_TEMPLATES: Record<WhatsappTemplateKey, WhatsappMes
       { key: "receiptLink", nameAr: "رابط الفاتورة", nameEn: "Receipt link", example: "https://order.spruvex.app/receipt/..." },
     ],
     bodyAr: "فاتورتك من {{1}} — رقم الفاتورة {{2}}، الإجمالي {{3}} ريال. لعرض التفاصيل الكاملة: {{4}}",
+  },
+  order_feedback_request: {
+    key: "order_feedback_request",
+    nameAr: "طلب تقييم بعد الطلب",
+    nameEn: "Post-order feedback request",
+    descriptionAr:
+      "يُرسل بعد اكتمال الطلب بحوالي 30 دقيقة — يطلب تقييمًا من 1 إلى 5 نجوم عبر رابط صفحة قصيرة",
+    descriptionEn:
+      "Sent ~30 minutes after the order completes — asks for a 1-5 star rating via a short link",
+    category: "UTILITY",
+    suggestedMetaName: "spruvex_order_feedback_request",
+    variables: [
+      { key: "customerName", nameAr: "اسم العميل", nameEn: "Customer name", example: "أحمد" },
+      { key: "orderNumber", nameAr: "رقم الطلب", nameEn: "Order number", example: "128" },
+      { key: "restaurantName", nameAr: "اسم المطعم", nameEn: "Restaurant name", example: "مطعم الأصالة" },
+      { key: "feedbackLink", nameAr: "رابط التقييم", nameEn: "Feedback link", example: "https://order.spruvex.app/feedback/..." },
+    ],
+    bodyAr: "مرحبًا {{1}}، كيف كانت تجربتك مع طلبك رقم {{2}} من {{3}}؟ قيّمنا من هنا: {{4}}",
   },
 };

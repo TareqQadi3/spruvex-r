@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Spinner } from "@spruvex-r/ui";
+import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, Spinner } from "@spruvex-r/ui";
 
 import { api } from "../../lib/api";
 import { localizedName } from "../../lib/catalog-api";
@@ -52,6 +52,11 @@ export function ReportsPage() {
     queryFn: () => reportsApi.financial(activeBranchId, from, to),
     enabled: Boolean(activeBranchId),
   });
+  const ratings = useQuery({
+    queryKey: ["reports", "ratings", activeBranchId, from, to],
+    queryFn: () => reportsApi.ratings(activeBranchId, from, to),
+    enabled: Boolean(activeBranchId),
+  });
 
   const isLoading = daily.isLoading || bestSellers.isLoading || operations.isLoading || financial.isLoading;
 
@@ -77,7 +82,7 @@ export function ReportsPage() {
 
       {isLoading && <Spinner />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <Card>
           <CardHeader>
             <CardTitle className="text-sm text-muted-foreground">{t("reports.todayOrders")}</CardTitle>
@@ -106,6 +111,19 @@ export function ReportsPage() {
           </CardHeader>
           <CardContent className="text-3xl font-bold text-primary" dir="ltr">
             {operations.data?.avgPrepTimeMinutes ?? "—"} {t("reports.minutes")}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">{t("reports.ratings.avg")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-primary" dir="ltr">
+              {ratings.data?.avgRating != null ? `${ratings.data.avgRating} ★` : "—"}
+            </div>
+            {ratings.data && (
+              <p className="text-xs text-muted-foreground">{t("reports.ratings.count", { count: ratings.data.count })}</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -182,6 +200,47 @@ export function ReportsPage() {
               )}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("reports.ratings.lowRatings.title")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {ratings.data && ratings.data.byBranch.length > 1 && (
+            <div className="flex flex-wrap gap-2 border-b pb-3">
+              {ratings.data.byBranch.map((branch) => (
+                <Badge key={branch.branchId} variant="muted">
+                  {localizedName({ name: branch.name, nameEn: branch.nameEn }, i18n.language)}: {branch.avgRating} ★ (
+                  {branch.count})
+                </Badge>
+              ))}
+            </div>
+          )}
+          {ratings.data?.lowRatings.length === 0 && (
+            <p className="text-center text-sm text-muted-foreground">{t("reports.ratings.lowRatings.empty")}</p>
+          )}
+          {ratings.data?.lowRatings.map((row) => (
+            <div key={row.id} className="rounded-md border p-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium" dir="ltr">
+                  {t("reports.ratings.lowRatings.order", { number: row.orderNumber })}
+                </span>
+                <Badge variant="destructive">{row.rating} ★</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {localizedName({ name: row.branchName, nameEn: row.branchNameEn }, i18n.language)}
+                {row.productName ? ` — ${localizedName({ name: row.productName, nameEn: row.productNameEn }, i18n.language)}` : ""}
+              </p>
+              {row.comment && (
+                <p className="mt-2 text-sm">
+                  <span className="text-muted-foreground">{t("reports.ratings.lowRatings.comment")}: </span>
+                  {row.comment}
+                </p>
+              )}
+            </div>
+          ))}
         </CardContent>
       </Card>
     </div>
