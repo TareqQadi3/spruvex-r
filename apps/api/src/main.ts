@@ -7,9 +7,11 @@ import { RedisIoAdapter } from "./shared/realtime/redis-io.adapter";
 import { AllExceptionsFilter } from "./shared/errors/all-exceptions.filter";
 import { initSentry } from "./shared/monitoring/sentry";
 import { requestLoggingMiddleware } from "./shared/monitoring/request-logging.middleware";
+import { bootstrapAppRoleIfRequested } from "./shared/prisma/bootstrap-app-role";
 
 async function bootstrap() {
   initSentry();
+  await bootstrapAppRoleIfRequested();
 
   const app = await NestFactory.create(AppModule);
 

@@ -37,7 +37,7 @@ FROM nginx:1.27-alpine AS runtime
 # Default matches the docker-compose service alias; override on platforms
 # without Compose-style service-name DNS (e.g. Render) with that platform's
 # internal address for the api service.
-ENV API_INTERNAL_ORIGIN=api:3000
+ENV API_INTERNAL_ORIGIN=http://api:3000
 COPY infra/docker/spa.nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /repo/apps/kds/dist /usr/share/nginx/html
 EXPOSE 80

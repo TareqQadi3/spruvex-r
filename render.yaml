@@ -26,8 +26,8 @@ services:
   - type: web
     name: spruvex-r-api
     runtime: docker
-    dockerfilePath: ./spruvex-r/apps/api/Dockerfile
-    dockerContext: ./spruvex-r
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
     plan: free
     healthCheckPath: /api/v1/health
     envVars:
@@ -66,8 +66,8 @@ services:
   - type: web
     name: spruvex-r-dashboard
     runtime: docker
-    dockerfilePath: ./spruvex-r/apps/dashboard/Dockerfile
-    dockerContext: ./spruvex-r
+    dockerfilePath: ./apps/dashboard/Dockerfile
+    dockerContext: .
     plan: free
     envVars:
       - key: API_INTERNAL_ORIGIN
@@ -79,8 +79,8 @@ services:
   - type: web
     name: spruvex-r-pos
     runtime: docker
-    dockerfilePath: ./spruvex-r/apps/pos/Dockerfile
-    dockerContext: ./spruvex-r
+    dockerfilePath: ./apps/pos/Dockerfile
+    dockerContext: .
     plan: free
     envVars:
       - key: API_INTERNAL_ORIGIN
@@ -92,8 +92,8 @@ services:
   - type: web
     name: spruvex-r-kds
     runtime: docker
-    dockerfilePath: ./spruvex-r/apps/kds/Dockerfile
-    dockerContext: ./spruvex-r
+    dockerfilePath: ./apps/kds/Dockerfile
+    dockerContext: .
     plan: free
     envVars:
       - key: API_INTERNAL_ORIGIN
@@ -105,8 +105,8 @@ services:
   - type: web
     name: spruvex-r-platform
     runtime: docker
-    dockerfilePath: ./spruvex-r/apps/platform/Dockerfile
-    dockerContext: ./spruvex-r
+    dockerfilePath: ./apps/platform/Dockerfile
+    dockerContext: .
     plan: free
     envVars:
       - key: API_INTERNAL_ORIGIN
@@ -118,8 +118,8 @@ services:
   - type: web
     name: spruvex-r-ordering
     runtime: docker
-    dockerfilePath: ./spruvex-r/apps/ordering/Dockerfile
-    dockerContext: ./spruvex-r
+    dockerfilePath: ./apps/ordering/Dockerfile
+    dockerContext: .
     plan: free
     envVars:
       - key: API_ORIGIN
