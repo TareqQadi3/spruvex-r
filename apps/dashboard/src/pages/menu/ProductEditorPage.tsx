@@ -13,6 +13,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  ImageInput,
   Input,
   Label,
   Select,
@@ -22,7 +23,7 @@ import {
 } from "@spruvex-r/ui";
 
 import { api } from "../../lib/api";
-import { ApiError } from "../../lib/api";
+import { ApiError, uploadImage } from "../../lib/api";
 import { catalogApi, localizedName, type Product } from "../../lib/catalog-api";
 import { inventoryApi, type RecipeItemRow } from "../../lib/inventory-api";
 
@@ -274,16 +275,18 @@ export function ProductEditorPage() {
                   onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="pimg">{t("catalog.imageUrl")}</Label>
-                <Input
-                  id="pimg"
-                  dir="ltr"
-                  type="url"
-                  value={form.imageUrl}
-                  onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-                />
-              </div>
+              <ImageInput
+                label={t("catalog.imageUrl")}
+                value={form.imageUrl}
+                onChange={(imageUrl) => setForm({ ...form, imageUrl })}
+                onUploadFile={uploadImage}
+                uploadTabLabel={t("common.uploadTab")}
+                urlTabLabel={t("common.urlTab")}
+                uploadButtonLabel={t("common.uploadButton")}
+                removeLabel={t("common.removeImage")}
+                errorFallback={t("common.uploadError")}
+                constraintsHint={t("common.imageConstraints")}
+              />
               <div className="space-y-2">
                 <Label htmlFor="psort">{t("catalog.sortOrder")}</Label>
                 <Input

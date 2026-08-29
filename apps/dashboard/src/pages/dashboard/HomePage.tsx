@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@spruvex-r/ui";
 
+import { MissingSetupBanner } from "../../components/MissingSetupBanner";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { localizedName } from "../../lib/catalog-api";
@@ -37,6 +38,8 @@ export function HomePage() {
         <h1 className="text-2xl font-bold">{t("home.welcome", { name: user?.name ?? "" })}</h1>
         <p className="text-muted-foreground">{t("home.subtitle")}</p>
       </div>
+
+      <MissingSetupBanner />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {canBranches && (

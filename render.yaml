@@ -53,6 +53,14 @@ services:
         value: "https://spruvex-r-dashboard.onrender.com,https://spruvex-r-pos.onrender.com,https://spruvex-r-kds.onrender.com,https://spruvex-r-ordering.onrender.com,https://spruvex-r-platform.onrender.com"
       - key: ORDERING_BASE_URL
         value: https://spruvex-r-ordering.onrender.com
+      # Used to build absolute URLs for uploaded logo/product/category
+      # images. NOTE: the free plan's disk is ephemeral — uploaded files
+      # are lost on every redeploy/restart. Fine for "try it out"; needs a
+      # Render persistent Disk (paid) or a real object-storage backend
+      # (swap modules/uploads/uploads.service.ts) before relying on this
+      # for actual customer data.
+      - key: PUBLIC_API_ORIGIN
+        value: https://spruvex-r-api.onrender.com
       # Optional — set these two to bootstrap the first platform admin login
       # on first deploy, then unset them (see docs/RENDER_DEPLOY.md).
       - key: PLATFORM_ADMIN_EMAIL

@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   Alert,
+  Badge,
   Button,
   Card,
   CardContent,
@@ -13,41 +14,85 @@ import {
   Input,
   Label,
   Spinner,
-  cn,
 } from "@spruvex-r/ui";
 
 import { ApiError, api, post } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { LogoStep } from "./steps/LogoStep";
+import { MenuStep } from "./steps/MenuStep";
+import { ReceiptStep } from "./steps/ReceiptStep";
+import { StaffStep } from "./steps/StaffStep";
+import type { StepProps } from "./steps/step-types";
+import { ThemeStep } from "./steps/ThemeStep";
+import { ZatcaStep } from "./steps/ZatcaStep";
 
 const RESTAURANT_TYPES = ["restaurant", "cafe", "cloud_kitchen", "food_truck", "bakery", "other"];
 
-type WizardStep = 2 | 3 | 4 | 5;
+/** Mirrors apps/api's OPTIONAL_SETUP_STEPS — the hub's cards. */
+const HUB_STEPS = ["logo", "receipt", "theme", "zatca", "staff", "menu", "tables"] as const;
+type HubStep = (typeof HUB_STEPS)[number];
 
-interface StatusResponse {
-  step: WizardStep | "done";
+/** Hub cards with an inline mini-form; "tables" is a link out to its real page instead. */
+const INLINE_STEPS: Partial<Record<HubStep, (props: StepProps) => JSX.Element>> = {
+  logo: LogoStep,
+  receipt: ReceiptStep,
+  theme: ThemeStep,
+  zatca: ZatcaStep,
+  staff: StaffStep,
+  menu: MenuStep,
+};
+
+interface SetupStatusItem {
+  step: HubStep;
+  done: boolean;
+  skipped: boolean;
 }
 
-/** Wizard steps 2-5 (step 1 = registration). */
+type BasicStep = 2 | 3 | 4 | 5;
+interface StatusResponse {
+  step: BasicStep | "done";
+}
+
+type View = "welcome" | "language" | "mandatory" | "branch" | "hub" | HubStep;
+
 export function OnboardingWizard() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { adoptSession, refreshProfile } = useAuth();
 
-  const [step, setStep] = useState<WizardStep | null>(null);
+  const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [setupStatus, setSetupStatus] = useState<SetupStatusItem[] | null>(null);
+
+  const jumpTo = searchParams.get("step");
 
   useEffect(() => {
     api<StatusResponse>("/onboarding/status")
       .then((s) => {
         if (s.step === "done") {
           navigate("/", { replace: true });
+        } else if (s.step === 2) {
+          setView("welcome");
+        } else if (s.step === 3) {
+          setView("branch");
+        } else if (jumpTo && (HUB_STEPS as readonly string[]).includes(jumpTo)) {
+          setView(jumpTo as HubStep);
         } else {
-          setStep(s.step);
+          setView("hub");
         }
       })
-      .catch(() => setStep(2));
-  }, [navigate]);
+      .catch(() => setView("welcome"));
+  }, [navigate, jumpTo]);
+
+  useEffect(() => {
+    if (view === "hub") {
+      api<SetupStatusItem[]>("/onboarding/setup-status")
+        .then(setSetupStatus)
+        .catch(() => setSetupStatus(null));
+    }
+  }, [view]);
 
   async function run(fn: () => Promise<void>) {
     setError(null);
@@ -61,15 +106,39 @@ export function OnboardingWizard() {
     }
   }
 
-  // --- step 2: restaurant info ---
+  async function markStep(step: HubStep, status: "done" | "skipped") {
+    try {
+      await post("/onboarding/setup-status", { step, status });
+    } catch {
+      // best-effort — the hub still re-fetches and the owner can retry from there
+    }
+    setView("hub");
+  }
+
+  // --- language ---
+  const [language, setLanguage] = useState<"ar" | "en">(i18n.language === "en" ? "en" : "ar");
+
+  function chooseLanguage(lang: "ar" | "en") {
+    setLanguage(lang);
+    void i18n.changeLanguage(lang);
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+    document.documentElement.lang = lang;
+    setView("mandatory");
+  }
+
+  // --- mandatory restaurant + tax-invoice info ---
   const [restaurant, setRestaurant] = useState({
     name: "",
-    nameEn: "",
     type: "restaurant",
-    country: "SA",
-    currency: "SAR",
-    defaultLocale: "ar",
-    logoUrl: "",
+    vatNumber: "",
+    crNumber: "",
+    address: "",
+    city: "",
+    district: "",
+    buildingNumber: "",
+    postalCode: "",
+    additionalAddress: "",
+    contactPhone: "",
   });
 
   function submitRestaurant(event: FormEvent) {
@@ -77,22 +146,14 @@ export function OnboardingWizard() {
     void run(async () => {
       const res = await post<{ tenantId: string; tokens: { accessToken: string; refreshToken: string } }>(
         "/onboarding/restaurant",
-        {
-          name: restaurant.name,
-          ...(restaurant.nameEn ? { nameEn: restaurant.nameEn } : {}),
-          type: restaurant.type,
-          country: restaurant.country,
-          currency: restaurant.currency,
-          defaultLocale: restaurant.defaultLocale,
-          ...(restaurant.logoUrl ? { logoUrl: restaurant.logoUrl } : {}),
-        },
+        { ...restaurant, defaultLocale: language, country: "SA", currency: "SAR" },
       );
-      await adoptSession(res.tokens); // tokens now carry the tenant + owner permissions
-      setStep(3);
+      await adoptSession(res.tokens);
+      setView("branch");
     });
   }
 
-  // --- step 3: first branch ---
+  // --- first branch (kept mandatory — a tenant needs at least one) ---
   const [branch, setBranch] = useState({ name: "", address: "", phone: "", email: "" });
 
   function submitBranch(event: FormEvent) {
@@ -104,32 +165,11 @@ export function OnboardingWizard() {
         ...(branch.phone ? { phone: branch.phone } : {}),
         ...(branch.email ? { email: branch.email } : {}),
       });
-      setStep(4);
+      setView("hub");
     });
   }
 
-  // --- step 4: first users ---
-  const emptyStaff = { name: "", email: "", password: "" };
-  const [manager, setManager] = useState({ ...emptyStaff });
-  const [cashier, setCashier] = useState({ ...emptyStaff });
-  const [kitchen, setKitchen] = useState({ ...emptyStaff });
-
-  function submitStaff(event: FormEvent) {
-    event.preventDefault();
-    void run(async () => {
-      const users = [
-        ...(manager.email ? [{ ...manager, role: "manager" as const }] : []),
-        ...(cashier.email ? [{ ...cashier, role: "cashier" as const }] : []),
-        ...(kitchen.email ? [{ ...kitchen, role: "kitchen" as const }] : []),
-      ];
-      if (users.length > 0) {
-        await post("/onboarding/staff", { users });
-      }
-      setStep(5);
-    });
-  }
-
-  // --- step 5: complete ---
+  // --- finish ---
   function complete() {
     void run(async () => {
       await post("/onboarding/complete", {});
@@ -138,20 +178,13 @@ export function OnboardingWizard() {
     });
   }
 
-  if (step === null) {
+  if (view === null) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Spinner className="h-8 w-8" />
       </div>
     );
   }
-
-  const steps: Array<{ n: WizardStep; key: string }> = [
-    { n: 2, key: "restaurantStep" },
-    { n: 3, key: "branchStep" },
-    { n: 4, key: "staffStep" },
-    { n: 5, key: "completeStep" },
-  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-secondary/60 to-background p-4">
@@ -160,45 +193,52 @@ export function OnboardingWizard() {
           <img src="/logo-horizontal.png" alt="SpruVex R" className="h-12 object-contain" />
         </div>
 
-        {/* progress */}
-        <ol className="mb-6 flex items-center justify-center gap-2">
-          {steps.map(({ n, key }, idx) => (
-            <li key={n} className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold",
-                  step >= n ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-                )}
-              >
-                {idx + 1}
-              </span>
-              <span
-                className={cn(
-                  "hidden text-sm sm:inline",
-                  step >= n ? "font-medium" : "text-muted-foreground",
-                )}
-              >
-                {t(`onboarding.${key}`)}
-              </span>
-              {idx < steps.length - 1 && <span className="mx-1 h-px w-6 bg-border" />}
-            </li>
-          ))}
-        </ol>
+        {view === "welcome" && (
+          <Card>
+            <CardContent className="space-y-6 py-10 text-center">
+              <div className="text-5xl">👋</div>
+              <h1 className="text-2xl font-semibold">{t("onboarding.welcomeTitle")}</h1>
+              <p className="text-muted-foreground">{t("onboarding.welcomeSubtitle")}</p>
+              <Button size="lg" className="w-full" onClick={() => setView("language")}>
+                {t("onboarding.welcomeStart")}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("onboarding.title")}</CardTitle>
-            <CardDescription>
-              {t("onboarding.step", { current: step - 1, total: 4 })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {error && <Alert variant="destructive" className="mb-4">{error}</Alert>}
+        {view === "language" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("onboarding.languageTitle")}</CardTitle>
+              <CardDescription>{t("onboarding.languageSubtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-4">
+              <Button size="lg" variant="outline" onClick={() => chooseLanguage("ar")}>
+                {t("onboarding.languageAr")}
+              </Button>
+              <Button size="lg" variant="outline" onClick={() => chooseLanguage("en")}>
+                {t("onboarding.languageEn")}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
-            {step === 2 && (
+        {view === "mandatory" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("onboarding.mandatoryTitle")}</CardTitle>
+              <CardDescription>{t("onboarding.mandatorySubtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {error && (
+                <Alert variant="destructive" className="mb-4">
+                  {error}
+                </Alert>
+              )}
               <form onSubmit={submitRestaurant} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="rname">{t("onboarding.restaurantName")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("onboarding.restaurantNameHint")}</p>
                   <Input
                     id="rname"
                     required
@@ -207,87 +247,150 @@ export function OnboardingWizard() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rnameEn">{t("onboarding.restaurantNameEn")}</Label>
-                  <Input
-                    id="rnameEn"
-                    dir="ltr"
-                    value={restaurant.nameEn}
-                    onChange={(e) => setRestaurant({ ...restaurant, nameEn: e.target.value })}
-                  />
+                  <Label htmlFor="rtype">{t("onboarding.type")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("onboarding.typeHint")}</p>
+                  <select
+                    id="rtype"
+                    className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm shadow-sm"
+                    value={restaurant.type}
+                    onChange={(e) => setRestaurant({ ...restaurant, type: e.target.value })}
+                  >
+                    {RESTAURANT_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {t(`onboarding.types.${type}`)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="rtype">{t("onboarding.type")}</Label>
-                    <select
-                      id="rtype"
-                      className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm shadow-sm"
-                      value={restaurant.type}
-                      onChange={(e) => setRestaurant({ ...restaurant, type: e.target.value })}
-                    >
-                      {RESTAURANT_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {t(`onboarding.types.${type}`)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="rlocale">{t("onboarding.defaultLocale")}</Label>
-                    <select
-                      id="rlocale"
-                      className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm shadow-sm"
-                      value={restaurant.defaultLocale}
-                      onChange={(e) => setRestaurant({ ...restaurant, defaultLocale: e.target.value })}
-                    >
-                      <option value="ar">العربية</option>
-                      <option value="en">English</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="rcountry">{t("onboarding.country")}</Label>
+                    <Label htmlFor="rvat">{t("onboarding.vatNumber")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("onboarding.vatNumberHint")}</p>
                     <Input
-                      id="rcountry"
+                      id="rvat"
+                      required
                       dir="ltr"
-                      maxLength={2}
-                      value={restaurant.country}
-                      onChange={(e) =>
-                        setRestaurant({ ...restaurant, country: e.target.value.toUpperCase() })
-                      }
+                      inputMode="numeric"
+                      value={restaurant.vatNumber}
+                      onChange={(e) => setRestaurant({ ...restaurant, vatNumber: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="rcurrency">{t("onboarding.currency")}</Label>
+                    <Label htmlFor="rcr">{t("onboarding.crNumber")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("onboarding.crNumberHint")}</p>
                     <Input
-                      id="rcurrency"
+                      id="rcr"
+                      required
                       dir="ltr"
-                      maxLength={3}
-                      value={restaurant.currency}
-                      onChange={(e) =>
-                        setRestaurant({ ...restaurant, currency: e.target.value.toUpperCase() })
-                      }
+                      value={restaurant.crNumber}
+                      onChange={(e) => setRestaurant({ ...restaurant, crNumber: e.target.value })}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rlogo">{t("onboarding.logoUrl")}</Label>
+                  <Label htmlFor="raddress">{t("onboarding.address")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("onboarding.addressHint")}</p>
                   <Input
-                    id="rlogo"
+                    id="raddress"
+                    required
+                    value={restaurant.address}
+                    onChange={(e) => setRestaurant({ ...restaurant, address: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="rcity">{t("onboarding.city")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("onboarding.cityHint")}</p>
+                    <Input
+                      id="rcity"
+                      required
+                      value={restaurant.city}
+                      onChange={(e) => setRestaurant({ ...restaurant, city: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rdistrict">{t("onboarding.district")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("onboarding.districtHint")}</p>
+                    <Input
+                      id="rdistrict"
+                      required
+                      value={restaurant.district}
+                      onChange={(e) => setRestaurant({ ...restaurant, district: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rbuilding">{t("onboarding.buildingNumber")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("onboarding.buildingNumberHint")}</p>
+                    <Input
+                      id="rbuilding"
+                      required
+                      dir="ltr"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={restaurant.buildingNumber}
+                      onChange={(e) => setRestaurant({ ...restaurant, buildingNumber: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rpostal">{t("onboarding.postalCode")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("onboarding.postalCodeHint")}</p>
+                    <Input
+                      id="rpostal"
+                      required
+                      dir="ltr"
+                      inputMode="numeric"
+                      maxLength={5}
+                      value={restaurant.postalCode}
+                      onChange={(e) => setRestaurant({ ...restaurant, postalCode: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="raddition">{t("onboarding.additionalAddress")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("onboarding.additionalAddressHint")}</p>
+                  <Input
+                    id="raddition"
+                    required
+                    value={restaurant.additionalAddress}
+                    onChange={(e) => setRestaurant({ ...restaurant, additionalAddress: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rphone">{t("onboarding.contactPhone")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("onboarding.contactPhoneHint")}</p>
+                  <Input
+                    id="rphone"
+                    required
                     dir="ltr"
-                    type="url"
-                    value={restaurant.logoUrl}
-                    onChange={(e) => setRestaurant({ ...restaurant, logoUrl: e.target.value })}
+                    type="tel"
+                    placeholder="+9665xxxxxxxx"
+                    value={restaurant.contactPhone}
+                    onChange={(e) => setRestaurant({ ...restaurant, contactPhone: e.target.value })}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={busy}>
                   {busy ? <Spinner className="border-primary-foreground" /> : t("common.next")}
                 </Button>
               </form>
-            )}
+            </CardContent>
+          </Card>
+        )}
 
-            {step === 3 && (
+        {view === "branch" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("onboarding.branchStep")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {error && (
+                <Alert variant="destructive" className="mb-4">
+                  {error}
+                </Alert>
+              )}
               <form onSubmit={submitBranch} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="bname">{t("onboarding.branchName")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("onboarding.branchNameHint")}</p>
                   <Input
                     id="bname"
                     required
@@ -297,6 +400,7 @@ export function OnboardingWizard() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="baddress">{t("onboarding.branchAddress")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("onboarding.branchAddressHint")}</p>
                   <Input
                     id="baddress"
                     value={branch.address}
@@ -306,6 +410,7 @@ export function OnboardingWizard() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="bphone">{t("onboarding.branchPhone")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("onboarding.branchPhoneHint")}</p>
                     <Input
                       id="bphone"
                       dir="ltr"
@@ -317,6 +422,7 @@ export function OnboardingWizard() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="bemail">{t("onboarding.branchEmail")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("onboarding.branchEmailHint")}</p>
                     <Input
                       id="bemail"
                       dir="ltr"
@@ -330,68 +436,107 @@ export function OnboardingWizard() {
                   {busy ? <Spinner className="border-primary-foreground" /> : t("common.next")}
                 </Button>
               </form>
-            )}
+            </CardContent>
+          </Card>
+        )}
 
-            {step === 4 && (
-              <form onSubmit={submitStaff} className="space-y-6">
-                <p className="text-sm text-muted-foreground">{t("onboarding.staffHint")}</p>
-                <Alert>{t("onboarding.staffKitchenHint")}</Alert>
-                {(
-                  [
-                    { key: "staffManager", state: manager, set: setManager },
-                    { key: "staffCashier", state: cashier, set: setCashier },
-                    { key: "staffKitchen", state: kitchen, set: setKitchen },
-                  ] as const
-                ).map(({ key, state, set }) => (
-                  <fieldset key={key} className="space-y-3 rounded-lg border p-4">
-                    <legend className="px-2 text-sm font-semibold">{t(`onboarding.${key}`)}</legend>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <Input
-                        placeholder={t("auth.name")}
-                        value={state.name}
-                        onChange={(e) => set({ ...state, name: e.target.value })}
-                      />
-                      <Input
-                        placeholder={t("auth.email")}
-                        dir="ltr"
-                        type="email"
-                        value={state.email}
-                        onChange={(e) => set({ ...state, email: e.target.value })}
-                      />
-                      <Input
-                        placeholder={t("auth.password")}
-                        dir="ltr"
-                        type="password"
-                        value={state.password}
-                        onChange={(e) => set({ ...state, password: e.target.value })}
-                      />
+        {view === "hub" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("onboarding.hubTitle")}</CardTitle>
+              <CardDescription>{t("onboarding.hubSubtitle")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {setupStatus === null ? (
+                <Spinner />
+              ) : (
+                HUB_STEPS.map((key) => {
+                  const status = setupStatus.find((s) => s.step === key);
+                  const badge = status?.done ? "done" : status?.skipped ? "skipped" : "pending";
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between gap-3 rounded-lg border p-4"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {t(`onboarding.card${capitalize(key)}Title`)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {t(`onboarding.card${capitalize(key)}Desc`)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge
+                          variant={badge === "done" ? "success" : badge === "skipped" ? "muted" : "default"}
+                        >
+                          {t(`onboarding.hubStatus${capitalize(badge)}`)}
+                        </Badge>
+                        {key === "tables" ? (
+                          <>
+                            <Button size="sm" onClick={() => void goToTables()}>
+                              {t("onboarding.hubDo")}
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => void markStep("tables", "skipped")}>
+                              {t("onboarding.hubSkip")}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button size="sm" onClick={() => setView(key)}>
+                            {t("onboarding.hubDo")}
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </fieldset>
-                ))}
-                <div className="flex gap-3">
-                  <Button type="submit" className="flex-1" disabled={busy}>
-                    {busy ? <Spinner className="border-primary-foreground" /> : t("common.next")}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setStep(5)} disabled={busy}>
-                    {t("common.skip")}
-                  </Button>
-                </div>
-              </form>
-            )}
+                  );
+                })
+              )}
+              <Button size="lg" className="w-full" onClick={complete} disabled={busy}>
+                {busy ? <Spinner className="border-primary-foreground" /> : t("onboarding.hubEnterDashboard")}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
-            {step === 5 && (
-              <div className="space-y-4 py-4 text-center">
-                <div className="text-5xl">🎉</div>
-                <h3 className="text-xl font-semibold">{t("onboarding.completeTitle")}</h3>
-                <p className="text-muted-foreground">{t("onboarding.completeSubtitle")}</p>
-                <Button size="lg" className="w-full" onClick={complete} disabled={busy}>
-                  {busy ? <Spinner className="border-primary-foreground" /> : t("onboarding.enterDashboard")}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {view !== "welcome" &&
+          view !== "language" &&
+          view !== "mandatory" &&
+          view !== "branch" &&
+          view !== "hub" &&
+          renderInlineStep(view)}
       </div>
     </div>
   );
+
+  async function goToTables() {
+    await markStep("tables", "done");
+    navigate("/tables");
+  }
+
+  function renderInlineStep(step: HubStep) {
+    const StepComponent = INLINE_STEPS[step];
+    if (!StepComponent) return null;
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t(`onboarding.card${capitalize(step)}Title`)}</CardTitle>
+          <div>
+            <Button variant="ghost" size="sm" onClick={() => setView("hub")}>
+              {t("onboarding.hubBackToHub")}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <StepComponent
+            onDone={() => markStep(step, "done")}
+            onSkip={() => markStep(step, "skipped")}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

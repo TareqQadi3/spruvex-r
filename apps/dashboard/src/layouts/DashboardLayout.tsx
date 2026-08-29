@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
   BookOpen,
@@ -15,11 +16,13 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
-import { Button, cn } from "@spruvex-r/ui";
+import { Button, applyThemeColor, cn } from "@spruvex-r/ui";
 
+import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { NAV_ITEMS, visibleNavItems } from "../lib/nav";
 
@@ -42,6 +45,16 @@ export function DashboardLayout() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const canSeeTenant = Boolean(user?.permissions.includes("tenant.settings.manage"));
+
+  const { data: tenant } = useQuery({
+    queryKey: ["tenant"],
+    queryFn: () => api<{ themeColor?: string | null }>("/tenant"),
+    enabled: canSeeTenant,
+  });
+  useEffect(() => {
+    if (tenant) applyThemeColor(tenant.themeColor);
+  }, [tenant]);
 
   const items = visibleNavItems(NAV_ITEMS, user?.permissions ?? []);
 

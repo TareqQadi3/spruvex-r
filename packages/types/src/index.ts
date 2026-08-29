@@ -10,3 +10,5 @@ export * from "./units";
 // "@spruvex-r/types"` in any app bundled that way.
 export type { PlanCatalogEntry } from "./plans";
 export { TRIAL_PERIOD_DAYS, PLAN_CATALOG, DEFAULT_PLAN_KEY } from "./plans";
+export type { ThemeColorKey, ThemePreset } from "./theme";
+export { THEME_PRESET_KEYS, THEME_PRESETS, DEFAULT_THEME_COLOR } from "./theme";

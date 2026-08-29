@@ -10,6 +10,7 @@ import {
   Card,
   CardContent,
   Dialog,
+  ImageInput,
   Input,
   Label,
   Spinner,
@@ -17,7 +18,7 @@ import {
   Textarea,
 } from "@spruvex-r/ui";
 
-import { ApiError } from "../../lib/api";
+import { ApiError, uploadImage } from "../../lib/api";
 import { catalogApi, localizedName, type Category } from "../../lib/catalog-api";
 
 interface CategoryForm {
@@ -216,27 +217,27 @@ export function CategoriesPage() {
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="cimg">{t("catalog.imageUrl")}</Label>
-              <Input
-                id="cimg"
-                dir="ltr"
-                type="url"
-                value={form.imageUrl}
-                onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="csort">{t("catalog.sortOrder")}</Label>
-              <Input
-                id="csort"
-                type="number"
-                min={0}
-                value={form.sortOrder}
-                onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })}
-              />
-            </div>
+          <ImageInput
+            label={t("catalog.imageUrl")}
+            value={form.imageUrl}
+            onChange={(imageUrl) => setForm({ ...form, imageUrl })}
+            onUploadFile={uploadImage}
+            uploadTabLabel={t("common.uploadTab")}
+            urlTabLabel={t("common.urlTab")}
+            uploadButtonLabel={t("common.uploadButton")}
+            removeLabel={t("common.removeImage")}
+            errorFallback={t("common.uploadError")}
+            constraintsHint={t("common.imageConstraints")}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="csort">{t("catalog.sortOrder")}</Label>
+            <Input
+              id="csort"
+              type="number"
+              min={0}
+              value={form.sortOrder}
+              onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })}
+            />
           </div>
           <div className="flex items-center gap-2">
             <Switch

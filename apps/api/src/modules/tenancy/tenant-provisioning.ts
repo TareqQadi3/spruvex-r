@@ -30,6 +30,13 @@ export interface ProvisionTenantInput {
   logoUrl?: string;
   vatNumber?: string;
   crNumber?: string;
+  address?: string;
+  city?: string;
+  district?: string;
+  buildingNumber?: string;
+  postalCode?: string;
+  additionalAddress?: string;
+  contactPhone?: string;
   /** Omit to create the tenant without a branch (wizard creates it in step 3). */
   branch?: { name?: string; nameEn?: string; slug?: string };
   ownerUserId: string;
@@ -70,6 +77,13 @@ export async function provisionTenant(
         logoUrl: input.logoUrl,
         vatNumber: input.vatNumber,
         crNumber: input.crNumber,
+        address: input.address,
+        city: input.city,
+        district: input.district,
+        buildingNumber: input.buildingNumber,
+        postalCode: input.postalCode,
+        additionalAddress: input.additionalAddress,
+        contactPhone: input.contactPhone,
         createdBy: input.ownerUserId,
       },
     });

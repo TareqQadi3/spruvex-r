@@ -1,5 +1,8 @@
 {
-  "app": { "name": "SpruVex R", "tagline": "نظام تشغيل مطعمك المتكامل" },
+  "app": {
+    "name": "SpruVex R",
+    "tagline": "نظام تشغيل مطعمك المتكامل"
+  },
   "common": {
     "loading": "جارٍ التحميل...",
     "save": "حفظ",
@@ -10,7 +13,13 @@
     "language": "English",
     "error": "حدث خطأ غير متوقع",
     "comingSoon": "قريباً",
-    "requiredField": "هذا الحقل مطلوب"
+    "requiredField": "هذا الحقل مطلوب",
+    "uploadTab": "رفع ملف",
+    "urlTab": "لصق رابط",
+    "uploadButton": "اختر ملفًا",
+    "removeImage": "إزالة",
+    "uploadError": "فشل الرفع",
+    "imageConstraints": "PNG أو JPEG أو WEBP، حتى 5 ميجابايت"
   },
   "auth": {
     "login": "تسجيل الدخول",
@@ -43,13 +52,26 @@
   "onboarding": {
     "title": "إعداد مطعمك",
     "step": "الخطوة {{current}} من {{total}}",
+    "back": "رجوع",
+    "welcomeTitle": "أهلًا بك في SpruVex R",
+    "welcomeSubtitle": "بخطوات بسيطة، راح نجهّز مطعمك للعمل. المعلومات الأساسية فقط لازم تكملها الآن — كل الباقي تقدر تسويه لاحقًا.",
+    "welcomeStart": "لنبدأ",
+    "languageTitle": "اختر لغة النظام",
+    "languageSubtitle": "تقدر تغيّرها لاحقًا في أي وقت من الإعدادات.",
+    "languageAr": "العربية",
+    "languageEn": "English",
+    "mandatoryTitle": "معلومات المطعم الأساسية",
+    "mandatorySubtitle": "هذه المعلومات مطلوبة لإصدار فواتير ضريبية صحيحة ولا يمكن تخطيها — تُجمع مرة واحدة فقط.",
     "restaurantStep": "بيانات المطعم",
     "branchStep": "الفرع الأول",
-    "staffStep": "فريق العمل",
+    "hubStep": "الإعدادات الاختيارية",
     "completeStep": "الانطلاق",
     "restaurantName": "اسم المطعم (عربي)",
+    "restaurantNameHint": "الاسم التجاري اللي يظهر لعملائك.",
     "restaurantNameEn": "اسم المطعم (إنجليزي — اختياري)",
+    "restaurantNameEnHint": "يظهر عند اختيار العميل اللغة الإنجليزية.",
     "type": "نوع النشاط",
+    "typeHint": "يساعدنا نخصص لك تجربة مناسبة لنوع نشاطك.",
     "types": {
       "restaurant": "مطعم",
       "cafe": "كافيه",
@@ -61,11 +83,76 @@
     "country": "الدولة",
     "currency": "العملة",
     "defaultLocale": "لغة الواجهة الافتراضية",
+    "vatNumber": "الرقم الضريبي (VAT)",
+    "vatNumberHint": "15 رقمًا، يبدأ وينتهي غالبًا بـ 3 — يظهر إلزاميًا على كل فاتورة.",
+    "crNumber": "رقم السجل التجاري (CR)",
+    "crNumberHint": "رقم السجل التجاري الصادر من وزارة التجارة.",
+    "address": "الشارع / العنوان",
+    "addressHint": "اسم الشارع الرئيسي لموقع المطعم.",
+    "city": "المدينة",
+    "cityHint": "مثال: الرياض، جدة، الدمام.",
+    "district": "الحي",
+    "districtHint": "اسم الحي حسب العنوان الوطني.",
+    "buildingNumber": "رقم المبنى",
+    "buildingNumberHint": "4 أرقام حسب العنوان الوطني السعودي (مطلوب على الفاتورة).",
+    "postalCode": "الرمز البريدي",
+    "postalCodeHint": "5 أرقام حسب العنوان الوطني السعودي.",
+    "additionalAddress": "عنوان إضافي",
+    "additionalAddressHint": "أي تفاصيل إضافية تساعد بتحديد الموقع (رقم الوحدة، الدور، علامة مميزة...).",
+    "contactPhone": "رقم التواصل",
+    "contactPhoneHint": "الرقم الرئيسي للتواصل مع إدارة المطعم.",
     "logoUrl": "رابط الشعار (اختياري)",
     "branchName": "اسم الفرع",
+    "branchNameHint": "اسم يميّز هذا الفرع عن باقي فروعك مستقبلًا.",
     "branchAddress": "العنوان",
+    "branchAddressHint": "عنوان الفرع كما يظهر للعملاء (اختياري الآن).",
     "branchPhone": "هاتف الفرع",
+    "branchPhoneHint": "رقم هاتف هذا الفرع تحديدًا (اختياري).",
     "branchEmail": "بريد الفرع (اختياري)",
+    "branchEmailHint": "بريد إلكتروني خاص بهذا الفرع، إن وجد.",
+    "hubTitle": "أحسنت! بقي إعدادات اختيارية فقط",
+    "hubSubtitle": "مطعمك جاهز للعمل الآن. الإعدادات التالية تحسّن تجربتك، وتقدر تكملها أو تتخطاها — أي شي تتخطاه راح تشوفه كتنبيه بالداشبورد لاحقًا.",
+    "hubEnterDashboard": "الدخول إلى لوحة التحكم",
+    "hubStatusDone": "تم ✓",
+    "hubStatusSkipped": "تم التخطي",
+    "hubStatusPending": "لم يُكمَل بعد",
+    "hubDo": "أكمل الآن",
+    "hubSkip": "تخطَّ الآن",
+    "hubBackToHub": "رجوع للقائمة",
+    "cardLogoTitle": "شعار المطعم",
+    "cardLogoDesc": "يظهر في لوحة التحكم والفواتير وصفحة الطلب.",
+    "cardReceiptTitle": "تصميم الفاتورة",
+    "cardReceiptDesc": "ملاحظة أعلى وأسفل الفاتورة المطبوعة.",
+    "cardThemeTitle": "مظهر التطبيق",
+    "cardThemeDesc": "اختر لون واجهة لوحة التحكم.",
+    "cardZatcaTitle": "مرحلة الفوترة الإلكترونية",
+    "cardZatcaDesc": "المرحلة الأولى تعمل تلقائيًا؛ فعّل الثانية إذا كان مطعمك مُلزمًا بها.",
+    "cardStaffTitle": "حسابات الموظفين",
+    "cardStaffDesc": "أضف حساب كاشير ومطبخ لفريقك.",
+    "cardMenuTitle": "الأصناف والمنتجات",
+    "cardMenuDesc": "أضف أول قسم وصنف بقائمة الطعام.",
+    "cardTablesTitle": "الفروع والطاولات",
+    "cardTablesDesc": "أضف فروعًا إضافية، طاولات، ورموز QR.",
+    "logoStepTitle": "شعار المطعم",
+    "logoStepSubtitle": "اختياري — يمكنك رفعه لاحقًا من الإعدادات في أي وقت.",
+    "receiptStepTitle": "تصميم الفاتورة",
+    "receiptStepSubtitle": "نص يظهر أعلى وأسفل كل فاتورة مطبوعة — مثل رسالة شكر أو سياسة الاسترجاع.",
+    "receiptHeaderNote": "ملاحظة أعلى الفاتورة",
+    "receiptHeaderNoteHint": "مثال: \"نتمنى لكم وجبة شهية\".",
+    "receiptFooterNote": "ملاحظة أسفل الفاتورة",
+    "receiptFooterNoteHint": "مثال: \"لا يوجد استرجاع بعد 24 ساعة\".",
+    "themeStepTitle": "مظهر التطبيق",
+    "themeStepSubtitle": "اختر لونًا لواجهة لوحة التحكم الخاصة بك.",
+    "zatcaStepTitle": "مرحلة الفوترة الإلكترونية",
+    "zatcaStepSubtitle": "أغلب المطاعم تبدأ بالمرحلة الأولى (تعمل تلقائيًا الآن). فعّل المرحلة الثانية فقط إذا كان مطعمك مُلزمًا فعليًا من هيئة الزكاة والضريبة والجمارك — تقدر تُكمل بيانات الشهادة الرقمية لاحقًا من الإعدادات.",
+    "menuStepTitle": "أول قسم وصنف",
+    "menuStepSubtitle": "بداية سريعة لقائمة طعامك — تقدر تضيف الباقي لاحقًا من صفحة الأصناف.",
+    "menuCategoryName": "اسم القسم",
+    "menuCategoryNameHint": "مثال: المشويات، المشروبات.",
+    "menuProductName": "اسم الصنف",
+    "menuProductNameHint": "اسم الصنف كما يظهر للعميل.",
+    "menuProductPrice": "السعر (شامل الضريبة)",
+    "menuProductPriceHint": "بالريال السعودي.",
     "staffHint": "أضف مدير الفرع والكاشير الآن، أو تخطَّ هذه الخطوة وأضفهم لاحقاً.",
     "staffKitchenHint": "أنشئ حساب \"مطبخ\" منفصلاً عن الكاشير لمن سيستخدم شاشة المطبخ (KDS) — بدونه لن تصله التحديثات اللحظية للطلبات.",
     "staffManager": "مدير الفرع",
@@ -100,7 +187,9 @@
     "todayOrders": "طلبات اليوم",
     "todaySales": "مبيعات اليوم",
     "bestSeller": "الأكثر مبيعاً",
-    "inventoryAlerts": "تنبيهات المخزون"
+    "inventoryAlerts": "تنبيهات المخزون",
+    "missingSetupTitle": "إعدادات ناقصة",
+    "missingSetupHint": "أجّلت بعض خطوات الإعداد سابقًا — أكملها في أي وقت يناسبك:"
   },
   "branches": {
     "title": "الفروع",
@@ -125,7 +214,11 @@
     "remove": "إزالة العضو"
   },
   "catalog": {
-    "tabs": { "categories": "الأقسام", "products": "المنتجات", "modifiers": "الإضافات" },
+    "tabs": {
+      "categories": "الأقسام",
+      "products": "المنتجات",
+      "modifiers": "الإضافات"
+    },
     "nameAr": "الاسم (عربي)",
     "nameEn": "الاسم (إنجليزي)",
     "descriptionAr": "الوصف (عربي)",
@@ -187,7 +280,10 @@
     }
   },
   "tables": {
-    "tabs": { "tables": "الطاولات", "floors": "الطوابق والمناطق" },
+    "tabs": {
+      "tables": "الطاولات",
+      "floors": "الطوابق والمناطق"
+    },
     "floors": {
       "title": "الطوابق والمناطق",
       "add": "إضافة طابق/منطقة",
@@ -223,8 +319,15 @@
     }
   },
   "inventory": {
-    "tabs": { "ingredients": "المكونات", "stock": "المخزون" },
-    "unitTypes": { "mass": "وزن", "volume": "حجم", "count": "عدد" },
+    "tabs": {
+      "ingredients": "المكونات",
+      "stock": "المخزون"
+    },
+    "unitTypes": {
+      "mass": "وزن",
+      "volume": "حجم",
+      "count": "عدد"
+    },
     "movementTypes": {
       "purchase": "شراء",
       "sale_deduction": "خصم بيع",

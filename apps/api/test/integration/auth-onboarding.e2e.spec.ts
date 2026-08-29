@@ -147,6 +147,15 @@ describe("auth & onboarding (e2e)", () => {
           country: "SA",
           currency: "SAR",
           defaultLocale: "ar",
+          vatNumber: "310123456700003",
+          crNumber: "1010101010",
+          address: "طريق الملك فهد",
+          city: "الرياض",
+          district: "العليا",
+          buildingNumber: "1234",
+          postalCode: "12345",
+          additionalAddress: "الدور الثاني",
+          contactPhone: "+966501234567",
         })
         .expect(201);
 
@@ -169,7 +178,18 @@ describe("auth & onboarding (e2e)", () => {
       await request(http)
         .post("/onboarding/restaurant")
         .set("Authorization", `Bearer ${accessToken}`)
-        .send({ name: "مطعم آخر" })
+        .send({
+          name: "مطعم آخر",
+          vatNumber: "310123456700003",
+          crNumber: "1010101010",
+          address: "طريق الملك فهد",
+          city: "الرياض",
+          district: "العليا",
+          buildingNumber: "1234",
+          postalCode: "12345",
+          additionalAddress: "الدور الثاني",
+          contactPhone: "+966501234567",
+        })
         .expect(409);
     });
 

@@ -36,8 +36,18 @@ model Tenant {
   legalName             String?      @map("legal_name")
   vatNumber             String?      @map("vat_number")
   crNumber              String?      @map("cr_number")
-  /// ZATCA: registered address of the establishment.
+  /// ZATCA: registered address of the establishment (street name / line 1).
   address               String?
+  /// National Address components (KSA tax-invoice seller address, ZATCA
+  /// PostalAddress block) — collected as mandatory onboarding fields
+  /// alongside vatNumber/crNumber, same compliance reason.
+  city                  String?
+  district              String?
+  additionalAddress     String?      @map("additional_address")
+  buildingNumber        String?      @map("building_number")
+  postalCode            String?      @map("postal_code")
+  /// Restaurant's main contact number (distinct from any one branch's phone).
+  contactPhone          String?      @map("contact_phone")
   status                TenantStatus @default(active)
   /// Business type: restaurant | cafe | cloud_kitchen | food_truck | bakery | other
   type                  String?
@@ -51,6 +61,14 @@ model Tenant {
   vatRate               Decimal      @default(15.00) @map("vat_rate") @db.Decimal(5, 2)
   settings              Json         @default("{}")
   onboardingCompletedAt DateTime?    @map("onboarding_completed_at")
+
+  /// Printed-receipt customization — optional onboarding step, editable
+  /// later from settings. themeColor is one of THEME_PRESETS
+  /// (@spruvex-r/types) — a curated, contrast-checked key, never a raw
+  /// user-picked hex (better-colors: never ship an unverified color pair).
+  themeColor          String  @default("green") @map("theme_color")
+  receiptHeaderNote   String? @map("receipt_header_note")
+  receiptFooterNote   String? @map("receipt_footer_note")
 
   /// ZATCA Phase 2 (Fatoora integration) — opt-in per restaurant (plan
   /// decision: owner enables it only once their revenue wave actually

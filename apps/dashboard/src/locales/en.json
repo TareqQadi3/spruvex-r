@@ -1,5 +1,8 @@
 {
-  "app": { "name": "SpruVex R", "tagline": "Your complete restaurant operating system" },
+  "app": {
+    "name": "SpruVex R",
+    "tagline": "Your complete restaurant operating system"
+  },
   "common": {
     "loading": "Loading...",
     "save": "Save",
@@ -10,7 +13,13 @@
     "language": "العربية",
     "error": "Something went wrong",
     "comingSoon": "Coming soon",
-    "requiredField": "This field is required"
+    "requiredField": "This field is required",
+    "uploadTab": "Upload a file",
+    "urlTab": "Paste a link",
+    "uploadButton": "Choose file",
+    "removeImage": "Remove",
+    "uploadError": "Upload failed",
+    "imageConstraints": "PNG, JPEG or WEBP, up to 5MB"
   },
   "auth": {
     "login": "Sign in",
@@ -43,13 +52,26 @@
   "onboarding": {
     "title": "Set up your restaurant",
     "step": "Step {{current}} of {{total}}",
+    "back": "Back",
+    "welcomeTitle": "Welcome to SpruVex R",
+    "welcomeSubtitle": "A few simple steps and your restaurant will be ready to operate. Only the essentials below are required — everything else can wait.",
+    "welcomeStart": "Let's start",
+    "languageTitle": "Choose your system language",
+    "languageSubtitle": "You can change this later at any time from Settings.",
+    "languageAr": "العربية",
+    "languageEn": "English",
+    "mandatoryTitle": "Essential restaurant information",
+    "mandatorySubtitle": "Required for valid tax invoices — collected once, and can't be skipped.",
     "restaurantStep": "Restaurant info",
     "branchStep": "First branch",
-    "staffStep": "Your team",
+    "hubStep": "Optional setup",
     "completeStep": "Launch",
     "restaurantName": "Restaurant name (Arabic)",
+    "restaurantNameHint": "The trade name shown to your customers.",
     "restaurantNameEn": "Restaurant name (English — optional)",
+    "restaurantNameEnHint": "Shown when a customer picks English.",
     "type": "Business type",
+    "typeHint": "Helps us tailor the experience to your business.",
     "types": {
       "restaurant": "Restaurant",
       "cafe": "Café",
@@ -61,11 +83,76 @@
     "country": "Country",
     "currency": "Currency",
     "defaultLocale": "Default interface language",
+    "vatNumber": "VAT number",
+    "vatNumberHint": "15 digits, usually starting and ending with 3 — mandatory on every invoice.",
+    "crNumber": "Commercial Registration (CR) number",
+    "crNumberHint": "The CR number issued by the Ministry of Commerce.",
+    "address": "Street / address",
+    "addressHint": "The main street name of the restaurant's location.",
+    "city": "City",
+    "cityHint": "e.g. Riyadh, Jeddah, Dammam.",
+    "district": "District",
+    "districtHint": "The district name per the National Address.",
+    "buildingNumber": "Building number",
+    "buildingNumberHint": "4 digits per the Saudi National Address standard (required on invoices).",
+    "postalCode": "Postal code",
+    "postalCodeHint": "5 digits per the Saudi National Address standard.",
+    "additionalAddress": "Additional address",
+    "additionalAddressHint": "Any extra detail that helps pinpoint the location (unit number, floor, landmark...).",
+    "contactPhone": "Contact phone",
+    "contactPhoneHint": "The restaurant management's main contact number.",
     "logoUrl": "Logo URL (optional)",
     "branchName": "Branch name",
+    "branchNameHint": "A name that distinguishes this branch from any future ones.",
     "branchAddress": "Address",
+    "branchAddressHint": "The branch's address as shown to customers (optional for now).",
     "branchPhone": "Branch phone",
+    "branchPhoneHint": "This specific branch's phone number (optional).",
     "branchEmail": "Branch email (optional)",
+    "branchEmailHint": "An email address specific to this branch, if any.",
+    "hubTitle": "Nicely done! Just optional settings remain",
+    "hubSubtitle": "Your restaurant is ready to operate now. The items below improve your experience — finish them or skip for later; anything skipped shows up as a dashboard reminder.",
+    "hubEnterDashboard": "Enter the dashboard",
+    "hubStatusDone": "Done ✓",
+    "hubStatusSkipped": "Skipped",
+    "hubStatusPending": "Not done yet",
+    "hubDo": "Do it now",
+    "hubSkip": "Skip for now",
+    "hubBackToHub": "Back to list",
+    "cardLogoTitle": "Restaurant logo",
+    "cardLogoDesc": "Shown on the dashboard, invoices, and the ordering page.",
+    "cardReceiptTitle": "Receipt design",
+    "cardReceiptDesc": "A note printed above and below the receipt.",
+    "cardThemeTitle": "App appearance",
+    "cardThemeDesc": "Pick a color for your dashboard's interface.",
+    "cardZatcaTitle": "E-invoicing phase",
+    "cardZatcaDesc": "Phase 1 already works automatically; enable Phase 2 only if your restaurant is required to.",
+    "cardStaffTitle": "Staff accounts",
+    "cardStaffDesc": "Add a cashier and kitchen account for your team.",
+    "cardMenuTitle": "Menu items",
+    "cardMenuDesc": "Add your first menu category and product.",
+    "cardTablesTitle": "Branches & tables",
+    "cardTablesDesc": "Add more branches, tables, and QR codes.",
+    "logoStepTitle": "Restaurant logo",
+    "logoStepSubtitle": "Optional — you can upload it later from Settings any time.",
+    "receiptStepTitle": "Receipt design",
+    "receiptStepSubtitle": "Text shown above and below every printed receipt — a thank-you note or a return policy, for instance.",
+    "receiptHeaderNote": "Note above the receipt",
+    "receiptHeaderNoteHint": "e.g. \"We hope you enjoy your meal\".",
+    "receiptFooterNote": "Note below the receipt",
+    "receiptFooterNoteHint": "e.g. \"No returns after 24 hours\".",
+    "themeStepTitle": "App appearance",
+    "themeStepSubtitle": "Pick a color for your own dashboard's interface.",
+    "zatcaStepTitle": "E-invoicing phase",
+    "zatcaStepSubtitle": "Most restaurants start on Phase 1 (already working automatically). Only enable Phase 2 if ZATCA actually requires it for your restaurant yet — you can finish the digital certificate details later from Settings.",
+    "menuStepTitle": "First category and item",
+    "menuStepSubtitle": "A quick start for your menu — add the rest later from the Menu page.",
+    "menuCategoryName": "Category name",
+    "menuCategoryNameHint": "e.g. Grills, Beverages.",
+    "menuProductName": "Item name",
+    "menuProductNameHint": "The item's name as shown to customers.",
+    "menuProductPrice": "Price (VAT-inclusive)",
+    "menuProductPriceHint": "In Saudi Riyals.",
     "staffHint": "Add your branch manager and cashier now, or skip and add them later.",
     "staffKitchenHint": "Create a separate \"kitchen\" account for whoever will run the kitchen display (KDS) — without it, they won't get live order updates.",
     "staffManager": "Branch manager",
@@ -100,7 +187,9 @@
     "todayOrders": "Today's orders",
     "todaySales": "Today's sales",
     "bestSeller": "Best seller",
-    "inventoryAlerts": "Inventory alerts"
+    "inventoryAlerts": "Inventory alerts",
+    "missingSetupTitle": "Missing settings",
+    "missingSetupHint": "You skipped a few setup steps earlier — finish them whenever you're ready:"
   },
   "branches": {
     "title": "Branches",
@@ -125,7 +214,11 @@
     "remove": "Remove member"
   },
   "catalog": {
-    "tabs": { "categories": "Categories", "products": "Products", "modifiers": "Modifiers" },
+    "tabs": {
+      "categories": "Categories",
+      "products": "Products",
+      "modifiers": "Modifiers"
+    },
     "nameAr": "Name (Arabic)",
     "nameEn": "Name (English)",
     "descriptionAr": "Description (Arabic)",
@@ -187,7 +280,10 @@
     }
   },
   "tables": {
-    "tabs": { "tables": "Tables", "floors": "Floors & Areas" },
+    "tabs": {
+      "tables": "Tables",
+      "floors": "Floors & Areas"
+    },
     "floors": {
       "title": "Floors & areas",
       "add": "Add floor/area",
@@ -223,8 +319,15 @@
     }
   },
   "inventory": {
-    "tabs": { "ingredients": "Ingredients", "stock": "Stock" },
-    "unitTypes": { "mass": "Mass", "volume": "Volume", "count": "Count" },
+    "tabs": {
+      "ingredients": "Ingredients",
+      "stock": "Stock"
+    },
+    "unitTypes": {
+      "mass": "Mass",
+      "volume": "Volume",
+      "count": "Count"
+    },
     "movementTypes": {
       "purchase": "Purchase",
       "sale_deduction": "Sale deduction",

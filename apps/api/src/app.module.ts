@@ -15,6 +15,7 @@ import { ReportsModule } from "./modules/reports/reports.module";
 import { ShiftsModule } from "./modules/shifts/shifts.module";
 import { TablesModule } from "./modules/tables/tables.module";
 import { TenancyModule } from "./modules/tenancy/tenancy.module";
+import { UploadsModule } from "./modules/uploads/uploads.module";
 import { AuditModule } from "./shared/audit/audit.module";
 import { BillingKernelModule } from "./shared/billing/billing-kernel.module";
 import { EventsModule } from "./shared/events/events.module";
@@ -47,6 +48,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
     ReportsModule,
     BillingModule,
     PlatformModule,
+    UploadsModule,
   ],
 })
 export class AppModule implements NestModule {

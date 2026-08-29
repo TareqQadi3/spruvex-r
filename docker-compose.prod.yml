@@ -62,10 +62,23 @@ services:
       PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
       ZATCA_CREDENTIALS_ENCRYPTION_KEY: ${ZATCA_CREDENTIALS_ENCRYPTION_KEY:-}
+      # Must be the API's real public HTTPS origin — used to build absolute
+      # URLs for uploaded logo/product/category images, loadable from any
+      # app's origin (same reason the ordering service below needs it).
+      PUBLIC_API_ORIGIN: ${PUBLIC_API_ORIGIN:?required}
+      UPLOADS_DIR: /uploads
       NODE_ENV: production
       PORT: 3000
     ports:
       - "3000:3000"
+    volumes:
+      # Uploaded images persist across container restarts, not across a
+      # volume wipe — there's no S3/Cloudinary account to point at instead
+      # yet. On a host with an ephemeral filesystem (Render's free tier)
+      # this volume itself doesn't persist across redeploys either; treat
+      # uploads there as temporary until a real object-storage backend is
+      # wired in (swap uploads.service.ts's local-disk calls for it).
+      - uploads:/uploads
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -158,3 +171,4 @@ volumes:
   pgdata:
   redisdata:
   backups:
+  uploads:

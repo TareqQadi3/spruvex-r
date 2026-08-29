@@ -16,6 +16,7 @@ import { PrismaService } from "../../shared/prisma/prisma.service";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
 import { hashPassword } from "../identity/password";
 import { TokenService, type TokenPair } from "../identity/token.service";
+import { OPTIONAL_SETUP_STEPS, type OptionalSetupStep } from "./dto/onboarding.dto";
 import { provisionTenant } from "./tenant-provisioning";
 
 function dashboardUrl(): string {
@@ -37,6 +38,13 @@ export interface OnboardingStatus {
   tenantId?: string;
   hasBranch: boolean;
   staffCount: number;
+}
+
+export interface SetupStatusItem {
+  step: OptionalSetupStep;
+  /** true once genuinely done (has real data) OR the owner explicitly skipped it. */
+  done: boolean;
+  skipped: boolean;
 }
 
 /**
@@ -67,8 +75,15 @@ export class OnboardingService {
     currency?: string;
     defaultLocale?: string;
     logoUrl?: string;
-    vatNumber?: string;
-    crNumber?: string;
+    vatNumber: string;
+    crNumber: string;
+    address: string;
+    city: string;
+    district: string;
+    buildingNumber: string;
+    postalCode: string;
+    additionalAddress: string;
+    contactPhone: string;
   }): Promise<{ tenantId: string; tokens: TokenPair }> {
     const { userId } = this.tenantContext.contextOrThrow;
 
@@ -247,6 +262,48 @@ export class OnboardingService {
       hasBranch: branchCount > 0,
       staffCount: memberCount - 1,
     };
+  }
+
+  /**
+   * The dashboard "missing setup" reminder banner reads this — every
+   * optional onboarding-hub step the owner hasn't yet either completed or
+   * explicitly skipped. Tracked in tenant.settings (a JSON column that was
+   * otherwise unused) rather than inferred from data presence: a genuinely
+   * blank receipt footer note, for instance, is indistinguishable from
+   * "never visited" by data alone, but the owner explicitly choosing
+   * "skip" vs never having seen the step are different things worth
+   * surfacing differently.
+   */
+  async getSetupStatus(): Promise<SetupStatusItem[]> {
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const tenant = await this.prisma.scoped.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    const recorded = (tenant.settings as { onboardingSteps?: Record<string, "done" | "skipped"> })
+      .onboardingSteps ?? {};
+
+    return OPTIONAL_SETUP_STEPS.map((step) => ({
+      step,
+      done: recorded[step] === "done",
+      skipped: recorded[step] === "skipped",
+    }));
+  }
+
+  /** Marks one optional step done (owner saved real data) or skipped (owner deferred it). */
+  async markSetupStep(step: OptionalSetupStep, status: "done" | "skipped"): Promise<void> {
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const tenant = await this.prisma.scoped.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    const settings = (tenant.settings ?? {}) as { onboardingSteps?: Record<string, "done" | "skipped"> };
+    const onboardingSteps = { ...(settings.onboardingSteps ?? {}), [step]: status };
+
+    await this.prisma.scoped.tenant.update({
+      where: { id: tenantId },
+      data: { settings: { ...settings, onboardingSteps } },
+    });
   }
 
   private async availableSlug(base: string): Promise<string> {
