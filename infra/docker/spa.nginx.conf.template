@@ -3,19 +3,32 @@ server {
   server_name _;
   root /usr/share/nginx/html;
 
-  # Proxied to the API. ${API_INTERNAL_ORIGIN} is substituted at container
-  # startup by nginx's built-in template processing (this file lives in
+  # Proxied to the API. ${API_INTERNAL_ORIGIN} (a FULL origin including
+  # scheme, e.g. `http://api:3000` for docker-compose or
+  # `https://spruvex-r-api.onrender.com` on a platform without
+  # Compose-style service-name DNS) is substituted at container startup by
+  # nginx's built-in template processing (this file lives in
   # /etc/nginx/templates/, which the official nginx image envsubst's into
   # /etc/nginx/conf.d/ automatically — see docker-entrypoint.d in the base
-  # image). Defaults to the docker-compose service alias `api:3000`; on a
-  # platform without Docker Compose-style service-name DNS (e.g. Render),
-  # override it with that platform's internal address for the API service.
-  # Only real environment variables get substituted — nginx's own $host,
-  # $remote_addr, etc. below are untouched (verified against the official
-  # image's envsubst invocation, which restricts substitution to the
-  # process environment).
+  # image). Only real environment variables get substituted — nginx's own
+  # $host, $remote_addr, etc. below are untouched (verified against the
+  # official image's envsubst invocation, which restricts substitution to
+  # the process environment).
+  #
+  # The upstream is assigned to a variable (not a bare proxy_pass target)
+  # so nginx resolves it per-request via `resolver` instead of once at
+  # config load — a bare proxy_pass to an unresolvable host makes nginx
+  # exit immediately with "host not found in upstream", which happened
+  # deploying against Render's internal service DNS. Resolving against
+  # public DNS and going out over the public internet to the API's public
+  # onrender.com URL sidesteps that internal-DNS timing/availability issue
+  # entirely.
+  resolver 1.1.1.1 8.8.8.8 valid=30s;
+
   location /api/ {
-    proxy_pass http://${API_INTERNAL_ORIGIN}/api/;
+    set $upstream_api ${API_INTERNAL_ORIGIN};
+    proxy_pass $upstream_api/api/;
+    proxy_ssl_server_name on;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
@@ -25,7 +38,9 @@ server {
 
   # WebSocket upgrade for Socket.io (KDS / POS realtime).
   location /socket.io/ {
-    proxy_pass http://${API_INTERNAL_ORIGIN}/socket.io/;
+    set $upstream_ws ${API_INTERNAL_ORIGIN};
+    proxy_pass $upstream_ws/socket.io/;
+    proxy_ssl_server_name on;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
