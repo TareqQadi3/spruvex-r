@@ -10,6 +10,7 @@ import {
   LogOut,
   Monitor,
   Package,
+  Puzzle,
   Receipt,
   Settings,
   Store,
@@ -39,6 +40,7 @@ const ICONS: Record<string, LucideIcon> = {
   "bar-chart": BarChart3,
   package: Package,
   "credit-card": CreditCard,
+  puzzle: Puzzle,
 };
 
 export function DashboardLayout() {

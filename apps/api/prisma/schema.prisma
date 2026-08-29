@@ -80,19 +80,19 @@ model Tenant {
 
   /// Public digital-menu (apps/ordering) appearance. One of MENU_TEMPLATE_KEYS
   /// (@spruvex-r/types), or "custom" to use menuCustomCss instead of a preset.
-  menuTemplate   String  @default("classic") @map("menu_template")
+  menuTemplate  String  @default("classic") @map("menu_template")
   /// Sanitized (never raw) CSS — see shared/security/menu-css-sanitizer.ts.
   /// Only meaningful when menuTemplate = "custom". Already scoped under
   /// .spx-menu-custom by the sanitizer before it's ever stored.
-  menuCustomCss  String? @map("menu_custom_css") @db.Text
+  menuCustomCss String? @map("menu_custom_css") @db.Text
 
   /// ZATCA Phase 2 (Fatoora integration) — opt-in per restaurant (plan
   /// decision: owner enables it only once their revenue wave actually
   /// requires it; Phase 1's QR-only invoice keeps working either way).
-  zatcaPhase2Enabled Boolean @default(false) @map("zatca_phase2_enabled")
+  zatcaPhase2Enabled      Boolean @default(false) @map("zatca_phase2_enabled")
   /// "sandbox" while onboarding with ZATCA's compliance CSID, "production"
   /// once the production CSID is issued. Irrelevant while disabled.
-  zatcaEnvironment   String  @default("sandbox") @map("zatca_environment")
+  zatcaEnvironment        String  @default("sandbox") @map("zatca_environment")
   /// Compliance/production CSID materials from the Fatoora portal, at rest
   /// AES-256-GCM encrypted (see shared/security/crypto-vault.ts) — never
   /// selected into an API response.
@@ -113,38 +113,41 @@ model Tenant {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  branches              Branch[]
-  roles                 Role[]
-  userRoles             UserRole[]
-  posPins               PosPin[]
-  auditLogs             AuditLog[]
-  categories            Category[]
-  products              Product[]
-  productBranchSettings ProductBranchSetting[]
-  modifierGroups        ModifierGroup[]
-  modifiers             Modifier[]
-  productModifierGroups ProductModifierGroup[]
-  floors                Floor[]
-  tables                Table[]
-  tableSessions         TableSession[]
-  orders                Order[]
-  orderItems            OrderItem[]
-  orderItemModifiers    OrderItemModifier[]
-  orderStatusHistories  OrderStatusHistory[]
-  shifts                Shift[]
-  payments              Payment[]
-  receipts              Receipt[]
-  creditNotes           CreditNote[]
-  debitNotes            DebitNote[]
-  refunds               Refund[]
-  branchInvoiceChains   BranchInvoiceChain[]
-  ingredients           Ingredient[]
-  stockLocations        StockLocation[]
-  stockLevels           StockLevel[]
-  stockMovements        StockMovement[]
-  recipeItems           RecipeItem[]
-  subscription          Subscription?
-  subscriptionInvoices  SubscriptionInvoice[]
+  branches                  Branch[]
+  roles                     Role[]
+  userRoles                 UserRole[]
+  posPins                   PosPin[]
+  auditLogs                 AuditLog[]
+  categories                Category[]
+  products                  Product[]
+  productBranchSettings     ProductBranchSetting[]
+  modifierGroups            ModifierGroup[]
+  modifiers                 Modifier[]
+  productModifierGroups     ProductModifierGroup[]
+  floors                    Floor[]
+  tables                    Table[]
+  tableSessions             TableSession[]
+  orders                    Order[]
+  orderItems                OrderItem[]
+  orderItemModifiers        OrderItemModifier[]
+  orderStatusHistories      OrderStatusHistory[]
+  shifts                    Shift[]
+  payments                  Payment[]
+  receipts                  Receipt[]
+  creditNotes               CreditNote[]
+  debitNotes                DebitNote[]
+  refunds                   Refund[]
+  branchInvoiceChains       BranchInvoiceChain[]
+  ingredients               Ingredient[]
+  stockLocations            StockLocation[]
+  stockLevels               StockLevel[]
+  stockMovements            StockMovement[]
+  recipeItems               RecipeItem[]
+  subscription              Subscription?
+  subscriptionInvoices      SubscriptionInvoice[]
+  integrationConnections    IntegrationConnection[]
+  deliveryProductMappings   DeliveryProductMapping[]
+  whatsappTemplateOverrides WhatsappTemplateOverride[]
 
   @@map("tenants")
 }
@@ -172,18 +175,19 @@ model Branch {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
-  userRoles             UserRole[]
-  posPins               PosPin[]
-  productBranchSettings ProductBranchSetting[]
-  floors                Floor[]
-  tables                Table[]
-  orders                Order[]
-  shifts                Shift[]
-  stockLocations        StockLocation[]
-  stockLevels           StockLevel[]
-  stockMovements        StockMovement[]
-  invoiceChain          BranchInvoiceChain?
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  userRoles              UserRole[]
+  posPins                PosPin[]
+  productBranchSettings  ProductBranchSetting[]
+  floors                 Floor[]
+  tables                 Table[]
+  orders                 Order[]
+  shifts                 Shift[]
+  stockLocations         StockLocation[]
+  stockLevels            StockLevel[]
+  stockMovements         StockMovement[]
+  invoiceChain           BranchInvoiceChain?
+  integrationConnections IntegrationConnection[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -446,12 +450,13 @@ model Product {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant         Tenant                 @relation(fields: [tenantId], references: [id])
-  category       Category               @relation(fields: [categoryId], references: [id])
-  branchSettings ProductBranchSetting[]
-  modifierGroups ProductModifierGroup[]
-  orderItems     OrderItem[]
-  recipeItems    RecipeItem[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  category                Category                 @relation(fields: [categoryId], references: [id])
+  branchSettings          ProductBranchSetting[]
+  modifierGroups          ProductModifierGroup[]
+  orderItems              OrderItem[]
+  recipeItems             RecipeItem[]
+  deliveryProductMappings DeliveryProductMapping[]
 
   @@unique([tenantId, sku])
   @@index([tenantId, categoryId])
@@ -746,6 +751,16 @@ model Order {
   placedBy        String? @map("placed_by") @db.Uuid
   cancelledReason String? @map("cancelled_reason")
 
+  /// Set only for orders ingested from a real delivery-platform webhook
+  /// (source = "delivery") — the platform's own order id (also composes the
+  /// idempotency key, so a retried/duplicate webhook never double-creates),
+  /// which provider it came from, and the commission it charges, kept
+  /// separate from `total` so reports can show gross revenue vs commission
+  /// rather than netting it away silently.
+  externalOrderId    String?  @map("external_order_id")
+  deliveryProvider   String?  @map("delivery_provider")
+  deliveryCommission Decimal? @map("delivery_commission") @db.Decimal(12, 2)
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   createdBy String?   @map("created_by") @db.Uuid
@@ -882,12 +897,22 @@ model Shift {
 enum PaymentMethod {
   cash
   card
+  /// Paid through a digital-menu payment gateway (Moyasar/Tap/HyperPay) or
+  /// remitted by a delivery platform on the customer's behalf — never a
+  /// physical cash/card transaction, so shift cash reconciliation ignores it
+  /// exactly like `card` already does.
+  online
 
   @@map("payment_method")
 }
 
 enum PaymentStatus {
+  /// A gateway checkout session was created; awaiting the provider's webhook.
+  pending
   completed
+  /// The gateway reported a failed/declined charge — the order falls back
+  /// to "pay on delivery/pickup" rather than being blocked.
+  failed
   voided
 
   @@map("payment_status")
@@ -999,7 +1024,7 @@ model CreditNote {
 
   creditNoteNumber Int @map("credit_note_number")
 
-  reason String
+  reason  String
   /// Frozen snapshot, same shape as Receipt.payload (restaurant/branch/order
   /// lines being credited, plus `reason`).
   payload Json
@@ -1026,8 +1051,8 @@ model CreditNote {
   issuedAt DateTime @default(now()) @map("issued_at")
   issuedBy String?  @map("issued_by") @db.Uuid
 
-  tenant  Tenant   @relation(fields: [tenantId], references: [id])
-  receipt Receipt  @relation(fields: [receiptId], references: [id])
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  receipt Receipt @relation(fields: [receiptId], references: [id])
   refund  Refund?
 
   @@unique([branchId, creditNoteNumber])
@@ -1471,4 +1496,127 @@ model PlatformAdmin {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("platform_admins")
+}
+
+// ---------------------------------------------------------------------------
+// Integrations & add-ons — delivery platforms, digital-menu payment gateways,
+// NFC card terminals, WhatsApp. Every connection stores its own credentials
+// (AES-256-GCM encrypted, see shared/security/crypto-vault.ts) and never
+// creates a side data path: a delivery-platform webhook or a gateway's
+// successful checkout both flow through the SAME OrderingService.create()/
+// PaymentsService used by the POS and the customer ordering app, so stock
+// deduction, KDS visibility, reports, and refunds all just work.
+// ---------------------------------------------------------------------------
+
+enum IntegrationCategory {
+  delivery_platform
+  payment_gateway
+  nfc_terminal
+  whatsapp
+
+  @@map("integration_category")
+}
+
+/// One connection = one (tenant [+ branch], category, provider) triple.
+/// branchId is set for connections that are inherently tied to one physical
+/// location (a delivery-platform store listing, an NFC terminal sitting at
+/// one counter) and null for connections that belong to the business as a
+/// whole (one payment-gateway merchant account, one WhatsApp Business number).
+model IntegrationConnection {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  branchId String? @map("branch_id") @db.Uuid
+
+  category IntegrationCategory
+  /// "hungerstation" | "moyasar" | "tap" | "hyperpay" | "geidea" | "whatsapp_cloud" | ...
+  provider String
+
+  isEnabled   Boolean @default(false) @map("is_enabled")
+  /// "test" | "live" — meaningful for payment gateways; ignored otherwise.
+  environment String  @default("test")
+
+  /// Non-secret settings: external store id, phone number id, business
+  /// display name, terminal id, publishable/public key, etc.
+  config Json @default("{}")
+
+  /// The provider's main API key/access token/secret key — encrypted.
+  /// Never selected into any API response.
+  secretEnc        String? @map("secret_enc") @db.Text
+  /// A second secret some providers need for verifying inbound webhooks,
+  /// distinct from the main API key — encrypted.
+  webhookSecretEnc String? @map("webhook_secret_enc") @db.Text
+
+  lastVerifiedAt   DateTime? @map("last_verified_at")
+  lastSyncedAt     DateTime? @map("last_synced_at")
+  /// Drives the dashboard's connection-status badge ("key error" etc.) —
+  /// never stores the secret itself, only a human-readable failure reason.
+  lastErrorMessage String?   @map("last_error_message")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant          Tenant                   @relation(fields: [tenantId], references: [id])
+  branch          Branch?                  @relation(fields: [branchId], references: [id])
+  productMappings DeliveryProductMapping[]
+
+  @@unique([tenantId, branchId, category, provider])
+  @@index([tenantId, category])
+  @@map("integration_connections")
+}
+
+/// Maps an internal catalog product to a delivery platform's own item id, so
+/// an incoming webhook order (which only knows the platform's ids) resolves
+/// to a real productId before it ever reaches OrderingService.create().
+/// Populated by the owner once per product (no live partner API access to
+/// auto-sync against in this environment — see the delivery-integration
+/// module's doc comment for what a real push-sync would need).
+model DeliveryProductMapping {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  productId    String @map("product_id") @db.Uuid
+
+  externalItemId   String  @map("external_item_id")
+  externalItemName String? @map("external_item_name")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant                @relation(fields: [tenantId], references: [id])
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  product    Product               @relation(fields: [productId], references: [id])
+
+  @@unique([connectionId, externalItemId])
+  @@unique([connectionId, productId])
+  @@map("delivery_product_mappings")
+}
+
+/// Per-tenant customization of one system-defined WhatsApp message template
+/// (the catalog itself is code, see @spruvex-r/types' WHATSAPP_MESSAGE_TEMPLATES).
+/// WhatsApp requires templates to be pre-approved by Meta before they can be
+/// sent outside a customer-initiated 24h window — approvalStatus reflects
+/// what happened in the tenant's own Meta Business Manager, set manually;
+/// this system has no live Meta credentials to verify it automatically.
+model WhatsappTemplateOverride {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @map("tenant_id") @db.Uuid
+  templateKey String @map("template_key")
+
+  customBodyAr     String? @map("custom_body_ar")
+  /// "not_submitted" | "pending" | "approved" | "rejected"
+  approvalStatus   String  @default("not_submitted") @map("approval_status")
+  /// The exact template name registered in Meta Business Manager — required
+  /// to actually send (Meta addresses templates by name, not by our key).
+  metaTemplateName String? @map("meta_template_name")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, templateKey])
+  @@map("whatsapp_template_overrides")
 }

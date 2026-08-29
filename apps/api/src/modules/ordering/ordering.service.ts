@@ -41,6 +41,12 @@ interface CreateOrderContext {
   source: OrderSource;
   /** Overrides for the guest flow (no authenticated user). */
   tenantId?: string;
+  /** Set only when a delivery-platform webhook is the caller (never public HTTP input). */
+  delivery?: {
+    externalOrderId: string;
+    provider: string;
+    commission: string | null;
+  };
 }
 
 const NUMBER_CONFLICT_RETRIES = 3;
@@ -559,6 +565,13 @@ export class OrderingService {
         idempotencyKey,
         placedBy: actor,
         createdBy: actor,
+        ...(opts.delivery
+          ? {
+              externalOrderId: opts.delivery.externalOrderId,
+              deliveryProvider: opts.delivery.provider,
+              deliveryCommission: opts.delivery.commission,
+            }
+          : {}),
         items: {
           create: priced.map((item) => ({
             tenantId,

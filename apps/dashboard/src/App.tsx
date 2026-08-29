@@ -16,6 +16,7 @@ import { RegisterPage } from "./pages/auth/RegisterPage";
 import { BillingPage } from "./pages/dashboard/BillingPage";
 import { BranchesPage } from "./pages/dashboard/BranchesPage";
 import { HomePage } from "./pages/dashboard/HomePage";
+import { IntegrationsPage } from "./pages/dashboard/IntegrationsPage";
 import { SettingsPage } from "./pages/dashboard/SettingsPage";
 import { TeamPage } from "./pages/dashboard/TeamPage";
 import { IngredientsPage } from "./pages/inventory/IngredientsPage";
@@ -112,6 +113,7 @@ const router = createBrowserRouter([
       { path: "branches", element: <BranchesPage /> },
       { path: "team", element: <TeamPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "integrations", element: <IntegrationsPage /> },
       { path: "billing", element: <BillingPage /> },
       {
         path: "menu",

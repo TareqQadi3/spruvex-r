@@ -4,6 +4,7 @@ import { OrderingModule } from "../ordering/ordering.module";
 import { DebitNotesService } from "./debit-notes.service";
 import { PaymentsController } from "./payments.controller";
 import { PaymentsService } from "./payments.service";
+import { PublicReceiptController } from "./public-receipt.controller";
 import { ReceiptsService } from "./receipts.service";
 import { RefundsService } from "./refunds.service";
 import { ZatcaSettingsController } from "./zatca/zatca-settings.controller";
@@ -18,7 +19,7 @@ import { ZatcaInvoiceService } from "./zatca/zatca-invoice.service";
  */
 @Module({
   imports: [OrderingModule],
-  controllers: [PaymentsController, ZatcaSettingsController],
+  controllers: [PaymentsController, ZatcaSettingsController, PublicReceiptController],
   providers: [
     PaymentsService,
     ReceiptsService,

@@ -7,6 +7,7 @@ import { AuthContextMiddleware } from "./modules/identity/auth-context.middlewar
 import { BillingModule } from "./modules/billing/billing.module";
 import { CatalogModule } from "./modules/catalog/catalog.module";
 import { IdentityModule } from "./modules/identity/identity.module";
+import { IntegrationsModule } from "./modules/integrations/integrations.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
 import { OrderingModule } from "./modules/ordering/ordering.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
@@ -49,6 +50,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
     BillingModule,
     PlatformModule,
     UploadsModule,
+    IntegrationsModule,
   ],
 })
 export class AppModule implements NestModule {

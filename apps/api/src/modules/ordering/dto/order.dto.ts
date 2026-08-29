@@ -19,6 +19,10 @@ import {
 
 import { ORDER_STATUSES, type OrderStatus } from "@spruvex-r/types";
 
+/** Staff/POS-creatable order types. "delivery" covers both a manually-entered
+ * phone order and a real delivery-platform webhook (see delivery-webhook.service.ts). */
+const CREATABLE_ORDER_TYPES = ["dine_in", "walkin", "takeaway", "delivery"] as const;
+
 export class OrderItemInputDto {
   @IsUUID()
   productId!: string;
@@ -41,8 +45,8 @@ export class OrderItemInputDto {
 }
 
 export class CreateOrderDto {
-  @IsIn(["dine_in", "walkin", "takeaway"])
-  type!: "dine_in" | "walkin" | "takeaway";
+  @IsIn(CREATABLE_ORDER_TYPES)
+  type!: (typeof CREATABLE_ORDER_TYPES)[number];
 
   /** Required for dine_in. */
   @IsOptional()

@@ -13,7 +13,11 @@ async function bootstrap() {
   initSentry();
   await bootstrapAppRoleIfRequested();
 
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true preserves the exact request bytes alongside the parsed
+  // JSON body — needed to verify delivery-platform/payment-gateway webhook
+  // signatures, which are computed over the raw payload, not a re-serialized
+  // (and therefore byte-different) copy of it.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   const ioAdapter = new RedisIoAdapter(app);
   await ioAdapter.connectToRedis();

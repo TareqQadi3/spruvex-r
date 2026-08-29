@@ -3,7 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Prisma } from "@prisma/client";
+
+import { DOMAIN_EVENTS } from "@spruvex-r/types";
 
 import { AuditService } from "../../shared/audit/audit.service";
 import { halalasToSar, sarToHalalas, vatFromGross } from "../../shared/common/money";
@@ -32,6 +35,7 @@ export class ReceiptsService {
     private readonly tenantContext: TenantContextService,
     private readonly audit: AuditService,
     private readonly zatca: ZatcaInvoiceService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async getOrCreate(orderId: string) {
@@ -203,6 +207,12 @@ export class ReceiptsService {
           entityId: receipt.id,
           branchId: receipt.branchId,
           meta: { receiptNumber: receipt.receiptNumber, orderId },
+        });
+        this.events.emit(DOMAIN_EVENTS.INVOICE_ISSUED, {
+          tenantId,
+          branchId: receipt.branchId,
+          receiptId: receipt.id,
+          orderId,
         });
 
         if (pendingSubmission) {

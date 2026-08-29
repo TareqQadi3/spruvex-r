@@ -11,8 +11,8 @@ const AMOUNT_RULE = /^\d{1,10}(\.\d{1,2})?$/;
 const AMOUNT_MESSAGE = "Amount must be a decimal string with up to 2 fraction digits";
 
 export class RecordPaymentDto {
-  @IsIn(["cash", "card"])
-  method!: "cash" | "card";
+  @IsIn(["cash", "card", "online"])
+  method!: "cash" | "card" | "online";
 
   /** Applied amount (SAR). Split payment = several calls with partial amounts. */
   @IsString()
@@ -47,8 +47,8 @@ export class RefundOrderDto {
   @Matches(AMOUNT_RULE, { message: AMOUNT_MESSAGE })
   amount!: string;
 
-  @IsIn(["cash", "card"])
-  method!: "cash" | "card";
+  @IsIn(["cash", "card", "online"])
+  method!: "cash" | "card" | "online";
 
   @IsString()
   @IsNotEmpty()
