@@ -151,6 +151,8 @@ export function TeamPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          title={t("team.remove")}
+                          aria-label={t("team.remove")}
                           onClick={() => {
                             if (confirm(t("team.confirmRemove"))) remove.mutate(member.userId);
                           }}

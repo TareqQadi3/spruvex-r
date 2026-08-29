@@ -389,19 +389,30 @@ export function PosScreen({
                   )}
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="icon" onClick={() => changeQty(line.lineId, -1)}>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label={t("pos.decreaseQty")}
+                        onClick={() => changeQty(line.lineId, -1)}
+                      >
                         <Minus className="h-4 w-4" />
                       </Button>
                       <span className="w-6 text-center font-bold" dir="ltr">
                         {line.quantity}
                       </span>
-                      <Button variant="outline" size="icon" onClick={() => changeQty(line.lineId, 1)}>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label={t("pos.increaseQty")}
+                        onClick={() => changeQty(line.lineId, 1)}
+                      >
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={t("pos.removeItem")}
                       onClick={() =>
                         setCart((current) => current.filter((l) => l.lineId !== line.lineId))
                       }

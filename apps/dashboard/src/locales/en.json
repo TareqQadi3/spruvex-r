@@ -121,7 +121,8 @@
     "lastLogin": "Last sign-in",
     "never": "Never signed in",
     "passwordHint": "At least 8 characters, with a letter and a digit",
-    "confirmRemove": "Remove this member from the team?"
+    "confirmRemove": "Remove this member from the team?",
+    "remove": "Remove member"
   },
   "catalog": {
     "tabs": { "categories": "Categories", "products": "Products", "modifiers": "Modifiers" },
@@ -338,6 +339,21 @@
     "saved": "Saved successfully",
     "publicLinks": "Public ordering links",
     "publicLinksHint": "Public restaurant link for branch pickup orders",
-    "qrLinksHint": "Per-table QR codes are managed from the Tables page"
+    "qrLinksHint": "Per-table QR codes are managed from the Tables page",
+    "zatcaPhase2": "ZATCA Phase 2 (e-invoicing integration)",
+    "zatcaPhase2Hint": "Only turn this on once your restaurant's revenue actually requires it — Phase 1's QR invoice keeps working perfectly well either way.",
+    "zatcaPhase2Enable": "Enable ZATCA Phase 2 integration",
+    "zatcaEnvironment": "Environment",
+    "zatcaSandbox": "Sandbox (testing)",
+    "zatcaSimulation": "Simulation",
+    "zatcaProduction": "Production",
+    "zatcaCertificate": "CSID certificate (PEM)",
+    "zatcaPrivateKey": "CSID private key (PEM)",
+    "zatcaToken": "CSID token",
+    "zatcaSecret": "CSID secret",
+    "zatcaCredentialsHint": "From ZATCA's Fatoora portal onboarding. Leave a field blank to keep its current value — nothing here is ever shown back to you once saved.",
+    "zatcaStatus": "Status",
+    "zatcaConfigured": "Fully configured — ready to sign and submit invoices",
+    "zatcaNotConfigured": "Credentials incomplete — invoices will keep using Phase 1 only until all four are provided"
   }
 }

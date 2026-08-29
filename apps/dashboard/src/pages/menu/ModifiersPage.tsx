@@ -191,12 +191,20 @@ export function ModifiersPage() {
                 >
                   <Plus className="h-4 w-4" /> {t("catalog.modifiers.addModifier")}
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => openGroupEditor(group)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={t("catalog.edit")}
+                  aria-label={t("catalog.edit")}
+                  onClick={() => openGroupEditor(group)}
+                >
                   <Pencil className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
+                  title={t("catalog.delete")}
+                  aria-label={t("catalog.delete")}
                   onClick={() => {
                     if (confirm(t("catalog.confirmDelete"))) deleteGroup.mutate(group.id);
                   }}
@@ -289,6 +297,7 @@ export function ModifiersPage() {
           <div className="flex items-center gap-2">
             <Switch
               checked={groupForm.isRequired}
+              aria-label={t("catalog.modifiers.required")}
               onCheckedChange={(isRequired) =>
                 setGroupForm({
                   ...groupForm,

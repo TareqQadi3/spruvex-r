@@ -298,6 +298,7 @@ export function ProductEditorPage() {
             <div className="flex items-center gap-2">
               <Switch
                 checked={form.isActive}
+                aria-label={t("catalog.active")}
                 onCheckedChange={(isActive) => setForm({ ...form, isActive })}
               />
               <span className="text-sm">{t("catalog.active")}</span>
@@ -422,6 +423,7 @@ export function ProductEditorPage() {
                         <Switch
                           checked={isAvailable}
                           disabled={setBranchSetting.isPending}
+                          aria-label={t("catalog.products.availableInBranch")}
                           onCheckedChange={(next) =>
                             setBranchSetting.mutate({
                               branchId: branch.id,
@@ -585,7 +587,13 @@ function RecipeEditor({ productId }: { productId: string }) {
                     </option>
                   ))}
                 </Select>
-                <Button variant="ghost" size="icon" onClick={() => removeRow(index)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={t("catalog.delete")}
+                  aria-label={t("catalog.delete")}
+                  onClick={() => removeRow(index)}
+                >
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
               </div>

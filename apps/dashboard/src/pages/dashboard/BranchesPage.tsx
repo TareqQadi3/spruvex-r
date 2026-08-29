@@ -105,6 +105,7 @@ export function BranchesPage() {
                       size="icon"
                       onClick={() => navigator.clipboard.writeText(link)}
                       title={t("branches.copyLink")}
+                      aria-label={t("branches.copyLink")}
                     >
                       <Copy className="h-4 w-4" />
                     </Button>

@@ -155,12 +155,20 @@ export function CategoriesPage() {
                     toggleActive.mutate({ id: category.id, isActive })
                   }
                 />
-                <Button variant="ghost" size="icon" onClick={() => openEditor(category)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={t("catalog.edit")}
+                  aria-label={t("catalog.edit")}
+                  onClick={() => openEditor(category)}
+                >
                   <Pencil className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
+                  title={t("catalog.delete")}
+                  aria-label={t("catalog.delete")}
                   onClick={() => {
                     if (confirm(t("catalog.confirmDelete"))) remove.mutate(category.id);
                   }}
@@ -233,6 +241,7 @@ export function CategoriesPage() {
           <div className="flex items-center gap-2">
             <Switch
               checked={form.isActive}
+              aria-label={t("catalog.active")}
               onCheckedChange={(isActive) => setForm({ ...form, isActive })}
             />
             <span className="text-sm">{t("catalog.active")}</span>

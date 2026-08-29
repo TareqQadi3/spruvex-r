@@ -19,6 +19,9 @@
     "table": "Table {{number}}",
     "notes": "Order notes",
     "itemNotes": "Item note",
+    "decreaseQty": "Decrease quantity",
+    "increaseQty": "Increase quantity",
+    "removeItem": "Remove item from order",
     "total": "Total",
     "vatIncluded": "VAT {{rate}}% included",
     "send": "Send order",
@@ -99,7 +102,23 @@
     "total": "Total",
     "payments": "Payments",
     "thanks": "Thank you for visiting",
-    "newOrder": "New order"
+    "newOrder": "New order",
+    "refund": "Refund"
+  },
+  "refund": {
+    "title": "Refund order",
+    "amount": "Amount to refund",
+    "method": "Refund method",
+    "cash": "Cash",
+    "card": "Card",
+    "reason": "Reason (required)",
+    "reference": "Reference (optional)",
+    "submit": "Issue refund",
+    "cancel": "Cancel",
+    "success": "Refund issued",
+    "error": "Refund failed",
+    "amountRequired": "Enter an amount",
+    "reasonRequired": "Reason is required"
   },
   "sync": {
     "pending": "{{count}} order(s) waiting to sync",
