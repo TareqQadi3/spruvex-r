@@ -41,8 +41,12 @@ export async function bootstrapAppRoleIfRequested(): Promise<void> {
       console.log("[bootstrap] role spruvex_app already exists, skipping CREATE ROLE");
     }
 
+    // Quoted Postgres identifier, not a string literal — double any embedded
+    // `"` per Postgres's quoted-identifier escaping rule. (The previous
+    // `JSON.stringify(...).replace(/"/g, '"')` was a no-op: replacing `"`
+    // with itself doesn't escape anything.)
     await prisma.$executeRawUnsafe(
-      `GRANT CONNECT ON DATABASE ${JSON.stringify(databaseName).replace(/"/g, '"')} TO spruvex_app`
+      `GRANT CONNECT ON DATABASE "${databaseName.replace(/"/g, '""')}" TO spruvex_app`
     );
     await prisma.$executeRawUnsafe(
       "GRANT USAGE ON SCHEMA public TO spruvex_app"
