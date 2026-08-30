@@ -81,7 +81,19 @@
     "pay": "Record payment",
     "exact": "Exact amount",
     "completed": "Fully paid ✔",
-    "showReceipt": "Show receipt"
+    "showReceipt": "Show receipt",
+    "loyalty": {
+      "phonePlaceholder": "Customer phone number",
+      "attach": "Attach customer",
+      "stamps": "{{count}} stamp(s)",
+      "spend": "{{amount}} SAR toward reward",
+      "points": "{{count}} points",
+      "redeem": {
+        "stamp_card": "Redeem stamp reward",
+        "spend_threshold": "Redeem spend discount",
+        "points_per_riyal": "Redeem points"
+      }
+    }
   },
   "discount": {
     "title": "Apply discount",

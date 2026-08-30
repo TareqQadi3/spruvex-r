@@ -189,7 +189,8 @@
     "inventory": "المخزون",
     "reports": "التقارير",
     "billing": "الاشتراك والفوترة",
-    "integrations": "الإضافات"
+    "integrations": "الإضافات",
+    "loyalty": "برنامج الولاء"
   },
   "home": {
     "welcome": "أهلاً {{name}} 👋",
@@ -556,5 +557,42 @@
     "whatsappApprovalPending": "أُرسل، بانتظار الاعتماد",
     "whatsappApprovalApproved": "معتمد — الإرسال شغّال",
     "whatsappApprovalRejected": "مرفوض من Meta"
+  },
+  "loyalty": {
+    "title": "برنامج الولاء",
+    "subtitle": "فعّل نمط واحد أو أكثر — كل كسب/استبدال هو خصم حقيقي أو صنف مجاني حقيقي بفاتورة العميل الفعلية، والهوية عبر رقم الجوال فقط.",
+    "allBranches": "كل الفروع (الافتراضي)",
+    "enabled": "مفعّل",
+    "disabled": "موقوف",
+    "enableThisProgram": "تفعيل هذا النمط",
+    "resetToDefault": "إرجاع للإعداد الافتراضي للمطعم",
+    "stamp": {
+      "stampsRequired": "عدد الدمغات المطلوبة",
+      "rewardProduct": "الصنف المجاني",
+      "earnMode": "الدمغة تُمنح عند شراء",
+      "earnByProduct": "صنف محدد",
+      "earnByCategory": "أي صنف بفئة معينة"
+    },
+    "spend": {
+      "thresholdAmount": "حد الإنفاق (ريال)",
+      "discountPercent": "نسبة الخصم (%)",
+      "resetPeriod": "فترة إعادة التصفير",
+      "resetNone": "بدون حد زمني (تراكمي دائم)",
+      "resetMonthly": "شهري",
+      "resetYearly": "سنوي",
+      "carryOver": "استمرار الفائض بعد الاستبدال"
+    },
+    "points": {
+      "pointsPerRiyal": "نقاط لكل 1 ريال",
+      "redemptionPointsUnit": "النقاط لكل وحدة استبدال",
+      "redemptionSarValue": "قيمة الوحدة بالريال",
+      "hint": "مثال: كل {{unit}} نقطة تُستبدل بخصم {{sar}} ريال."
+    },
+    "tier": {
+      "nameAr": "اسم المستوى (عربي)",
+      "minSpend": "الحد الأدنى للإنفاق التراكمي (ريال)",
+      "discountPercent": "نسبة الخصم الدائم (%)",
+      "addTier": "إضافة مستوى"
+    }
   }
 }

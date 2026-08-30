@@ -42,10 +42,24 @@ export interface ActiveOrder {
 export interface PaymentSummary {
   orderId: string;
   status: string;
+  customerPhone: string | null;
   total: string;
   paid: string;
   remaining: string;
   payments: Array<{ id: string; method: string; amount: string; reference: string | null }>;
+}
+
+export type LoyaltyProgramType = "stamp_card" | "spend_threshold" | "points_per_riyal" | "tier";
+
+export interface LoyaltyBalance {
+  phone: string;
+  exists: boolean;
+  stampCount: number;
+  spendAccumulated: string;
+  pointsBalance: number;
+  lifetimeSpend: string;
+  tierKey: string | null;
+  tierName: string | null;
 }
 
 export interface ReceiptData {
@@ -128,4 +142,13 @@ export const posApi = {
     `/orders/${orderId}/refund`,
     body,
   ),
+
+  setCustomer: (orderId: string, customerPhone: string) =>
+    api<ActiveOrder>(`/orders/${orderId}/customer`, {
+      method: "PUT",
+      body: JSON.stringify({ customerPhone }),
+    }),
+  loyaltyBalance: (phone: string) => api<LoyaltyBalance>(`/loyalty/customers/${encodeURIComponent(phone)}`),
+  redeemLoyalty: (orderId: string, type: LoyaltyProgramType) =>
+    post<{ applied: boolean }>(`/loyalty/orders/${orderId}/redeem`, { type }),
 };

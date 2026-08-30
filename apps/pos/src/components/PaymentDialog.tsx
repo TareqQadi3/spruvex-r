@@ -5,8 +5,113 @@ import { Alert, Badge, Button, Dialog, Input, Label, Spinner, cn } from "@spruve
 
 import { ApiError } from "../lib/api";
 import { formatSar, toHalalas } from "../lib/cart";
-import { posApi, type PaymentSummary } from "../lib/pos-api";
+import { posApi, type LoyaltyBalance, type LoyaltyProgramType, type PaymentSummary } from "../lib/pos-api";
 import { ReceiptView } from "./ReceiptView";
+
+function LoyaltyWidget({
+  orderId,
+  customerPhone,
+  onRedeemed,
+}: {
+  orderId: string;
+  customerPhone: string | null;
+  onRedeemed: () => void;
+}) {
+  const { t } = useTranslation();
+  const [phoneInput, setPhoneInput] = useState(customerPhone ?? "");
+  const [phone, setPhone] = useState(customerPhone);
+  const [balance, setBalance] = useState<LoyaltyBalance | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadBalance = useCallback(async (p: string) => {
+    try {
+      const data = await posApi.loyaltyBalance(p);
+      setBalance(data);
+    } catch {
+      setBalance(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (phone) void loadBalance(phone);
+  }, [phone, loadBalance]);
+
+  async function attachCustomer() {
+    if (!phoneInput || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await posApi.setCustomer(orderId, phoneInput);
+      setPhone(phoneInput);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function redeem(type: LoyaltyProgramType) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await posApi.redeemLoyalty(orderId, type);
+      if (phone) await loadBalance(phone);
+      onRedeemed();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!phone) {
+    return (
+      <div className="flex gap-2">
+        <Input
+          dir="ltr"
+          placeholder={t("payment.loyalty.phonePlaceholder")}
+          value={phoneInput}
+          onChange={(e) => setPhoneInput(e.target.value)}
+        />
+        <Button type="button" variant="secondary" disabled={busy || !phoneInput} onClick={attachCustomer}>
+          {t("payment.loyalty.attach")}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      {error && <Alert variant="destructive">{error}</Alert>}
+      <p className="text-xs text-muted-foreground" dir="ltr">
+        {phone}
+      </p>
+      {balance ? (
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="muted">
+            {t("payment.loyalty.stamps", { count: balance.stampCount })}
+          </Badge>
+          <Badge variant="muted">
+            {t("payment.loyalty.spend", { amount: balance.spendAccumulated })}
+          </Badge>
+          <Badge variant="muted">{t("payment.loyalty.points", { count: balance.pointsBalance })}</Badge>
+          {balance.tierName && <Badge variant="success">{balance.tierName}</Badge>}
+        </div>
+      ) : (
+        <Spinner className="h-4 w-4" />
+      )}
+      <div className="flex flex-wrap gap-2">
+        {(["stamp_card", "spend_threshold", "points_per_riyal"] as const).map((type) => (
+          <Button key={type} type="button" size="sm" variant="outline" disabled={busy} onClick={() => redeem(type)}>
+            {t(`payment.loyalty.redeem.${type}`)}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function PaymentDialog({
   orderId,
@@ -107,6 +212,10 @@ export function PaymentDialog({
                 </Badge>
               ))}
             </div>
+          )}
+
+          {!fullyPaid && (
+            <LoyaltyWidget orderId={orderId} customerPhone={summary.customerPhone} onRedeemed={load} />
           )}
 
           {fullyPaid ? (

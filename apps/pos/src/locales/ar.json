@@ -81,7 +81,19 @@
     "pay": "تسجيل الدفعة",
     "exact": "المبلغ كاملاً",
     "completed": "اكتمل الدفع ✔",
-    "showReceipt": "عرض الإيصال"
+    "showReceipt": "عرض الإيصال",
+    "loyalty": {
+      "phonePlaceholder": "رقم جوال العميل",
+      "attach": "ربط العميل",
+      "stamps": "{{count}} دمغة",
+      "spend": "{{amount}} ريال نحو المكافأة",
+      "points": "{{count}} نقطة",
+      "redeem": {
+        "stamp_card": "استبدال مكافأة الدمغات",
+        "spend_threshold": "استبدال خصم الإنفاق",
+        "points_per_riyal": "استبدال النقاط"
+      }
+    }
   },
   "discount": {
     "title": "تطبيق خصم",

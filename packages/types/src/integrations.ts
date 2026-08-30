@@ -182,8 +182,8 @@ export const WHATSAPP_MESSAGE_TEMPLATES: Record<WhatsappTemplateKey, WhatsappMes
     key: "invoice_sent",
     nameAr: "إرسال الفاتورة",
     nameEn: "Invoice sent",
-    descriptionAr: "يُرسل فور إصدار الفاتورة الرسمية — تفاصيل الفاتورة مكتوبة بالرسالة مع رابط لعرضها كاملة",
-    descriptionEn: "Sent as soon as the official invoice is issued — key details written out, plus a link to view it in full",
+    descriptionAr: "يُرسل فور إصدار الفاتورة الرسمية — تفاصيل الفاتورة مكتوبة بالرسالة مع رابط لعرضها كاملة، ورصيد برنامج الولاء إن وُجد",
+    descriptionEn: "Sent as soon as the official invoice is issued — key details written out, a link to view it in full, and the customer's loyalty balance if any program is active",
     category: "UTILITY",
     suggestedMetaName: "spruvex_invoice_sent",
     variables: [
@@ -191,8 +191,14 @@ export const WHATSAPP_MESSAGE_TEMPLATES: Record<WhatsappTemplateKey, WhatsappMes
       { key: "receiptNumber", nameAr: "رقم الفاتورة", nameEn: "Receipt number", example: "4021" },
       { key: "total", nameAr: "الإجمالي", nameEn: "Total", example: "85.50" },
       { key: "receiptLink", nameAr: "رابط الفاتورة", nameEn: "Receipt link", example: "https://order.spruvex.app/receipt/..." },
+      {
+        key: "loyaltyStatus",
+        nameAr: "رصيد الولاء",
+        nameEn: "Loyalty status",
+        example: "تبقى لك 3 دمغات للحصول على مشروب مجاني",
+      },
     ],
-    bodyAr: "فاتورتك من {{1}} — رقم الفاتورة {{2}}، الإجمالي {{3}} ريال. لعرض التفاصيل الكاملة: {{4}}",
+    bodyAr: "فاتورتك من {{1}} — رقم الفاتورة {{2}}، الإجمالي {{3}} ريال. لعرض التفاصيل الكاملة: {{4}}\n{{5}}",
   },
   order_feedback_request: {
     key: "order_feedback_request",

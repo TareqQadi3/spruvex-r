@@ -60,6 +60,10 @@ export const PERMISSIONS = {
   // Billing (SaaS subscription)
   "billing.view": "View the subscription plan, trial status and usage",
   "billing.manage": "Change plan and manage the subscription",
+
+  // Loyalty program
+  "loyalty.manage": "Configure loyalty programs (stamps, spend threshold, points, tiers)",
+  "loyalty.redeem": "View a customer's loyalty balance and apply redemptions at checkout",
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

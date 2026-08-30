@@ -4,6 +4,7 @@ import {
   BookOpen,
   ChefHat,
   CreditCard,
+  Gift,
   Home,
   Languages,
   LayoutGrid,
@@ -41,6 +42,7 @@ const ICONS: Record<string, LucideIcon> = {
   package: Package,
   "credit-card": CreditCard,
   puzzle: Puzzle,
+  gift: Gift,
 };
 
 export function DashboardLayout() {

@@ -23,6 +23,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly PermissionKey
     "shifts.close",
     "shifts.cash_movement",
     "shifts.view",
+    "loyalty.redeem",
   ],
   waiter: [
     "menu.view",

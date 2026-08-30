@@ -28,7 +28,7 @@ export class PaymentsService {
   async summary(orderId: string) {
     const order = await this.prisma.scoped.order.findFirst({
       where: { id: orderId, deletedAt: null },
-      select: { id: true, total: true, status: true },
+      select: { id: true, total: true, status: true, customerPhone: true },
     });
     if (!order) {
       throw new NotFoundException("Order not found");
@@ -45,6 +45,7 @@ export class PaymentsService {
     return {
       orderId,
       status: order.status,
+      customerPhone: order.customerPhone,
       total: halalasToSar(totalHalalas),
       paid: halalasToSar(paidHalalas),
       remaining: halalasToSar(Math.max(totalHalalas - paidHalalas, 0)),

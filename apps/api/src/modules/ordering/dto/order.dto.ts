@@ -86,6 +86,18 @@ export class CreateOrderDto {
   confirm?: boolean;
 }
 
+/** Attaches/updates a customer on an already-created, still-open order (POS: "add customer at checkout"). */
+export class SetOrderCustomerDto {
+  @IsString()
+  @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
+  customerPhone!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  customerName?: string;
+}
+
 export class TransitionOrderDto {
   @IsIn(ORDER_STATUSES as unknown as string[])
   status!: OrderStatus;

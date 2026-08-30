@@ -3,6 +3,7 @@ import { OnEvent } from "@nestjs/event-emitter";
 
 import { DOMAIN_EVENTS } from "@spruvex-r/types";
 
+import { LoyaltyCustomerService } from "../../loyalty/loyalty-customer.service";
 import { PrismaService } from "../../../shared/prisma/prisma.service";
 import type { OrderEventPayload } from "../../../shared/realtime/orders-realtime.listener";
 import { WhatsappService } from "./whatsapp.service";
@@ -32,6 +33,7 @@ export class WhatsappOrderListener {
   constructor(
     private readonly whatsapp: WhatsappService,
     private readonly prisma: PrismaService,
+    private readonly loyalty: LoyaltyCustomerService,
   ) {}
 
   @OnEvent(DOMAIN_EVENTS.ORDER_CREATED)
@@ -90,11 +92,18 @@ export class WhatsappOrderListener {
     ]);
     if (!receipt || !order?.customerPhone) return;
 
+    const loyaltyStatus = await this.loyalty.getWhatsappStatusLine(
+      payload.tenantId,
+      payload.branchId,
+      order.customerPhone,
+    );
+
     await this.whatsapp.sendTemplate("invoice_sent", order.customerPhone, {
       restaurantName: tenant?.name ?? "",
       receiptNumber: String(receipt.receiptNumber),
       total: String(receipt.total),
       receiptLink: `${orderingBaseUrl()}/receipt/${payload.receiptId}`,
+      loyaltyStatus,
     });
   }
 }

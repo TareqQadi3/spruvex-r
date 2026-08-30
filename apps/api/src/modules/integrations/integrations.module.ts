@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { LoyaltyModule } from "../loyalty/loyalty.module";
 import { OrderingModule } from "../ordering/ordering.module";
 import { ConnectionsController } from "./connections.controller";
 import { ConnectionsService } from "./connections.service";
@@ -32,7 +33,7 @@ import { WhatsappService } from "./whatsapp/whatsapp.service";
  * partnership — see NfcProviderMeta's doc comment) remains to be wired up.
  */
 @Module({
-  imports: [OrderingModule],
+  imports: [OrderingModule, LoyaltyModule],
   controllers: [
     ConnectionsController,
     DeliveryMappingController,

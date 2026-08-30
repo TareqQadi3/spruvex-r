@@ -16,7 +16,7 @@ import { ORDER_STATUSES, type OrderStatus } from "@spruvex-r/types";
 
 import { ApplyDiscountDto } from "../payments/dto/payments.dto";
 import { RequirePermission } from "../../shared/rbac/require-permission.decorator";
-import { CreateOrderDto, EditOrderItemsDto, TransitionOrderDto } from "./dto/order.dto";
+import { CreateOrderDto, EditOrderItemsDto, SetOrderCustomerDto, TransitionOrderDto } from "./dto/order.dto";
 import { OrderingService } from "./ordering.service";
 
 function parseStatuses(raw?: string): OrderStatus[] | undefined {
@@ -73,6 +73,13 @@ export class OrdersController {
   @Put(":id/items")
   editItems(@Param("id", ParseUUIDPipe) id: string, @Body() dto: EditOrderItemsDto) {
     return this.ordering.editItems(id, dto.items);
+  }
+
+  /** POS "add customer at checkout" — needed so a walk-in can use the loyalty program. */
+  @RequirePermission("orders.create")
+  @Put(":id/customer")
+  setCustomer(@Param("id", ParseUUIDPipe) id: string, @Body() dto: SetOrderCustomerDto) {
+    return this.ordering.setCustomer(id, dto.customerPhone, dto.customerName);
   }
 
   @RequirePermission("orders.discount")

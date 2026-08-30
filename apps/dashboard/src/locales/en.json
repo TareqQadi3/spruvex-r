@@ -189,7 +189,8 @@
     "inventory": "Inventory",
     "reports": "Reports",
     "billing": "Billing & subscription",
-    "integrations": "Integrations"
+    "integrations": "Integrations",
+    "loyalty": "Loyalty program"
   },
   "home": {
     "welcome": "Welcome, {{name}} 👋",
@@ -556,5 +557,42 @@
     "whatsappApprovalPending": "Submitted, awaiting approval",
     "whatsappApprovalApproved": "Approved — sending is live",
     "whatsappApprovalRejected": "Rejected by Meta"
+  },
+  "loyalty": {
+    "title": "Loyalty program",
+    "subtitle": "Enable one or more reward modes — every earn/redeem is a real discount or a real free item on the customer's actual invoice, identified by phone number only.",
+    "allBranches": "All branches (default)",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enableThisProgram": "Enable this program",
+    "resetToDefault": "Reset to tenant-wide default",
+    "stamp": {
+      "stampsRequired": "Stamps required",
+      "rewardProduct": "Free reward product",
+      "earnMode": "Earns a stamp when the customer buys",
+      "earnByProduct": "A specific product",
+      "earnByCategory": "Any product in a category"
+    },
+    "spend": {
+      "thresholdAmount": "Threshold amount (SAR)",
+      "discountPercent": "Reward discount (%)",
+      "resetPeriod": "Reset period",
+      "resetNone": "Never (lifetime)",
+      "resetMonthly": "Monthly",
+      "resetYearly": "Yearly",
+      "carryOver": "Carry the remainder forward after redemption"
+    },
+    "points": {
+      "pointsPerRiyal": "Points per 1 SAR spent",
+      "redemptionPointsUnit": "Points per redemption unit",
+      "redemptionSarValue": "SAR value per unit",
+      "hint": "Example: every {{unit}} points redeem for {{sar}} SAR off."
+    },
+    "tier": {
+      "nameAr": "Tier name (Arabic)",
+      "minSpend": "Minimum lifetime spend (SAR)",
+      "discountPercent": "Standing discount (%)",
+      "addTier": "Add tier"
+    }
   }
 }

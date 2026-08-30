@@ -150,6 +150,9 @@ model Tenant {
   whatsappTemplateOverrides WhatsappTemplateOverride[]
   productStockHides         ProductStockHide[]
   orderFeedbackRequests     OrderFeedbackRequest[]
+  loyaltyProgramConfigs     LoyaltyProgramConfig[]
+  loyaltyCustomers          LoyaltyCustomer[]
+  loyaltyLedgerEntries      LoyaltyLedgerEntry[]
 
   @@map("tenants")
 }
@@ -192,6 +195,8 @@ model Branch {
   integrationConnections IntegrationConnection[]
   productStockHides      ProductStockHide[]
   feedbackRequests       OrderFeedbackRequest[]
+  loyaltyProgramConfigs  LoyaltyProgramConfig[]
+  loyaltyLedgerEntries   LoyaltyLedgerEntry[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -773,16 +778,17 @@ model Order {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant          Tenant                @relation(fields: [tenantId], references: [id])
-  branch          Branch                @relation(fields: [branchId], references: [id])
-  table           Table?                @relation(fields: [tableId], references: [id])
-  tableSession    TableSession?         @relation(fields: [tableSessionId], references: [id])
-  items           OrderItem[]
-  statusHistory   OrderStatusHistory[]
-  payments        Payment[]
-  receipt         Receipt?
-  refunds         Refund[]
-  feedbackRequest OrderFeedbackRequest?
+  tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  branch               Branch                @relation(fields: [branchId], references: [id])
+  table                Table?                @relation(fields: [tableId], references: [id])
+  tableSession         TableSession?         @relation(fields: [tableSessionId], references: [id])
+  items                OrderItem[]
+  statusHistory        OrderStatusHistory[]
+  payments             Payment[]
+  receipt              Receipt?
+  refunds              Refund[]
+  feedbackRequest      OrderFeedbackRequest?
+  loyaltyLedgerEntries LoyaltyLedgerEntry[]
 
   @@unique([branchId, orderDate, orderNumber])
   @@unique([tenantId, idempotencyKey])
@@ -1698,4 +1704,138 @@ model WhatsappTemplateOverride {
 
   @@unique([tenantId, templateKey])
   @@map("whatsapp_template_overrides")
+}
+
+// ---------------------------------------------------------------------------
+// Loyalty program — stamp cards, spend-threshold discounts, points-per-riyal,
+// and membership tiers. Every earn/redeem is a REAL order mutation (a real
+// discount via OrderingService.applyDiscount, or a real $0 line via
+// OrderingService.addComplimentaryItem) — this schema only tracks the
+// customer's running balance and an auditable ledger, never a parallel price.
+
+enum LoyaltyProgramType {
+  stamp_card
+  spend_threshold
+  points_per_riyal
+  tier
+
+  @@map("loyalty_program_type")
+}
+
+/// One program's rules. branchId = null applies tenant-wide; a specific
+/// branchId overrides the tenant-wide row for just that branch (same nullable
+/// pattern as IntegrationConnection). isEnabled is the "pause without losing
+/// data" toggle — the config and every customer's accumulated balance survive
+/// a merchant turning a program off and back on.
+model LoyaltyProgramConfig {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  branchId String? @map("branch_id") @db.Uuid
+
+  type      LoyaltyProgramType
+  isEnabled Boolean            @default(true) @map("is_enabled")
+
+  /// Shape depends on `type` (validated at the DTO layer):
+  /// stamp_card: { stampsRequired, earnProductId?, earnCategoryId?, rewardProductId }
+  /// spend_threshold: { thresholdAmount, discountPercent, resetPeriod: "monthly"|"yearly"|"none", carryOver }
+  /// points_per_riyal: { pointsPerRiyal, redemptionPointsUnit, redemptionSarValue }
+  /// tier: { tiers: [{ key, nameAr, nameEn, minSpend, discountPercent }, ...] }
+  config Json @default("{}")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@unique([tenantId, branchId, type])
+  @@index([tenantId, type])
+  @@map("loyalty_program_configs")
+}
+
+/// One customer's loyalty identity + running balances, keyed by phone number
+/// ONLY (no separate account/login) — the same number used for ordering and
+/// WhatsApp. Shared across all of the tenant's branches: a customer's stamps/
+/// points/spend/tier follow them between branches, while each branch's
+/// LoyaltyProgramConfig decides whether earning/redemption is active there.
+model LoyaltyCustomer {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  /// Same format as Order.customerPhone.
+  phone    String
+  /// Last known name, opportunistically updated from orders.
+  name     String?
+
+  stampCount Int @default(0) @map("stamp_count")
+
+  /// Toward the current spend_threshold cycle — reset per its resetPeriod/carryOver.
+  spendAccumulated Decimal   @default(0) @map("spend_accumulated") @db.Decimal(12, 2)
+  spendPeriodStart DateTime? @map("spend_period_start")
+
+  pointsBalance Int @default(0) @map("points_balance")
+
+  /// Never resets — the sole input to tier calculation.
+  lifetimeSpend Decimal @default(0) @map("lifetime_spend") @db.Decimal(12, 2)
+  /// Cached current tier key (from the tier config's `tiers[].key`); recomputed on every earn.
+  tierKey       String? @map("tier_key")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant               @relation(fields: [tenantId], references: [id])
+  ledgerEntries LoyaltyLedgerEntry[]
+
+  @@unique([tenantId, phone])
+  @@map("loyalty_customers")
+}
+
+enum LoyaltyLedgerType {
+  stamp_earned
+  stamp_redeemed
+  stamp_reversed
+  spend_accrued
+  spend_redeemed
+  spend_reversed
+  points_earned
+  points_redeemed
+  points_reversed
+  tier_changed
+
+  @@map("loyalty_ledger_type")
+}
+
+/// Append-only audit trail for every balance change — the basis for refund/
+/// cancellation reversal (find every entry tied to orderId and undo it) and
+/// for the audit log the merchant can inspect per customer.
+model LoyaltyLedgerEntry {
+  id         String  @id @default(uuid()) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  branchId   String  @map("branch_id") @db.Uuid
+  customerId String  @map("customer_id") @db.Uuid
+  /// The invoice/order that triggered this entry (earn or redeem) — null for
+  /// a manual adjustment with no order context.
+  orderId    String? @map("order_id") @db.Uuid
+
+  type   LoyaltyLedgerType
+  /// Signed delta on the counter `type` refers to (stamps/points/SAR) —
+  /// interpretation depends on `type`; never itself a price.
+  amount Decimal           @db.Decimal(12, 3)
+  /// Free-form context, e.g. { rewardProductId } or { tierFrom, tierTo }.
+  meta   Json              @default("{}")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  /// null = system/automatic; set = the cashier who triggered a manual redemption.
+  performedBy String?  @map("performed_by") @db.Uuid
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id])
+  branch   Branch          @relation(fields: [branchId], references: [id])
+  customer LoyaltyCustomer @relation(fields: [customerId], references: [id])
+  order    Order?          @relation(fields: [orderId], references: [id])
+
+  @@index([tenantId, customerId, createdAt])
+  @@index([tenantId, orderId])
+  @@map("loyalty_ledger_entries")
 }

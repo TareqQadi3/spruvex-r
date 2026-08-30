@@ -240,12 +240,17 @@ export class OrderingService {
    * Applies (or replaces) a discount. Requires orders.discount (guard) and:
    * - the order is open and has NO recorded payments,
    * - the discount does not exceed the tenant's configurable cap
-   *   (settings.maxDiscountPercent, default 20%).
+   *   (settings.maxDiscountPercent, default 20%) — unless `opts.bypassCap` is
+   *   set, used exclusively by LoyaltyService for a merchant-configured
+   *   reward (never reachable from the HTTP DTO, which has no such field):
+   *   the cap exists to bound a cashier's discretionary discount, not the
+   *   tenant's own loyalty program economics.
    * Totals + VAT are recomputed; who/why is stored and audited.
    */
   async applyDiscount(
     id: string,
     dto: { type: "percentage" | "fixed"; value: string; reason: string },
+    opts: { bypassCap?: boolean } = {},
   ) {
     const ctx = this.tenantContext.contextOrThrow;
     const tenantId = this.tenantContext.tenantIdOrThrow;
@@ -275,7 +280,7 @@ export class OrderingService {
       let discountHalalas: number;
       if (dto.type === "percentage") {
         const pct = Number(dto.value);
-        if (pct <= 0 || pct > maxPercent) {
+        if (pct <= 0 || (!opts.bypassCap && pct > maxPercent)) {
           throw new BadRequestException(
             `Discount must be between 0 and ${maxPercent}% (restaurant limit)`,
           );
@@ -286,7 +291,7 @@ export class OrderingService {
           throw new BadRequestException("Fixed discount must be positive and below the subtotal");
         }
         const pctEquivalent = (valueHalalas / subtotalHalalas) * 100;
-        if (pctEquivalent > maxPercent) {
+        if (!opts.bypassCap && pctEquivalent > maxPercent) {
           throw new BadRequestException(
             `Discount exceeds the restaurant limit (${maxPercent}%)`,
           );
@@ -383,6 +388,73 @@ export class OrderingService {
   }
 
   /**
+   * Appends a genuinely free line to an open, unpaid order — used for
+   * loyalty stamp-card rewards. The product's real recipe cost is still
+   * snapshotted (a free item still costs the restaurant real money, and
+   * food-cost/margin reports must show that), but unitPrice/lineTotal are
+   * forced to zero: a real $0 invoice line, not a hidden discount, so VAT
+   * on it is correctly zero (zero consideration) and stock deduction still
+   * fires normally on completion via the usual productId+quantity path.
+   */
+  async addComplimentaryItem(id: string, productId: string, reason: string) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const actor = actorOrNull(ctx.userId);
+
+    const order = await this.prisma.scopedTransaction(async (tx) => {
+      const current = await tx.order.findFirst({ where: { id, deletedAt: null } });
+      if (!current) {
+        throw new NotFoundException("Order not found");
+      }
+      if (["completed", "cancelled"].includes(current.status)) {
+        throw new ConflictException("Order is closed — cannot add a complimentary item");
+      }
+      const paid = await tx.payment.count({ where: { orderId: id, status: "completed" } });
+      if (paid > 0) {
+        throw new ConflictException("Order already has payments — cannot add a complimentary item");
+      }
+
+      const [priced] = await this.priceItems(tx, [{ productId, quantity: 1 } as OrderItemInputDto], current.branchId);
+
+      await tx.orderItem.create({
+        data: {
+          tenantId,
+          orderId: id,
+          productId: priced.productId,
+          productSnapshot: { ...priced.productSnapshot, price: "0.00", complimentary: true },
+          quantity: 1,
+          unitPrice: "0",
+          lineTotal: "0",
+          unitCost: priced.unitCostUnits !== null ? costUnitsToSar(priced.unitCostUnits) : null,
+          lineCost: priced.lineCostUnits !== null ? costUnitsToSar(priced.lineCostUnits) : null,
+          notes: reason,
+        },
+      });
+
+      // The free line contributes 0 to subtotal/VAT/total — nothing else to recompute.
+      return tx.order.update({
+        where: { id },
+        data: { updatedBy: actor },
+        include: ORDER_INCLUDE,
+      });
+    });
+
+    await this.audit.log({
+      action: "order.complimentary_item_added",
+      entityType: "order",
+      entityId: id,
+      branchId: order.branchId,
+      meta: { productId, reason },
+    });
+    this.events.emit(DOMAIN_EVENTS.ORDER_STATUS_CHANGED, {
+      tenantId,
+      branchId: order.branchId,
+      order,
+    });
+    return order;
+  }
+
+  /**
    * Replaces the item list of a NOT-YET-CONFIRMED order (status = new).
    * Items are re-validated and re-priced against the catalog; totals and
    * any existing percentage discount are recomputed.
@@ -461,6 +533,49 @@ export class OrderingService {
       entityId: id,
       branchId: order.branchId,
       meta: { itemCount: items.length, total: order.total.toString() },
+    });
+    this.events.emit(DOMAIN_EVENTS.ORDER_STATUS_CHANGED, {
+      tenantId,
+      branchId: order.branchId,
+      order,
+    });
+    return order;
+  }
+
+  /**
+   * Attaches/updates a customer on an already-created, still-open order —
+   * the POS "add customer at checkout" action, for a walk-in who wasn't
+   * identified when the order was first created. This is what lets the
+   * loyalty program's manual redemption (which reads the order's own
+   * customerPhone) work for a dine-in/walk-in sale, not just guest/delivery
+   * orders that already collect a phone number up front.
+   */
+  async setCustomer(id: string, customerPhone: string, customerName: string | undefined) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const actor = actorOrNull(ctx.userId);
+
+    const order = await this.prisma.scopedTransaction(async (tx) => {
+      const current = await tx.order.findFirst({ where: { id, deletedAt: null } });
+      if (!current) {
+        throw new NotFoundException("Order not found");
+      }
+      if (["completed", "cancelled"].includes(current.status)) {
+        throw new ConflictException("Order is closed");
+      }
+      return tx.order.update({
+        where: { id },
+        data: { customerPhone, customerName, updatedBy: actor },
+        include: ORDER_INCLUDE,
+      });
+    });
+
+    await this.audit.log({
+      action: "order.customer_set",
+      entityType: "order",
+      entityId: id,
+      branchId: order.branchId,
+      meta: { customerPhone },
     });
     this.events.emit(DOMAIN_EVENTS.ORDER_STATUS_CHANGED, {
       tenantId,

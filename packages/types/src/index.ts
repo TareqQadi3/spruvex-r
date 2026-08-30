@@ -51,3 +51,14 @@ export {
   WHATSAPP_TEMPLATE_KEYS,
   WHATSAPP_MESSAGE_TEMPLATES,
 } from "./integrations";
+export type {
+  LoyaltyProgramType,
+  LoyaltyProgramMeta,
+  StampCardConfig,
+  SpendThresholdConfig,
+  PointsPerRiyalConfig,
+  TierDefinition,
+  TierConfig,
+  LoyaltyConfigShape,
+} from "./loyalty";
+export { LOYALTY_PROGRAM_TYPES, LOYALTY_PROGRAMS } from "./loyalty";
