@@ -6,7 +6,7 @@ import {
   GUEST_ACTOR,
   TenantContextService,
 } from "../../shared/tenancy/tenant-context.service";
-import { GuestCreateOrderDto } from "./dto/order.dto";
+import { GuestCreateOrderDto, GuestTableOrderDto } from "./dto/order.dto";
 import { OrderingService } from "./ordering.service";
 
 /**
@@ -199,7 +199,7 @@ export class GuestOrderingService {
           select: { name: true, nameEn: true, logoUrl: true, currency: true, defaultLocale: true },
         },
         items: {
-          select: { quantity: true, productSnapshot: true },
+          select: { quantity: true, productSnapshot: true, participantPhone: true },
           orderBy: { createdAt: "asc" },
         },
       },
@@ -220,6 +220,7 @@ export class GuestOrderingService {
         quantity: item.quantity,
         name: (item.productSnapshot as { name: string }).name,
         nameEn: (item.productSnapshot as { nameEn: string | null }).nameEn,
+        participantPhone: item.participantPhone,
       })),
     };
   }
@@ -288,28 +289,30 @@ export class GuestOrderingService {
     };
   }
 
-  /** Creates a dine-in order attached to the table's open session. */
-  async createOrder(qrToken: string, dto: GuestCreateOrderDto, idempotencyKey: string) {
+  /**
+   * Joins (or opens) the table's shared session and either creates its
+   * first order or appends this round to whichever order the session
+   * already has open — see `OrderingService.orderForTable` for the whole
+   * "several phones, one real order" mechanism and its concurrency handling.
+   */
+  async createOrder(qrToken: string, dto: GuestTableOrderDto, idempotencyKey: string) {
     const table = await this.resolveToken(qrToken);
 
-    const order = await this.tenantContext.run(
+    const { order, sessionId } = await this.tenantContext.run(
       { userId: GUEST_ACTOR, tenantId: table.tenantId, permissions: new Set() },
       () =>
-        this.ordering.create(
-          {
-            type: "dine_in",
-            tableId: table.id,
-            items: dto.items,
-            notes: dto.notes,
-            customerName: dto.customerName,
-          },
-          { source: "qr", tenantId: table.tenantId },
+        this.ordering.orderForTable(
+          table.id,
+          dto.items,
+          dto.customerPhone,
+          { source: "qr", notes: dto.notes, customerName: dto.customerName },
           idempotencyKey,
         ),
     );
 
     return {
       orderId: order.id,
+      sessionId,
       orderNumber: order.orderNumber,
       status: order.status,
       total: order.total.toString(),

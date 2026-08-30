@@ -24,12 +24,19 @@ export function CartPageContent({
   requirePhone,
   notice,
   onSubmit,
+  initialPhone,
+  onPhoneChange,
 }: {
   currency: string;
-  /** Pickup orders require a phone number; dine-in does not. */
+  /** Pickup orders and shared table-session orders both require a phone
+   * number — it's the identity, not just a delivery contact. */
   requirePhone: boolean;
   notice: string;
   onSubmit: (ctx: CartSubmitContext) => Promise<GuestOrderResult>;
+  /** Pre-fills the phone field (e.g. remembered from this device's last
+   * round at this table) so returning to order more doesn't mean retyping it. */
+  initialPhone?: string;
+  onPhoneChange?: (phone: string) => void;
 }) {
   const { t } = useLocale();
   const name = useLocalizedField();
@@ -37,7 +44,7 @@ export function CartPageContent({
   const { lines, removeLine, setQuantity, clear } = useCart();
 
   const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerPhone, setCustomerPhone] = useState(initialPhone ?? "");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -156,7 +163,10 @@ export function CartPageContent({
             type="tel"
             placeholder={t("cart.phone")}
             value={customerPhone}
-            onChange={(e) => setCustomerPhone(e.target.value)}
+            onChange={(e) => {
+              setCustomerPhone(e.target.value);
+              onPhoneChange?.(e.target.value);
+            }}
             required
           />
         )}

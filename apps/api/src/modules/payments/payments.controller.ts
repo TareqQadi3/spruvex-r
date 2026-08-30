@@ -15,7 +15,7 @@ import * as QRCode from "qrcode";
 
 import { RequirePermission } from "../../shared/rbac/require-permission.decorator";
 import { DebitNotesService } from "./debit-notes.service";
-import { IssueDebitNoteDto, RecordPaymentDto, RefundOrderDto } from "./dto/payments.dto";
+import { IssueDebitNoteDto, RecordPaymentDto, RefundItemDto, RefundOrderDto } from "./dto/payments.dto";
 import { PaymentsService } from "./payments.service";
 import { ReceiptsService } from "./receipts.service";
 import { RefundsService } from "./refunds.service";
@@ -75,6 +75,17 @@ export class PaymentsController {
   @Post("refund")
   refund(@Param("orderId", ParseUUIDPipe) orderId: string, @Body() dto: RefundOrderDto) {
     return this.refunds.refund(orderId, dto);
+  }
+
+  /** Refunds one order line — the shared table-session "cancel just my item" case. */
+  @RequirePermission("payments.refund")
+  @Post("items/:itemId/refund")
+  refundItem(
+    @Param("orderId", ParseUUIDPipe) orderId: string,
+    @Param("itemId", ParseUUIDPipe) itemId: string,
+    @Body() dto: RefundItemDto,
+  ) {
+    return this.refunds.refundItem(orderId, itemId, dto);
   }
 
   @RequirePermission("payments.refund")

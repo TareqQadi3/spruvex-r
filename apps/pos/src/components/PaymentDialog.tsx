@@ -118,11 +118,20 @@ export function PaymentDialog({
   orderNumber,
   onClose,
   onCompleted,
+  presetAmount,
+  presetLabel,
 }: {
   orderId: string;
   orderNumber: number;
   onClose: () => void;
   onCompleted: () => void;
+  /** Pre-fills the amount field (e.g. one participant's computed share of a
+   * split bill) instead of defaulting to the full remaining balance. The
+   * cashier can still edit it — this is the same multi-tender payment
+   * endpoint, just seeded with a suggested amount. */
+  presetAmount?: string;
+  /** Shown above the amount field when charging a specific participant's share. */
+  presetLabel?: string;
 }) {
   const { t } = useTranslation();
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
@@ -137,8 +146,10 @@ export function PaymentDialog({
   const load = useCallback(async () => {
     const data = await posApi.paymentSummary(orderId);
     setSummary(data);
-    setAmount(data.remaining);
-  }, [orderId]);
+    // A preset only makes sense the first time the dialog opens for this
+    // amount — after a payment is recorded, fall back to whatever's left.
+    setAmount((current) => (current === "" && presetAmount ? presetAmount : data.remaining));
+  }, [orderId, presetAmount]);
 
   useEffect(() => {
     void load();
@@ -246,7 +257,10 @@ export function PaymentDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="pay-amount">{t("payment.amount")} (SAR)</Label>
+                <Label htmlFor="pay-amount">
+                  {presetLabel ? `${presetLabel} — ` : ""}
+                  {t("payment.amount")} (SAR)
+                </Label>
                 <div className="flex gap-2">
                   <Input
                     id="pay-amount"

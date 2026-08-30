@@ -8,7 +8,7 @@
     "error": "Sign-in failed"
   },
   "branch": { "select": "Select branch" },
-  "tabs": { "menu": "New order", "orders": "Active orders" },
+  "tabs": { "menu": "New order", "orders": "Active orders", "sessions": "Table sessions" },
   "pos": {
     "all": "All",
     "cart": "Current order",
@@ -135,6 +135,21 @@
   "sync": {
     "pending": "{{count}} order(s) waiting to sync",
     "syncing": "Syncing..."
+  },
+  "sessions": {
+    "empty": "No open table sessions right now",
+    "noParticipants": "No one has scanned this table's QR yet",
+    "noOrderYet": "No order placed on this session yet",
+    "stale": "Inactive — needs attention",
+    "unpaidBalance": "Unpaid balance",
+    "unpaidCloseWarning": "This table still has an unpaid balance of {{amount}} SAR. Closing anyway will not collect it — only do this if you're certain.",
+    "addItems": "Add items",
+    "splitAndPay": "Split & pay",
+    "close": "Close session",
+    "forceClose": "Close anyway",
+    "splitTitle": "Split bill — order #{{number}}",
+    "splitMode": { "equal": "Split equally", "by_item": "Each pays their own" },
+    "sharedBucket": "Shared / unassigned items"
   },
   "common": { "language": "العربية", "loading": "Loading...", "error": "Something went wrong" }
 }

@@ -65,11 +65,30 @@ export class WhatsappOrderListener {
       where: { id: payload.tenantId },
       select: { name: true },
     });
-    await this.whatsapp.sendTemplate(
+    const recipients = await this.recipientPhones(order.id, order.customerPhone);
+    await this.whatsapp.sendTemplateToMany(
       order.status === "preparing" ? "order_preparing" : "order_ready",
-      order.customerPhone,
+      recipients,
       { orderNumber: String(order.orderNumber), restaurantName: tenant?.name ?? "" },
     );
+  }
+
+  /**
+   * Shared table-session orders carry one phone per line
+   * (`OrderItem.participantPhone`) instead of the single `Order.customerPhone`
+   * — status/invoice updates should reach everyone who actually ordered, not
+   * just whoever's phone happens to sit on the order row. Falls back to that
+   * one phone for every non-session order, unchanged from before this
+   * feature existed.
+   */
+  private async recipientPhones(orderId: string, fallbackPhone: string | null): Promise<string[]> {
+    const items = await this.prisma.scoped.orderItem.findMany({
+      where: { orderId, participantPhone: { not: null } },
+      select: { participantPhone: true },
+      distinct: ["participantPhone"],
+    });
+    const phones = items.map((i) => i.participantPhone).filter((p): p is string => Boolean(p));
+    return phones.length > 0 ? phones : [fallbackPhone].filter((p): p is string => Boolean(p));
   }
 
   @OnEvent(DOMAIN_EVENTS.INVOICE_ISSUED)
@@ -92,18 +111,20 @@ export class WhatsappOrderListener {
     ]);
     if (!receipt || !order?.customerPhone) return;
 
-    const loyaltyStatus = await this.loyalty.getWhatsappStatusLine(
-      payload.tenantId,
-      payload.branchId,
-      order.customerPhone,
-    );
-
-    await this.whatsapp.sendTemplate("invoice_sent", order.customerPhone, {
-      restaurantName: tenant?.name ?? "",
-      receiptNumber: String(receipt.receiptNumber),
-      total: String(receipt.total),
-      receiptLink: `${orderingBaseUrl()}/receipt/${payload.receiptId}`,
-      loyaltyStatus,
-    });
+    const recipients = await this.recipientPhones(payload.orderId, order.customerPhone);
+    for (const phone of recipients) {
+      const loyaltyStatus = await this.loyalty.getWhatsappStatusLine(
+        payload.tenantId,
+        payload.branchId,
+        phone,
+      );
+      await this.whatsapp.sendTemplate("invoice_sent", phone, {
+        restaurantName: tenant?.name ?? "",
+        receiptNumber: String(receipt.receiptNumber),
+        total: String(receipt.total),
+        receiptLink: `${orderingBaseUrl()}/receipt/${payload.receiptId}`,
+        loyaltyStatus,
+      });
+    }
   }
 }

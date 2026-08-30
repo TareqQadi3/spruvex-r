@@ -28,10 +28,13 @@ import {
   type MenuProduct,
 } from "../lib/cart";
 import { isNetworkError, offlineQueue, type SyncState } from "../lib/offline-queue";
-import type { Shift } from "../lib/pos-api";
+import { posApi, type Shift } from "../lib/pos-api";
 import { PaymentDialog } from "../components/PaymentDialog";
 import { ShiftBar } from "../components/ShiftBar";
 import { OrdersScreen } from "./OrdersScreen";
+import { SessionsScreen } from "./SessionsScreen";
+
+const ACTIVE_ORDER_STATUSES = new Set(["new", "confirmed", "preparing", "ready", "served"]);
 
 interface Category {
   id: string;
@@ -77,7 +80,7 @@ export function PosScreen({
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
-  const [tab, setTab] = useState<"menu" | "orders">("menu");
+  const [tab, setTab] = useState<"menu" | "orders" | "sessions">("menu");
   const [shift, setShift] = useState<Shift | null>(null);
   const [sync, setSync] = useState<SyncState>({ pending: 0, syncing: false });
   const [payFor, setPayFor] = useState<{ id: string; orderNumber: number } | null>(null);
@@ -177,23 +180,41 @@ export function PosScreen({
     }
     setSending(true);
     setFeedback(null);
+    const items = cart.map((line) => ({
+      productId: line.product.id,
+      quantity: line.quantity,
+      ...(line.modifiers.length > 0 ? { modifierIds: line.modifiers.map((m) => m.id) } : {}),
+      ...(line.notes ? { notes: line.notes } : {}),
+    }));
     const idempotencyKey = crypto.randomUUID();
     const body = {
       type: orderType,
       ...(orderType === "dine_in" ? { tableId } : { branchId }),
       confirm: true,
       ...(orderNotes ? { notes: orderNotes } : {}),
-      items: cart.map((line) => ({
-        productId: line.product.id,
-        quantity: line.quantity,
-        ...(line.modifiers.length > 0 ? { modifierIds: line.modifiers.map((m) => m.id) } : {}),
-        ...(line.notes ? { notes: line.notes } : {}),
-      })),
+      items,
     };
+    // A dine-in table already mid-session (someone scanned its QR, or an
+    // earlier round was sent) must gain a new ROUND on that same order,
+    // never a second separate one — the whole table settles as one bill.
+    let existingSessionOrder: { id: string; orderNumber: number } | null = null;
     try {
-      const order = await post<{ id: string; orderNumber: number }>("/orders", body, {
-        "Idempotency-Key": idempotencyKey,
-      });
+      // Re-check right before sending rather than trusting cached state, to
+      // keep the window where two staff members could race as small as
+      // possible (the server's row lock is still the real guarantee).
+      if (orderType === "dine_in" && tableId) {
+        const openSessions = await posApi.listOpenSessions(branchId);
+        const match = openSessions.find((s) => s.table.id === tableId);
+        if (match?.order && ACTIVE_ORDER_STATUSES.has(match.order.status)) {
+          existingSessionOrder = match.order;
+        }
+      }
+
+      const order = existingSessionOrder
+        ? await posApi.appendItemsToOrder(existingSessionOrder.id, items)
+        : await post<{ id: string; orderNumber: number }>("/orders", body, {
+            "Idempotency-Key": idempotencyKey,
+          });
       setCart([]);
       setOrderNotes("");
       setFeedback({ kind: "ok", text: t("pos.sent", { number: order.orderNumber }) });
@@ -202,8 +223,12 @@ export function PosScreen({
         setPayFor({ id: order.id, orderNumber: order.orderNumber });
       }
     } catch (e) {
-      if (isNetworkError(e)) {
-        // Degraded mode: queue for automatic retry with the same key.
+      if (isNetworkError(e) && !existingSessionOrder) {
+        // Degraded mode: queue for automatic retry with the same key. The
+        // offline queue only knows how to replay order CREATION (see
+        // offline-queue.ts) — an append to an existing session order can't
+        // be queued that way without risking a duplicate order once back
+        // online, so that case surfaces as an error below instead.
         offlineQueue.enqueue(idempotencyKey, body);
         setCart([]);
         setOrderNotes("");
@@ -235,7 +260,7 @@ export function PosScreen({
         <div className="flex items-center gap-3">
           <img src="/logo-horizontal.png" alt="SpruVex R" className="h-8 object-contain" />
           <div className="flex gap-1 rounded-lg bg-muted p-1">
-            {(["menu", "orders"] as const).map((key) => (
+            {(["menu", "orders", "sessions"] as const).map((key) => (
               <button
                 key={key}
                 type="button"
@@ -285,6 +310,17 @@ export function PosScreen({
       {tab === "orders" ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <OrdersScreen branchId={branchId} />
+        </div>
+      ) : tab === "sessions" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <SessionsScreen
+            branchId={branchId}
+            onAddItems={(clickedTableId) => {
+              setOrderType("dine_in");
+              setTableId(clickedTableId);
+              setTab("menu");
+            }}
+          />
         </div>
       ) : (
       <div className="flex min-h-0 flex-1">

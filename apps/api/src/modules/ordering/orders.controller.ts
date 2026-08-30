@@ -16,7 +16,13 @@ import { ORDER_STATUSES, type OrderStatus } from "@spruvex-r/types";
 
 import { ApplyDiscountDto } from "../payments/dto/payments.dto";
 import { RequirePermission } from "../../shared/rbac/require-permission.decorator";
-import { CreateOrderDto, EditOrderItemsDto, SetOrderCustomerDto, TransitionOrderDto } from "./dto/order.dto";
+import {
+  AppendOrderItemsDto,
+  CreateOrderDto,
+  EditOrderItemsDto,
+  SetOrderCustomerDto,
+  TransitionOrderDto,
+} from "./dto/order.dto";
 import { OrderingService } from "./ordering.service";
 
 function parseStatuses(raw?: string): OrderStatus[] | undefined {
@@ -73,6 +79,26 @@ export class OrdersController {
   @Put(":id/items")
   editItems(@Param("id", ParseUUIDPipe) id: string, @Body() dto: EditOrderItemsDto) {
     return this.ordering.editItems(id, dto.items);
+  }
+
+  /** Cashier/waiter "add to this table's order" — appends a new round to a
+   * shared table-session order at any point before it's settled, same
+   * mechanism the QR guest flow uses. */
+  @RequirePermission("orders.create")
+  @Post(":id/items")
+  appendItems(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: AppendOrderItemsDto,
+    @Headers("idempotency-key") idempotencyKey: string,
+  ) {
+    return this.ordering.appendItems(id, dto.items, dto.participantPhone ?? null, idempotencyKey);
+  }
+
+  /** Read-only bill-split suggestion — charge each amount via the existing multi-tender payments endpoint. */
+  @RequirePermission("orders.view")
+  @Get(":id/split")
+  split(@Param("id", ParseUUIDPipe) id: string, @Query("mode") mode?: string) {
+    return this.ordering.computeSplit(id, mode === "by_item" ? "by_item" : "equal");
   }
 
   /** POS "add customer at checkout" — needed so a walk-in can use the loyalty program. */

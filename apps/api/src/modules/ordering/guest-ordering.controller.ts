@@ -11,7 +11,7 @@ import {
 import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 
 import { Public } from "../../shared/rbac/public.decorator";
-import { GuestCreateOrderDto, GuestTakeawayOrderDto } from "./dto/order.dto";
+import { GuestTableOrderDto, GuestTakeawayOrderDto } from "./dto/order.dto";
 import { GuestOrderingService } from "./guest-ordering.service";
 
 /**
@@ -41,11 +41,15 @@ export class GuestOrderingController {
     return this.guest.menu(qrToken);
   }
 
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  // A shared table can have several phones behind the same restaurant WiFi
+  // IP, each placing multiple rounds — the old single-order-per-scan limit
+  // of 10/min was tuned before that was possible, so this matches the
+  // other guest table routes' limit instead of guessing a new number.
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post("tables/:qrToken/orders")
   createOrder(
     @Param("qrToken") qrToken: string,
-    @Body() dto: GuestCreateOrderDto,
+    @Body() dto: GuestTableOrderDto,
     @Headers("idempotency-key") idempotencyKey: string,
   ) {
     return this.guest.createOrder(qrToken, dto, idempotencyKey);

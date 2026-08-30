@@ -127,7 +127,9 @@ model Tenant {
   floors                    Floor[]
   tables                    Table[]
   tableSessions             TableSession[]
+  tableSessionParticipants  TableSessionParticipant[]
   orders                    Order[]
+  orderAppendLogs           OrderAppendLog[]
   orderItems                OrderItem[]
   orderItemModifiers        OrderItemModifier[]
   orderStatusHistories      OrderStatusHistory[]
@@ -654,8 +656,12 @@ model Table {
   @@map("tables")
 }
 
-/// A dining session: customers seated at a table. Future orders (Phase 4)
-/// attach to the open session so the whole visit closes as one bill.
+/// A dining session: everyone seated at a table, identified by their own
+/// phone number, sharing ONE real order/invoice. At most one open session
+/// per table (enforced by a partial unique index — see migration SQL);
+/// `OrderingService` finds-or-creates it on the first QR scan and every
+/// later scan of the same table joins it as a new `TableSessionParticipant`
+/// instead of starting a separate bill.
 model TableSession {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @map("tenant_id") @db.Uuid
@@ -668,16 +674,68 @@ model TableSession {
   closedBy String?   @map("closed_by") @db.Uuid
   notes    String?
 
+  /// Bumped on every join/order/append — the inactivity-timeout poller's clock.
+  lastActivityAt DateTime @default(now()) @map("last_activity_at")
+  /// Set when the timeout poller found the session stale but would NOT
+  /// auto-close it (its order has an unpaid balance) — surfaced to the
+  /// cashier's open-sessions view instead of silently closing. Cleared on
+  /// the next activity or on manual close.
+  staleFlaggedAt DateTime? @map("stale_flagged_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id])
-  table  Table   @relation(fields: [tableId], references: [id])
-  orders Order[]
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id])
+  table        Table                     @relation(fields: [tableId], references: [id])
+  orders       Order[]
+  participants TableSessionParticipant[]
 
   @@index([tableId, closedAt])
   @@index([tenantId, branchId])
   @@map("table_sessions")
+}
+
+/// One phone number that has joined a table session — the identity used to
+/// attribute `OrderItem`s for per-person bill splitting, and the recipient
+/// list for order-status WhatsApp notifications (the same phone identity
+/// loyalty/ratings already use elsewhere).
+model TableSessionParticipant {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @map("tenant_id") @db.Uuid
+  branchId       String @map("branch_id") @db.Uuid
+  tableSessionId String @map("table_session_id") @db.Uuid
+
+  phone String
+  name  String?
+
+  joinedAt       DateTime @default(now()) @map("joined_at")
+  lastActivityAt DateTime @default(now()) @map("last_activity_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  tableSession TableSession @relation(fields: [tableSessionId], references: [id])
+
+  @@unique([tableSessionId, phone])
+  @@map("table_session_participants")
+}
+
+/// Idempotency ledger for appending a round of items to an ALREADY-OPEN
+/// session order (`OrderingService.appendItems`) — `Order.idempotencyKey`
+/// only covers the order's own creation (one row, one key), so a retried
+/// "add these items" request needs its own dedupe record instead of
+/// silently appending the same round twice.
+model OrderAppendLog {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @map("tenant_id") @db.Uuid
+  orderId        String @map("order_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  order  Order  @relation(fields: [orderId], references: [id])
+
+  @@unique([tenantId, idempotencyKey])
+  @@map("order_append_logs")
 }
 
 // ============================================================================
@@ -789,6 +847,7 @@ model Order {
   refunds              Refund[]
   feedbackRequest      OrderFeedbackRequest?
   loyaltyLedgerEntries LoyaltyLedgerEntry[]
+  appendLogs           OrderAppendLog[]
 
   @@unique([branchId, orderDate, orderNumber])
   @@unique([tenantId, idempotencyKey])
@@ -812,6 +871,16 @@ model OrderItem {
   /// (unitPrice + modifier adjustments) * quantity
   lineTotal Decimal @map("line_total") @db.Decimal(12, 2)
   notes     String?
+
+  /// Shared table sessions only: the phone number of whoever ordered this
+  /// specific line — null for every non-session order (walk-in/POS/
+  /// takeaway/delivery), and for lines a cashier adds without picking a
+  /// participant. This is what "split by item" bills against.
+  participantPhone String? @map("participant_phone")
+  /// How many of `quantity` units have been credited back via a per-item
+  /// refund (`RefundsService` still issues the actual credit note — this
+  /// only tracks how much of THIS line is still outstanding for splitting).
+  refundedQuantity Int     @default(0) @map("refunded_quantity")
 
   /// Food-cost snapshot (Phase 7) — frozen at order time from the product's
   /// recipe and each ingredient's average cost, same rationale as the price

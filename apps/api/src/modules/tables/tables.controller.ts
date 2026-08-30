@@ -16,6 +16,7 @@ import type { Response } from "express";
 
 import { RequirePermission } from "../../shared/rbac/require-permission.decorator";
 import {
+  CloseSessionDto,
   CreateFloorDto,
   CreateTableDto,
   OpenSessionDto,
@@ -68,6 +69,13 @@ export class TablesController {
   @Get()
   list(@Query("branchId") branchId?: string, @Query("floorId") floorId?: string) {
     return this.tables.list({ branchId, floorId });
+  }
+
+  /** Cashier's open-tables view — declared before :id routes. */
+  @RequirePermission("tables.view")
+  @Get("sessions/open")
+  listOpenSessions(@Query("branchId") branchId?: string) {
+    return this.sessions.listOpen(branchId);
   }
 
   /** QR print sheet for a branch/floor — declared before :id routes. */
@@ -139,7 +147,7 @@ export class TablesController {
   @RequirePermission("tables.manage")
   @HttpCode(200)
   @Post(":id/sessions/close")
-  closeSession(@Param("id", ParseUUIDPipe) id: string) {
-    return this.sessions.close(id);
+  closeSession(@Param("id", ParseUUIDPipe) id: string, @Body() dto: CloseSessionDto) {
+    return this.sessions.close(id, { force: dto.force });
   }
 }

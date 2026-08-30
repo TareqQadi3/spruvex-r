@@ -85,6 +85,9 @@ export interface CartLineInput {
 
 export interface GuestOrderResult {
   orderId: string;
+  /** Present for shared table-session orders — the same value for every
+   * participant who joined the same table's QR. */
+  sessionId?: string;
   orderNumber: number;
   status: string;
   total: string;
@@ -105,5 +108,5 @@ export interface TrackedOrder {
     currency: string;
     defaultLocale: string;
   };
-  items: Array<{ quantity: number; name: string; nameEn: string | null }>;
+  items: Array<{ quantity: number; name: string; nameEn: string | null; participantPhone?: string | null }>;
 }

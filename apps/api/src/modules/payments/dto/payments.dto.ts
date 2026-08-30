@@ -1,10 +1,13 @@
 import {
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
+  Min,
 } from "class-validator";
 
 const AMOUNT_RULE = /^\d{1,10}(\.\d{1,2})?$/;
@@ -60,6 +63,25 @@ export class RefundOrderDto {
   @IsString()
   @MaxLength(120)
   reference?: string;
+}
+
+/** Refunds one order line (or part of its quantity) — the "one diner's item
+ * cancelled after checkout" case for a shared table-session bill. */
+export class RefundItemDto {
+  /** Units of this line to credit back. Defaults to everything still outstanding. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(99)
+  quantity?: number;
+
+  @IsIn(["cash", "card", "online"])
+  method!: "cash" | "card" | "online";
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  reason!: string;
 }
 
 export class IssueDebitNoteDto {

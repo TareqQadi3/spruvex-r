@@ -65,4 +65,20 @@ export class WhatsappService {
       await this.connections.recordError(connection.id, message);
     }
   }
+
+  /**
+   * Shared table-session orders have several phones on one order — every
+   * status update goes to everyone who actually ordered, not just whoever
+   * scanned first. One phone's failure/missing number never blocks another's.
+   */
+  async sendTemplateToMany(
+    templateKey: WhatsappTemplateKey,
+    phones: Array<string | null | undefined>,
+    variables: Record<string, string>,
+  ): Promise<void> {
+    const unique = [...new Set(phones.filter((p): p is string => Boolean(p)))];
+    for (const phone of unique) {
+      await this.sendTemplate(templateKey, phone, variables);
+    }
+  }
 }

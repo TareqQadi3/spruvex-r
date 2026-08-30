@@ -188,7 +188,10 @@ describe("customer experience + ZATCA foundation (e2e)", () => {
       const created = await request(http)
         .post(`/public/tables/${fx.table.qrToken}/orders`)
         .set("Idempotency-Key", key())
-        .send({ items: [{ productId: fx.withSize.id, quantity: 1, modifierIds: [fx.regular.id] }] })
+        .send({
+          items: [{ productId: fx.withSize.id, quantity: 1, modifierIds: [fx.regular.id] }],
+          customerPhone: "+966500000001",
+        })
         .expect(201);
 
       const res = await request(http)
@@ -345,7 +348,7 @@ describe("customer experience + ZATCA foundation (e2e)", () => {
       await request(http)
         .post(`/public/tables/${fx.table.qrToken}/orders`)
         .set("Idempotency-Key", key())
-        .send({ items: [{ productId: fx.simple.id, quantity: 1 }] })
+        .send({ items: [{ productId: fx.simple.id, quantity: 1 }], customerPhone: "+966500000002" })
         .expect(409);
 
       // The external pickup link is unaffected by the QR toggle.

@@ -118,6 +118,23 @@ export class EditOrderItemsDto {
   items!: OrderItemInputDto[];
 }
 
+/** Cashier "add to this table's order" — the shared-session append, from the POS. */
+export class AppendOrderItemsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemInputDto)
+  items!: OrderItemInputDto[];
+
+  /** Which diner at the table this round is for — omit to leave it in the
+   * shared/unattributed bucket (split equally at checkout). */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
+  participantPhone?: string;
+}
+
 export class GuestCreateOrderDto {
   @IsArray()
   @ArrayMinSize(1)
@@ -139,6 +156,18 @@ export class GuestCreateOrderDto {
 
 /** Pickup order through the external link — the phone number is mandatory. */
 export class GuestTakeawayOrderDto extends GuestCreateOrderDto {
+  @IsString()
+  @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
+  customerPhone!: string;
+}
+
+/**
+ * Shared table-session QR order — phone is mandatory here too: it is the
+ * identity that ties this scan to a specific person at the table (joins an
+ * existing session, attributes their items for bill-splitting, and is who
+ * order-status WhatsApp updates go to), not just a delivery contact detail.
+ */
+export class GuestTableOrderDto extends GuestCreateOrderDto {
   @IsString()
   @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
   customerPhone!: string;

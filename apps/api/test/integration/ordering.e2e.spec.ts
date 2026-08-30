@@ -344,6 +344,22 @@ describe("ordering (e2e)", () => {
   });
 
   describe("guest (QR) ordering readiness", () => {
+    // Each content-sensitive test below gets its OWN fresh table — fx.table
+    // (used by "dine-in and table sessions" above) is left with an open
+    // session and an active order, and two tests sharing one fresh table
+    // would contaminate each other's totals the same way.
+    async function createFreshTable() {
+      return admin.table.create({
+        data: {
+          tenantId: fx.category.tenantId,
+          branchId: branchA,
+          floorId: fx.floor.id,
+          number: `T-guest-${randomUUID().slice(0, 8)}`,
+          qrToken: randomUUID(),
+        },
+      });
+    }
+
     it("resolves table info and branch menu by QR token", async () => {
       const info = await request(http).get(`/public/tables/${fx.table.qrToken}`).expect(200);
       expect(info.body.restaurant.slug).toBe("ord-a");
@@ -357,30 +373,74 @@ describe("ordering (e2e)", () => {
       expect(product.modifierGroups[0].modifiers).toHaveLength(2);
     });
 
-    it("creates a guest order attached to the table session", async () => {
+    it("creates a guest order attached to the table session, requiring a phone", async () => {
+      const guestTable = await createFreshTable();
       const res = await request(http)
-        .post(`/public/tables/${fx.table.qrToken}/orders`)
+        .post(`/public/tables/${guestTable.qrToken}/orders`)
         .set("Idempotency-Key", key())
         .send({
           items: [{ productId: fx.withSize.id, quantity: 1, modifierIds: [fx.regular.id] }],
           customerName: "زائر",
+          customerPhone: "+966500000001",
         })
         .expect(201);
       expect(res.body.orderNumber).toBeGreaterThan(0);
       expect(res.body.status).toBe("new");
       expect(res.body.total).toBe("30");
+      expect(res.body.sessionId).toBeDefined();
 
       const order = await admin.order.findUniqueOrThrow({ where: { id: res.body.orderId } });
       expect(order.source).toBe("qr");
       expect(order.type).toBe("dine_in");
       expect(order.placedBy).toBeNull(); // guest
       expect(order.tableSessionId).not.toBeNull();
+      expect(order.customerPhone).toBe("+966500000001");
+
+      const item = await admin.orderItem.findFirstOrThrow({ where: { orderId: res.body.orderId } });
+      expect(item.participantPhone).toBe("+966500000001");
+    });
+
+    it("a second phone scanning the same table joins the SAME order instead of creating a new one", async () => {
+      const guestTable = await createFreshTable();
+      const first = await request(http)
+        .post(`/public/tables/${guestTable.qrToken}/orders`)
+        .set("Idempotency-Key", key())
+        .send({
+          items: [{ productId: fx.simple.id, quantity: 1 }],
+          customerPhone: "+966500000010",
+        })
+        .expect(201);
+
+      const second = await request(http)
+        .post(`/public/tables/${guestTable.qrToken}/orders`)
+        .set("Idempotency-Key", key())
+        .send({
+          items: [{ productId: fx.simple.id, quantity: 1 }],
+          customerPhone: "+966500000011",
+        })
+        .expect(201);
+
+      expect(second.body.orderId).toBe(first.body.orderId);
+      expect(second.body.sessionId).toBe(first.body.sessionId);
+      // total reflects BOTH rounds, not just the second one.
+      expect(second.body.total).toBe(
+        (Number(first.body.total) * 2).toFixed(0),
+      );
+
+      const items = await admin.orderItem.findMany({ where: { orderId: first.body.orderId } });
+      const phones = items.map((i) => i.participantPhone).sort();
+      expect(phones).toEqual(["+966500000010", "+966500000011"]);
+
+      const participants = await admin.tableSessionParticipant.findMany({
+        where: { tableSessionId: first.body.sessionId },
+      });
+      expect(participants.map((p) => p.phone).sort()).toEqual(["+966500000010", "+966500000011"]);
     });
 
     it("requires Idempotency-Key and rejects invalid tokens", async () => {
       await request(http)
         .post(`/public/tables/${fx.table.qrToken}/orders`)
-        .send({ items: [{ productId: fx.simple.id, quantity: 1 }] })
+        .send({ items: [{ productId: fx.simple.id, quantity: 1 }], customerPhone: "+966500000099" })
         .expect(400);
       await request(http).get("/public/tables/not-a-real-token").expect(404);
     });

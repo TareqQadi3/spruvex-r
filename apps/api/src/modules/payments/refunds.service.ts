@@ -214,4 +214,59 @@ export class RefundsService {
 
     return { creditNote, refund };
   }
+
+  /**
+   * Refunds ONE order line (or part of its quantity) — the shared
+   * table-session case where a single diner's item gets cancelled/returned
+   * after the table already checked out, and only their own share should
+   * shrink, not the whole bill or another participant's split.
+   *
+   * A thin wrapper over `refund()`: computes the line's own gross amount
+   * (VAT-inclusive, same as everywhere else in this system) and delegates
+   * the actual credit note to the exact same ZATCA-chained flow every other
+   * refund goes through — this never becomes a second refund pathway.
+   * `OrderItem.refundedQuantity` is then updated so `computeSplit` stops
+   * billing this share to whoever ordered it; that bookkeeping update
+   * happens just after the real refund succeeds, not inside the same
+   * transaction, since the credit note is already the authoritative record
+   * of the money and a crash between the two only affects the split
+   * *display*, never a real amount.
+   */
+  async refundItem(
+    orderId: string,
+    orderItemId: string,
+    dto: { quantity?: number; method: "cash" | "card" | "online"; reason: string },
+  ) {
+    const item = await this.prisma.scoped.orderItem.findFirst({
+      where: { id: orderItemId, orderId },
+    });
+    if (!item) {
+      throw new NotFoundException("Order item not found");
+    }
+    const outstanding = item.quantity - item.refundedQuantity;
+    const quantity = dto.quantity ?? outstanding;
+    if (quantity <= 0 || quantity > outstanding) {
+      throw new BadRequestException(
+        `Only ${outstanding} unit(s) of this line remain refundable`,
+      );
+    }
+
+    const lineTotalHalalas = sarToHalalas(item.lineTotal.toString());
+    const unitHalalas = Math.round(lineTotalHalalas / item.quantity);
+    const amountHalalas = unitHalalas * quantity;
+    const itemName = (item.productSnapshot as { name: string }).name;
+
+    const { creditNote, refund } = await this.refund(orderId, {
+      amount: halalasToSar(amountHalalas),
+      method: dto.method,
+      reason: `${dto.reason} (${itemName} × ${quantity})`,
+    });
+
+    await this.prisma.scoped.orderItem.update({
+      where: { id: orderItemId },
+      data: { refundedQuantity: item.refundedQuantity + quantity },
+    });
+
+    return { creditNote, refund, refundedQuantity: quantity };
+  }
 }
