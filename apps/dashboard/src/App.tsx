@@ -29,7 +29,10 @@ import { ModifiersPage } from "./pages/menu/ModifiersPage";
 import { ProductEditorPage } from "./pages/menu/ProductEditorPage";
 import { ProductsPage } from "./pages/menu/ProductsPage";
 import { OnboardingWizard } from "./pages/onboarding/OnboardingWizard";
+import { BranchComparisonPage } from "./pages/reports/BranchComparisonPage";
+import { ReportsLayout } from "./pages/reports/ReportsLayout";
 import { ReportsPage } from "./pages/reports/ReportsPage";
+import { VatReturnPage } from "./pages/reports/VatReturnPage";
 import { FloorsPage } from "./pages/tables/FloorsPage";
 import { TablesLayout } from "./pages/tables/TablesLayout";
 import { TablesPage } from "./pages/tables/TablesPage";
@@ -145,7 +148,15 @@ const router = createBrowserRouter([
           { path: "stock", element: <StockPage /> },
         ],
       },
-      { path: "reports", element: <ReportsPage /> },
+      {
+        path: "reports",
+        element: <ReportsLayout />,
+        children: [
+          { index: true, element: <ReportsPage /> },
+          { path: "vat-return", element: <VatReturnPage /> },
+          { path: "branch-comparison", element: <BranchComparisonPage /> },
+        ],
+      },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

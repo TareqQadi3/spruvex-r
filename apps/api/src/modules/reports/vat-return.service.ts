@@ -1,0 +1,487 @@
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+
+import { costUnitsToSar, halalasToSar, sarToCostUnits, sarToHalalas } from "../../shared/common/money";
+import { PrismaService } from "../../shared/prisma/prisma.service";
+import { resolveRange } from "./report-utils";
+
+export type VatReturnResult = Awaited<ReturnType<VatReturnService["vatReturn"]>>;
+
+export interface VatReturnLineItem {
+  type: "sale" | "credit_note" | "debit_note";
+  branchName: string;
+  branchNameEn: string | null;
+  /** Receipt/credit-note/debit-note number, unique per branch (ZATCA-style sequencing) — the accountant's audit trail back to the source document. */
+  documentNumber: number;
+  /** For a credit/debit note: the receipt number of the original invoice it adjusts. */
+  referenceReceiptNumber: number | null;
+  orderNumber: number | null;
+  issuedAt: Date;
+  vatRatePercent: string;
+  netAmount: string;
+  vatAmount: string;
+  total: string;
+}
+
+export interface VatReturnRateBucket {
+  vatRatePercent: string;
+  salesNet: string;
+  salesVat: string;
+  salesCount: number;
+  creditNoteNet: string;
+  creditNoteVat: string;
+  creditNoteCount: number;
+  debitNoteNet: string;
+  debitNoteVat: string;
+  debitNoteCount: number;
+  /** salesNet - creditNoteNet + debitNoteNet */
+  netTaxableSales: string;
+  /** salesVat - creditNoteVat + debitNoteVat */
+  netVat: string;
+}
+
+/**
+ * VAT return export — built ENTIRELY from real, already-issued documents
+ * (Receipt/CreditNote/DebitNote), never a separately re-estimated figure.
+ * Read-only: touches no sale/payment/order pathway.
+ *
+ * Two data-model facts that shape this report, discovered while building it
+ * (documented here rather than silently assumed away):
+ *
+ * 1. VAT registration is per-TENANT, not per-branch (Tenant.vatNumber is the
+ *    only VAT-number field in the schema; Branch has none). A tenant's
+ *    branches therefore file ONE consolidated return under one VAT number —
+ *    this report defaults to combining all branches for exactly that reason,
+ *    though a single branch can still be selected for internal analysis.
+ *
+ * 2. There is no input-VAT (purchase-invoice) tracking anywhere in the
+ *    system. Inventory purchases (InventoryService.recordPurchase) only
+ *    capture a unit cost for food-cost/margin math — never a VAT amount, a
+ *    supplier name, or a purchase-invoice number. This report's "input tax"
+ *    section is therefore explicitly marked unsupported (not silently
+ *    zeroed without explanation) and the net amount due is computed as
+ *    OUTPUT TAX ONLY — the accountant must add any real input tax from
+ *    actual supplier tax invoices before filing.
+ */
+@Injectable()
+export class VatReturnService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async vatReturn(branchId: string | undefined, from: string | undefined, to: string | undefined) {
+    const { start, end } = resolveRange(from, to);
+
+    const tenant = await this.prisma.scoped.tenant.findFirst({
+      where: { deletedAt: null },
+      select: { name: true, nameEn: true, legalName: true, vatNumber: true, crNumber: true },
+    });
+    if (!tenant) {
+      throw new NotFoundException("Tenant not found");
+    }
+
+    const branch = branchId
+      ? await this.prisma.scoped.branch.findFirst({ where: { id: branchId }, select: { id: true, name: true, nameEn: true } })
+      : null;
+    if (branchId && !branch) {
+      throw new NotFoundException("Branch not found");
+    }
+
+    const branchWhere = branchId ? { branchId } : {};
+
+    // Receipt/CreditNote/DebitNote carry a branchId column but no declared
+    // Prisma relation to Branch — resolve names via a lookup map instead of
+    // a nested `select`.
+    const branches = await this.prisma.scoped.branch.findMany({
+      select: { id: true, name: true, nameEn: true },
+    });
+    const branchById = new Map(branches.map((b) => [b.id, b]));
+    const branchNameOf = (id: string) => branchById.get(id) ?? { name: "?", nameEn: null };
+
+    const [receipts, creditNotes, debitNotes] = await Promise.all([
+      this.prisma.scoped.receipt.findMany({
+        where: { issuedAt: { gte: start, lte: end }, ...branchWhere },
+        select: {
+          receiptNumber: true,
+          vatRate: true,
+          vatAmount: true,
+          total: true,
+          issuedAt: true,
+          branchId: true,
+          order: { select: { orderNumber: true } },
+        },
+        orderBy: { issuedAt: "asc" },
+      }),
+      this.prisma.scoped.creditNote.findMany({
+        where: { issuedAt: { gte: start, lte: end }, ...branchWhere },
+        select: {
+          creditNoteNumber: true,
+          vatRate: true,
+          vatAmount: true,
+          total: true,
+          issuedAt: true,
+          branchId: true,
+          receipt: { select: { receiptNumber: true } },
+        },
+        orderBy: { issuedAt: "asc" },
+      }),
+      this.prisma.scoped.debitNote.findMany({
+        where: { issuedAt: { gte: start, lte: end }, ...branchWhere },
+        select: {
+          debitNoteNumber: true,
+          vatRate: true,
+          vatAmount: true,
+          total: true,
+          issuedAt: true,
+          branchId: true,
+          receipt: { select: { receiptNumber: true } },
+        },
+        orderBy: { issuedAt: "asc" },
+      }),
+    ]);
+
+    type Bucket = {
+      salesNetHalalas: number;
+      salesVatHalalas: number;
+      salesCount: number;
+      creditNoteNetHalalas: number;
+      creditNoteVatHalalas: number;
+      creditNoteCount: number;
+      debitNoteNetHalalas: number;
+      debitNoteVatHalalas: number;
+      debitNoteCount: number;
+    };
+    const buckets = new Map<string, Bucket>();
+    const emptyBucket = (): Bucket => ({
+      salesNetHalalas: 0,
+      salesVatHalalas: 0,
+      salesCount: 0,
+      creditNoteNetHalalas: 0,
+      creditNoteVatHalalas: 0,
+      creditNoteCount: 0,
+      debitNoteNetHalalas: 0,
+      debitNoteVatHalalas: 0,
+      debitNoteCount: 0,
+    });
+
+    const lineItems: VatReturnLineItem[] = [];
+
+    for (const r of receipts) {
+      const totalHalalas = sarToHalalas(r.total.toString());
+      const vatHalalas = sarToHalalas(r.vatAmount.toString());
+      const netHalalas = totalHalalas - vatHalalas;
+      const rateKey = r.vatRate.toString();
+      const bucket = buckets.get(rateKey) ?? emptyBucket();
+      bucket.salesNetHalalas += netHalalas;
+      bucket.salesVatHalalas += vatHalalas;
+      bucket.salesCount += 1;
+      buckets.set(rateKey, bucket);
+
+      lineItems.push({
+        type: "sale",
+        branchName: branchNameOf(r.branchId).name,
+        branchNameEn: branchNameOf(r.branchId).nameEn,
+        documentNumber: r.receiptNumber,
+        referenceReceiptNumber: null,
+        orderNumber: r.order?.orderNumber ?? null,
+        issuedAt: r.issuedAt,
+        vatRatePercent: rateKey,
+        netAmount: halalasToSar(netHalalas),
+        vatAmount: halalasToSar(vatHalalas),
+        total: halalasToSar(totalHalalas),
+      });
+    }
+
+    for (const cn of creditNotes) {
+      const totalHalalas = sarToHalalas(cn.total.toString());
+      const vatHalalas = sarToHalalas(cn.vatAmount.toString());
+      const netHalalas = totalHalalas - vatHalalas;
+      const rateKey = cn.vatRate.toString();
+      const bucket = buckets.get(rateKey) ?? emptyBucket();
+      bucket.creditNoteNetHalalas += netHalalas;
+      bucket.creditNoteVatHalalas += vatHalalas;
+      bucket.creditNoteCount += 1;
+      buckets.set(rateKey, bucket);
+
+      lineItems.push({
+        type: "credit_note",
+        branchName: branchNameOf(cn.branchId).name,
+        branchNameEn: branchNameOf(cn.branchId).nameEn,
+        documentNumber: cn.creditNoteNumber,
+        referenceReceiptNumber: cn.receipt.receiptNumber,
+        orderNumber: null,
+        issuedAt: cn.issuedAt,
+        vatRatePercent: rateKey,
+        netAmount: halalasToSar(netHalalas),
+        vatAmount: halalasToSar(vatHalalas),
+        total: halalasToSar(totalHalalas),
+      });
+    }
+
+    for (const dn of debitNotes) {
+      const totalHalalas = sarToHalalas(dn.total.toString());
+      const vatHalalas = sarToHalalas(dn.vatAmount.toString());
+      const netHalalas = totalHalalas - vatHalalas;
+      const rateKey = dn.vatRate.toString();
+      const bucket = buckets.get(rateKey) ?? emptyBucket();
+      bucket.debitNoteNetHalalas += netHalalas;
+      bucket.debitNoteVatHalalas += vatHalalas;
+      bucket.debitNoteCount += 1;
+      buckets.set(rateKey, bucket);
+
+      lineItems.push({
+        type: "debit_note",
+        branchName: branchNameOf(dn.branchId).name,
+        branchNameEn: branchNameOf(dn.branchId).nameEn,
+        documentNumber: dn.debitNoteNumber,
+        referenceReceiptNumber: dn.receipt.receiptNumber,
+        orderNumber: null,
+        issuedAt: dn.issuedAt,
+        vatRatePercent: rateKey,
+        netAmount: halalasToSar(netHalalas),
+        vatAmount: halalasToSar(vatHalalas),
+        total: halalasToSar(totalHalalas),
+      });
+    }
+
+    lineItems.sort((a, b) => a.issuedAt.getTime() - b.issuedAt.getTime());
+
+    const byRate: VatReturnRateBucket[] = [...buckets.entries()]
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([rateKey, b]) => {
+        const netTaxableHalalas = b.salesNetHalalas - b.creditNoteNetHalalas + b.debitNoteNetHalalas;
+        const netVatHalalas = b.salesVatHalalas - b.creditNoteVatHalalas + b.debitNoteVatHalalas;
+        return {
+          vatRatePercent: rateKey,
+          salesNet: halalasToSar(b.salesNetHalalas),
+          salesVat: halalasToSar(b.salesVatHalalas),
+          salesCount: b.salesCount,
+          creditNoteNet: halalasToSar(b.creditNoteNetHalalas),
+          creditNoteVat: halalasToSar(b.creditNoteVatHalalas),
+          creditNoteCount: b.creditNoteCount,
+          debitNoteNet: halalasToSar(b.debitNoteNetHalalas),
+          debitNoteVat: halalasToSar(b.debitNoteVatHalalas),
+          debitNoteCount: b.debitNoteCount,
+          netTaxableSales: halalasToSar(netTaxableHalalas),
+          netVat: halalasToSar(netVatHalalas),
+        };
+      });
+
+    const totalNetTaxableHalalas = [...buckets.values()].reduce(
+      (sum, b) => sum + (b.salesNetHalalas - b.creditNoteNetHalalas + b.debitNoteNetHalalas),
+      0,
+    );
+    const totalOutputVatHalalas = [...buckets.values()].reduce(
+      (sum, b) => sum + (b.salesVatHalalas - b.creditNoteVatHalalas + b.debitNoteVatHalalas),
+      0,
+    );
+
+    // Informational only (see class doc comment) — NOT part of the VAT calculation below.
+    const purchases = await this.prisma.scoped.stockMovement.findMany({
+      where: { type: "purchase", createdAt: { gte: start, lte: end }, ...branchWhere },
+      select: { quantity: true, unitCost: true },
+    });
+    const purchaseCostUnits = purchases.reduce((sum, m) => {
+      if (!m.unitCost) return sum;
+      return sum + Math.round(Number(m.quantity) * sarToCostUnits(m.unitCost.toString()));
+    }, 0);
+
+    return {
+      tenant,
+      branch,
+      period: { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) },
+      byRate,
+      totals: {
+        netTaxableSales: halalasToSar(totalNetTaxableHalalas),
+        outputVat: halalasToSar(totalOutputVatHalalas),
+      },
+      inputTax: {
+        supported: false,
+        note:
+          "النظام لا يسجّل فواتير مشتريات مع تفاصيل ضريبة المدخلات — فقط تكلفة المكوّن لأغراض حساب هامش الربح. " +
+          "أضِف ضريبة المدخلات الفعلية من فواتير الموردين الضريبية قبل رفع الإقرار.",
+        recordedPurchaseCost: costUnitsToSar(purchaseCostUnits),
+      },
+      netVatDue: halalasToSar(totalOutputVatHalalas),
+      lineItems,
+    };
+  }
+
+  /**
+   * CSV export — opens directly in Excel. Three sections separated by a
+   * blank line: return header, per-rate summary, then every source
+   * document with its own number so the accountant can trace any figure
+   * back to the exact receipt/credit-note/debit-note that produced it.
+   */
+  toCsv(result: VatReturnResult): string {
+    const rows: string[][] = [];
+    const typeLabel: Record<VatReturnLineItem["type"], string> = {
+      sale: "مبيعات",
+      credit_note: "إشعار دائن",
+      debit_note: "إشعار مدين",
+    };
+
+    rows.push(["تقرير الإقرار الضريبي / VAT Return Export"]);
+    rows.push(["الكيان / Entity", result.tenant.legalName ?? result.tenant.name]);
+    rows.push(["الرقم الضريبي / VAT Number", result.tenant.vatNumber ?? ""]);
+    rows.push(["السجل التجاري / CR Number", result.tenant.crNumber ?? ""]);
+    rows.push(["الفرع / Branch", result.branch ? result.branch.name : "كل الفروع / All branches"]);
+    rows.push(["الفترة / Period", `${result.period.from} → ${result.period.to}`]);
+    rows.push([]);
+
+    rows.push([
+      "نسبة الضريبة / VAT Rate %",
+      "صافي المبيعات / Sales Net",
+      "ضريبة المخرجات / Sales VAT",
+      "عدد الفواتير / Sales Count",
+      "صافي إشعارات الدائن / Credit Note Net",
+      "ضريبة إشعارات الدائن / Credit Note VAT",
+      "عدد إشعارات الدائن / Credit Note Count",
+      "صافي إشعارات المدين / Debit Note Net",
+      "ضريبة إشعارات المدين / Debit Note VAT",
+      "عدد إشعارات المدين / Debit Note Count",
+      "صافي المبيعات الخاضعة / Net Taxable Sales",
+      "صافي الضريبة / Net VAT",
+    ]);
+    for (const b of result.byRate) {
+      rows.push([
+        b.vatRatePercent,
+        b.salesNet,
+        b.salesVat,
+        String(b.salesCount),
+        b.creditNoteNet,
+        b.creditNoteVat,
+        String(b.creditNoteCount),
+        b.debitNoteNet,
+        b.debitNoteVat,
+        String(b.debitNoteCount),
+        b.netTaxableSales,
+        b.netVat,
+      ]);
+    }
+    rows.push([
+      "الإجمالي / Total",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      result.totals.netTaxableSales,
+      result.totals.outputVat,
+    ]);
+    rows.push([]);
+    rows.push(["ضريبة المدخلات / Input VAT", "غير مدعومة حاليًا / Not supported — " + result.inputTax.note]);
+    rows.push(["تكلفة المشتريات المسجّلة (معلوماتي فقط) / Recorded purchase cost (informational only)", result.inputTax.recordedPurchaseCost]);
+    rows.push(["صافي الضريبة المستحقة (مخرجات فقط) / Net VAT Due (output only)", result.netVatDue]);
+    rows.push([]);
+
+    rows.push([
+      "النوع / Type",
+      "الفرع / Branch",
+      "Branch (EN)",
+      "رقم المستند / Document #",
+      "مرجع الفاتورة الأصلية / Reference Receipt #",
+      "رقم الطلب / Order #",
+      "التاريخ / Issued At",
+      "نسبة الضريبة % / VAT Rate %",
+      "صافي المبلغ / Net Amount",
+      "مبلغ الضريبة / VAT Amount",
+      "الإجمالي / Total",
+    ]);
+    for (const li of result.lineItems) {
+      rows.push([
+        typeLabel[li.type],
+        li.branchName,
+        li.branchNameEn ?? "",
+        String(li.documentNumber),
+        li.referenceReceiptNumber !== null ? String(li.referenceReceiptNumber) : "",
+        li.orderNumber !== null ? String(li.orderNumber) : "",
+        li.issuedAt.toISOString(),
+        li.vatRatePercent,
+        li.netAmount,
+        li.vatAmount,
+        li.total,
+      ]);
+    }
+
+    return rows.map((row) => row.map(csvEscape).join(",")).join("\r\n");
+  }
+
+  /** One-page PDF summary — the per-rate breakdown and grand totals only (line items belong in the CSV). */
+  async toPdf(result: VatReturnResult): Promise<Buffer> {
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const fontLight = await pdf.embedFont(StandardFonts.Helvetica);
+    const page = pdf.addPage([595.28, 841.89]);
+    const marginX = 40;
+    let y = 800;
+
+    const title = "VAT Return Summary";
+    page.drawText(title, { x: marginX, y, size: 18, font, color: rgb(0.18, 0.49, 0.2) });
+    y -= 28;
+
+    const line = (text: string, size = 11, useFont = fontLight) => {
+      page.drawText(text, { x: marginX, y, size, font: useFont });
+      y -= size + 8;
+    };
+
+    // Standard PDF fonts can't shape Arabic glyphs, so entity/branch names
+    // here fall back to their English name (or the VAT number) rather than
+    // ever drawing the Arabic name/legalName, which would throw at render
+    // time. The CSV export carries the real Arabic name.
+    line(`Entity: ${result.tenant.nameEn ?? result.tenant.vatNumber ?? "(see CSV for Arabic name)"}`);
+    line(`VAT Number: ${result.tenant.vatNumber ?? "-"}`);
+    line(`CR Number: ${result.tenant.crNumber ?? "-"}`);
+    line(`Branch: ${result.branch ? (result.branch.nameEn ?? "(see CSV for Arabic name)") : "All branches"}`);
+    line(`Period: ${result.period.from} to ${result.period.to}`);
+    y -= 10;
+
+    line("VAT Rate | Net Taxable Sales | Net VAT | Sales Count", 11, font);
+    for (const b of result.byRate) {
+      line(`${b.vatRatePercent}% | SAR ${b.netTaxableSales} | SAR ${b.netVat} | ${b.salesCount}`);
+    }
+    y -= 10;
+
+    line(`Total Net Taxable Sales: SAR ${result.totals.netTaxableSales}`, 12, font);
+    line(`Total Output VAT: SAR ${result.totals.outputVat}`, 12, font);
+    line(`Net VAT Due (output only): SAR ${result.netVatDue}`, 13, font);
+    y -= 10;
+
+    // Standard PDF fonts can't shape Arabic glyphs, so the PDF summary stays
+    // English-only; the CSV export carries the full bilingual note.
+    line("Input VAT: NOT SUPPORTED", 11, font);
+    const inputVatNoteEn =
+      "The system does not record supplier purchase invoices with input VAT detail, only " +
+      "ingredient cost for margin calculation. Add real input VAT from actual supplier tax " +
+      "invoices before filing. See the CSV export for the Arabic note.";
+    for (const nl of wrapText(inputVatNoteEn, 90)) line(nl, 9);
+    line(`Recorded purchase cost (informational only): SAR ${result.inputTax.recordedPurchaseCost}`, 9);
+
+    return Buffer.from(await pdf.save());
+  }
+}
+
+function csvEscape(value: string): string {
+  if (/[",\r\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function wrapText(text: string, maxChars: number): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if ((current + " " + word).trim().length > maxChars) {
+      if (current) lines.push(current.trim());
+      current = word;
+    } else {
+      current = (current + " " + word).trim();
+    }
+  }
+  if (current) lines.push(current.trim());
+  return lines;
+}

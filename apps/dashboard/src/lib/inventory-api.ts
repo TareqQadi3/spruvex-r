@@ -211,6 +211,65 @@ export interface RatingsSummary {
   lowRatings: LowRatingRow[];
 }
 
+export interface VatReturnLineItem {
+  type: "sale" | "credit_note" | "debit_note";
+  branchName: string;
+  branchNameEn: string | null;
+  documentNumber: number;
+  referenceReceiptNumber: number | null;
+  orderNumber: number | null;
+  issuedAt: string;
+  vatRatePercent: string;
+  netAmount: string;
+  vatAmount: string;
+  total: string;
+}
+
+export interface VatReturnRateBucket {
+  vatRatePercent: string;
+  salesNet: string;
+  salesVat: string;
+  salesCount: number;
+  creditNoteNet: string;
+  creditNoteVat: string;
+  creditNoteCount: number;
+  debitNoteNet: string;
+  debitNoteVat: string;
+  debitNoteCount: number;
+  netTaxableSales: string;
+  netVat: string;
+}
+
+export interface VatReturnResult {
+  tenant: { name: string; nameEn: string | null; legalName: string | null; vatNumber: string | null; crNumber: string | null };
+  branch: { id: string; name: string; nameEn: string | null } | null;
+  period: { from: string; to: string };
+  byRate: VatReturnRateBucket[];
+  totals: { netTaxableSales: string; outputVat: string };
+  inputTax: { supported: boolean; note: string; recordedPurchaseCost: string };
+  netVatDue: string;
+  lineItems: VatReturnLineItem[];
+}
+
+export interface BranchComparisonRow {
+  branchId: string;
+  branchName: string;
+  branchNameEn: string | null;
+  orderCount: number;
+  totalSales: string;
+  avgOrderValue: string;
+  topProducts: Array<{ productId: string; name: string; nameEn: string | null; quantitySold: number }>;
+  loyalty: { enabled: boolean; usagePercent: number | null; ordersWithLoyalty: number };
+  ratings: { avgRating: number | null; count: number };
+}
+
+export interface BranchComparisonResult {
+  period: { from: string; to: string };
+  loyaltyAvailable: boolean;
+  ratingsAvailable: boolean;
+  rows: BranchComparisonRow[];
+}
+
 export const reportsApi = {
   dailySales: (branchId?: string, date?: string) => {
     const params = new URLSearchParams();
@@ -252,5 +311,29 @@ export const reportsApi = {
     if (to) params.set("to", to);
     const qs = params.toString();
     return api<RatingsSummary>(`/reports/ratings${qs ? `?${qs}` : ""}`);
+  },
+  vatReturn: (branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return api<VatReturnResult>(`/reports/vat-return${qs ? `?${qs}` : ""}`);
+  },
+  vatReturnDownloadPath: (format: "csv" | "pdf", branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return `/reports/vat-return.${format}${qs ? `?${qs}` : ""}`;
+  },
+  branchComparison: (from?: string, to?: string, branchIds?: string[]) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    if (branchIds && branchIds.length > 0) params.set("branchIds", branchIds.join(","));
+    const qs = params.toString();
+    return api<BranchComparisonResult>(`/reports/branch-comparison${qs ? `?${qs}` : ""}`);
   },
 };

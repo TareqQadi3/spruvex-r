@@ -1,16 +1,24 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { Controller, Get, Header, Query, Res } from "@nestjs/common";
+import type { Response } from "express";
 
 import { RequirePermission } from "../../shared/rbac/require-permission.decorator";
+import { BranchComparisonService } from "./branch-comparison.service";
 import {
   BestSellersQueryDto,
+  BranchComparisonQueryDto,
   DailySalesQueryDto,
   DateRangeQueryDto,
 } from "./dto/reports-query.dto";
 import { ReportsService } from "./reports.service";
+import { VatReturnService } from "./vat-return.service";
 
 @Controller("reports")
 export class ReportsController {
-  constructor(private readonly reports: ReportsService) {}
+  constructor(
+    private readonly reports: ReportsService,
+    private readonly vatReturn: VatReturnService,
+    private readonly branchComparisonService: BranchComparisonService,
+  ) {}
 
   @RequirePermission("reports.view")
   @Get("sales/daily")
@@ -47,5 +55,46 @@ export class ReportsController {
   @Get("ratings")
   ratings(@Query() query: DateRangeQueryDto) {
     return this.reports.ratingsSummary(query.branchId, query.from, query.to);
+  }
+
+  /** VAT return summary (JSON) — sales VAT, credit/debit-note impact, per-rate breakdown, per-document line items. */
+  @RequirePermission("reports.view")
+  @Get("vat-return")
+  vatReturnJson(@Query() query: DateRangeQueryDto) {
+    return this.vatReturn.vatReturn(query.branchId, query.from, query.to);
+  }
+
+  @RequirePermission("reports.export")
+  @Get("vat-return.csv")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  async vatReturnCsv(@Query() query: DateRangeQueryDto, @Res() res: Response) {
+    const result = await this.vatReturn.vatReturn(query.branchId, query.from, query.to);
+    const csv = this.vatReturn.toCsv(result);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="vat-return-${result.period.from}-to-${result.period.to}.csv"`,
+    );
+    // BOM so Excel opens the Arabic labels as UTF-8 instead of guessing a legacy codepage.
+    res.send("﻿" + csv);
+  }
+
+  @RequirePermission("reports.export")
+  @Get("vat-return.pdf")
+  @Header("Content-Type", "application/pdf")
+  async vatReturnPdf(@Query() query: DateRangeQueryDto, @Res() res: Response) {
+    const result = await this.vatReturn.vatReturn(query.branchId, query.from, query.to);
+    const pdf = await this.vatReturn.toPdf(result);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="vat-return-${result.period.from}-to-${result.period.to}.pdf"`,
+    );
+    res.send(pdf);
+  }
+
+  /** Branch performance comparison: sales, orders, top products, loyalty usage, ratings — one row per branch. */
+  @RequirePermission("reports.view")
+  @Get("branch-comparison")
+  branchComparison(@Query() query: BranchComparisonQueryDto) {
+    return this.branchComparisonService.compare(query.from, query.to, query.branchIds);
   }
 }

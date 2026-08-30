@@ -402,6 +402,75 @@
     "minutes": "min",
     "from": "From",
     "to": "To",
+    "tabs": {
+      "overview": "Overview",
+      "vatReturn": "VAT return",
+      "branchComparison": "Branch comparison"
+    },
+    "vatReturn": {
+      "allBranches": "All branches",
+      "allBranchesConsolidated": "All branches (consolidated)",
+      "entity": "Entity",
+      "vatNumber": "VAT number",
+      "scope": "Scope",
+      "period": "Period",
+      "downloadCsv": "Download CSV",
+      "downloadPdf": "Download PDF",
+      "netTaxableSales": "Net taxable sales",
+      "outputVat": "Output VAT (sales)",
+      "netVatDue": "Net VAT due (output only)",
+      "empty": "No documents in this period",
+      "presets": {
+        "thisMonth": "This month",
+        "lastMonth": "Last month",
+        "thisQuarter": "This quarter"
+      },
+      "inputTax": {
+        "title": "Input VAT is not tracked by this system",
+        "recordedPurchaseCost": "Recorded purchase cost (informational only, not part of the total above)"
+      },
+      "byRate": {
+        "title": "Breakdown by VAT rate",
+        "rate": "Rate",
+        "salesNet": "Sales (net)",
+        "salesVat": "Sales VAT",
+        "creditNoteNet": "Credit notes",
+        "debitNoteNet": "Debit notes",
+        "netTaxableSales": "Net taxable sales",
+        "netVat": "Net VAT"
+      },
+      "lineItems": {
+        "title": "Source documents (audit trail)",
+        "type": "Type",
+        "branch": "Branch",
+        "documentNumber": "Document #",
+        "reference": "Reference invoice",
+        "date": "Date",
+        "net": "Net",
+        "vat": "VAT",
+        "total": "Total",
+        "types": {
+          "sale": "Sale",
+          "credit_note": "Credit note",
+          "debit_note": "Debit note"
+        }
+      }
+    },
+    "branchComparison": {
+      "empty": "No data for this period",
+      "chart": { "title": "Total sales by branch" },
+      "table": {
+        "title": "Branch comparison",
+        "branch": "Branch",
+        "orderCount": "Orders",
+        "totalSales": "Total sales",
+        "avgOrderValue": "Avg. order value",
+        "topProducts": "Top products",
+        "loyaltyUsage": "Loyalty usage",
+        "loyaltyDisabled": "Not enabled",
+        "avgRating": "Avg. rating"
+      }
+    },
     "financial": {
       "title": "Financial summary",
       "revenue": "Revenue",

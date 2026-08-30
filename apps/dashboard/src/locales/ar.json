@@ -402,6 +402,75 @@
     "minutes": "دقيقة",
     "from": "من تاريخ",
     "to": "إلى تاريخ",
+    "tabs": {
+      "overview": "نظرة عامة",
+      "vatReturn": "الإقرار الضريبي",
+      "branchComparison": "مقارنة الفروع"
+    },
+    "vatReturn": {
+      "allBranches": "كل الفروع",
+      "allBranchesConsolidated": "كل الفروع (مجمّعة)",
+      "entity": "المنشأة",
+      "vatNumber": "الرقم الضريبي",
+      "scope": "النطاق",
+      "period": "الفترة",
+      "downloadCsv": "تنزيل CSV",
+      "downloadPdf": "تنزيل PDF",
+      "netTaxableSales": "صافي المبيعات الخاضعة",
+      "outputVat": "ضريبة المخرجات (المبيعات)",
+      "netVatDue": "صافي الضريبة المستحقة (مخرجات فقط)",
+      "empty": "لا توجد مستندات في هذه الفترة",
+      "presets": {
+        "thisMonth": "هذا الشهر",
+        "lastMonth": "الشهر الماضي",
+        "thisQuarter": "هذا الربع"
+      },
+      "inputTax": {
+        "title": "النظام لا يسجّل ضريبة المدخلات",
+        "recordedPurchaseCost": "تكلفة المشتريات المسجّلة (معلوماتي فقط، غير مضمّن في الإجمالي أعلاه)"
+      },
+      "byRate": {
+        "title": "التفصيل حسب نسبة الضريبة",
+        "rate": "النسبة",
+        "salesNet": "المبيعات (صافي)",
+        "salesVat": "ضريبة المبيعات",
+        "creditNoteNet": "إشعارات دائن",
+        "debitNoteNet": "إشعارات مدين",
+        "netTaxableSales": "صافي المبيعات الخاضعة",
+        "netVat": "صافي الضريبة"
+      },
+      "lineItems": {
+        "title": "المستندات المصدرية (أثر التدقيق)",
+        "type": "النوع",
+        "branch": "الفرع",
+        "documentNumber": "رقم المستند",
+        "reference": "الفاتورة المرجعية",
+        "date": "التاريخ",
+        "net": "الصافي",
+        "vat": "الضريبة",
+        "total": "الإجمالي",
+        "types": {
+          "sale": "مبيعات",
+          "credit_note": "إشعار دائن",
+          "debit_note": "إشعار مدين"
+        }
+      }
+    },
+    "branchComparison": {
+      "empty": "لا توجد بيانات لهذه الفترة",
+      "chart": { "title": "إجمالي المبيعات حسب الفرع" },
+      "table": {
+        "title": "مقارنة الفروع",
+        "branch": "الفرع",
+        "orderCount": "الطلبات",
+        "totalSales": "إجمالي المبيعات",
+        "avgOrderValue": "متوسط قيمة الطلب",
+        "topProducts": "الأصناف الأعلى مبيعًا",
+        "loyaltyUsage": "استخدام برنامج الولاء",
+        "loyaltyDisabled": "غير مفعّل",
+        "avgRating": "متوسط التقييم"
+      }
+    },
     "financial": {
       "title": "الملخص المالي",
       "revenue": "الإيرادات",
