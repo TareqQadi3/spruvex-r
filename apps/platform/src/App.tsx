@@ -7,6 +7,7 @@ import { Spinner } from "@spruvex-r/ui";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { PlatformLayout } from "./layouts/PlatformLayout";
 import { LoginPage } from "./pages/LoginPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { SubscriptionsPage } from "./pages/SubscriptionsPage";
 import { SystemStatusPage } from "./pages/SystemStatusPage";
 import { TenantsPage } from "./pages/TenantsPage";
@@ -53,6 +54,7 @@ const router = createBrowserRouter([
       { index: true, element: <TenantsPage /> },
       { path: "subscriptions", element: <SubscriptionsPage /> },
       { path: "system", element: <SystemStatusPage /> },
+      { path: "settings", element: <SettingsPage /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

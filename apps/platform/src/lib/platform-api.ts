@@ -47,6 +47,22 @@ export interface SystemStatus {
   subscriptions: Record<string, number>;
 }
 
+export interface PlatformSettings {
+  otpTtlMinutes: number;
+  otpMaxVerifyAttempts: number;
+  maxFailedLogins: number;
+  lockoutMinutes: number;
+  maxUploadBytes: number;
+}
+
+export interface PlatformSettingsAuditEntry {
+  id: string;
+  action: string;
+  createdAt: string;
+  meta: { changes?: Record<string, { from: unknown; to: unknown }>; platformAdminEmail?: string };
+  platformAdmin: { name: string; email: string };
+}
+
 export const platformApi = {
   listTenants: (params: { search?: string; status?: TenantStatus } = {}) => {
     const qs = new URLSearchParams();
@@ -66,4 +82,8 @@ export const platformApi = {
     patch(`/platform/subscriptions/${id}/plan`, { planKey }),
 
   systemStatus: () => api<SystemStatus>("/platform/system-status"),
+
+  getSettings: () => api<PlatformSettings>("/platform/settings"),
+  updateSettings: (body: Partial<PlatformSettings>) => patch<PlatformSettings>("/platform/settings", body),
+  settingsAuditLog: () => api<PlatformSettingsAuditEntry[]>("/platform/settings/audit-log"),
 };

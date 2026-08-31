@@ -640,7 +640,12 @@
     "menuDesignCssLabel": "كود CSS مخصص",
     "menuDesignCssPlaceholder": ".product-card { border-radius: 4px; }",
     "menuDesignCssHint": "يعمل فقط بصفحة المنيو، ولا يؤثر على أي مكان ثاني. للأمان، يتم فحصه تلقائيًا قبل الحفظ: url(...) وقواعد @ (مثل @import) وأشياء ثانية خطرة تُرفض — بيوضح لك بالضبط أي شي تحتاج تصلحه لو فيه شي غير مسموح.",
-    "menuDesignCssTargetingHint": "استهدف العناصر عبر [data-menu-part=\"header\"]، وكذلك \"logo\" و\"title\" و\"category-nav\" و\"category-button\" و\"product-card\" و\"product-image\" و\"product-name\" و\"product-description\" و\"product-price\"."
+    "menuDesignCssTargetingHint": "استهدف العناصر عبر [data-menu-part=\"header\"]، وكذلك \"logo\" و\"title\" و\"category-nav\" و\"category-button\" و\"product-card\" و\"product-image\" و\"product-name\" و\"product-description\" و\"product-price\".",
+    "feedbackTitle": "إعدادات طلب التقييم",
+    "feedbackHint": "متى يُرسل للعميل طلب تقييم طلبه عبر واتساب بعد اكتماله.",
+    "feedbackDelayLabel": "مدة التأخير قبل إرسال طلب التقييم (بالدقائق)",
+    "feedbackDelayHint": "من {{min}} إلى {{max}} دقيقة.",
+    "feedbackDelayRangeError": "يجب أن تكون المدة رقمًا صحيحًا بين {{min}} و {{max}} دقيقة."
   },
   "integrations": {
     "title": "الإضافات والتكامل",

@@ -640,7 +640,12 @@
     "menuDesignCssLabel": "Custom CSS",
     "menuDesignCssPlaceholder": ".product-card { border-radius: 4px; }",
     "menuDesignCssHint": "Runs only on your menu page, never anywhere else. For safety, it is checked automatically before saving: url(...), @-rules (like @import), and a few other risky bits are rejected — you will see exactly what to fix if something is not allowed.",
-    "menuDesignCssTargetingHint": "Target elements with [data-menu-part=\"header\"], \"logo\", \"title\", \"category-nav\", \"category-button\", \"product-card\", \"product-image\", \"product-name\", \"product-description\", or \"product-price\"."
+    "menuDesignCssTargetingHint": "Target elements with [data-menu-part=\"header\"], \"logo\", \"title\", \"category-nav\", \"category-button\", \"product-card\", \"product-image\", \"product-name\", \"product-description\", or \"product-price\".",
+    "feedbackTitle": "Feedback request settings",
+    "feedbackHint": "When the WhatsApp rating request goes out after an order completes.",
+    "feedbackDelayLabel": "Delay before sending the feedback request (minutes)",
+    "feedbackDelayHint": "From {{min}} to {{max}} minutes.",
+    "feedbackDelayRangeError": "Delay must be a whole number between {{min}} and {{max}} minutes."
   },
   "integrations": {
     "title": "Integrations & add-ons",

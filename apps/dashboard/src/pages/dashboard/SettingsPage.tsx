@@ -52,6 +52,13 @@ interface MenuDesignForm {
   menuCustomCss: string;
 }
 
+interface FeedbackSettings {
+  feedbackDelayMinutes: number;
+}
+
+const FEEDBACK_DELAY_MIN = 1;
+const FEEDBACK_DELAY_MAX = 1440;
+
 interface ZatcaForm {
   legalName: string;
   vatNumber: string;
@@ -138,6 +145,47 @@ export function SettingsPage() {
   function submit(event: FormEvent) {
     event.preventDefault();
     save.mutate();
+  }
+
+  const { data: feedbackSettings, isLoading: feedbackLoading } = useQuery({
+    queryKey: ["feedback-settings"],
+    queryFn: () => api<FeedbackSettings>("/feedback/settings"),
+  });
+  const [feedbackDelayInput, setFeedbackDelayInput] = useState("");
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
+
+  useEffect(() => {
+    if (feedbackSettings) {
+      setFeedbackDelayInput(String(feedbackSettings.feedbackDelayMinutes));
+    }
+  }, [feedbackSettings]);
+
+  const saveFeedbackSettings = useMutation({
+    mutationFn: (feedbackDelayMinutes: number) =>
+      api("/feedback/settings", { method: "PATCH", body: JSON.stringify({ feedbackDelayMinutes }) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["feedback-settings"] });
+      setFeedbackSaved(true);
+      setFeedbackError(null);
+      setTimeout(() => setFeedbackSaved(false), 3000);
+    },
+    onError: (e) => setFeedbackError(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
+  function submitFeedbackSettings(event: FormEvent) {
+    event.preventDefault();
+    const parsed = Number(feedbackDelayInput);
+    // Client-side pre-check for fast feedback only — the server (1-1440,
+    // same bounds) is still the authority: onError below surfaces whatever
+    // it actually rejects, this never assumes the check above is enough.
+    if (!Number.isInteger(parsed) || parsed < FEEDBACK_DELAY_MIN || parsed > FEEDBACK_DELAY_MAX) {
+      setFeedbackError(
+        t("settings.feedbackDelayRangeError", { min: FEEDBACK_DELAY_MIN, max: FEEDBACK_DELAY_MAX }),
+      );
+      return;
+    }
+    saveFeedbackSettings.mutate(parsed);
   }
 
   const { data: zatca, isLoading: zatcaLoading } = useQuery({
@@ -245,6 +293,46 @@ export function SettingsPage() {
                   </div>
                 ))}
               </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("settings.feedbackTitle")}</CardTitle>
+              <CardDescription>{t("settings.feedbackHint")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {feedbackLoading && <Spinner />}
+              {feedbackSettings && (
+                <form onSubmit={submitFeedbackSettings} className="space-y-4">
+                  {feedbackError && <Alert variant="destructive">{feedbackError}</Alert>}
+                  {feedbackSaved && <Alert>{t("settings.saved")}</Alert>}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="feedback-delay">{t("settings.feedbackDelayLabel")}</Label>
+                    <Input
+                      id="feedback-delay"
+                      dir="ltr"
+                      type="number"
+                      min={FEEDBACK_DELAY_MIN}
+                      max={FEEDBACK_DELAY_MAX}
+                      value={feedbackDelayInput}
+                      onChange={(e) => setFeedbackDelayInput(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.feedbackDelayHint", { min: FEEDBACK_DELAY_MIN, max: FEEDBACK_DELAY_MAX })}
+                    </p>
+                  </div>
+
+                  <Button type="submit" disabled={saveFeedbackSettings.isPending}>
+                    {saveFeedbackSettings.isPending ? (
+                      <Spinner className="border-primary-foreground" />
+                    ) : (
+                      t("common.save")
+                    )}
+                  </Button>
+                </form>
+              )}
             </CardContent>
           </Card>
 
