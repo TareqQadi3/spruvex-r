@@ -1911,7 +1911,49 @@ model PlatformAdmin {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  platformAuditLogs PlatformAuditLog[]
+
   @@map("platform_admins")
+}
+
+/// Platform-wide (not per-tenant) operational settings — OTP/lockout policy,
+/// upload size ceiling. A single enforced-singleton row: `id` always equals
+/// SINGLETON_ID (see shared/platform-settings), so there is exactly one row
+/// by construction rather than by convention. `settings` holds whatever
+/// PlatformSettingsShape keys have been explicitly set; PlatformSettingsService
+/// merges this over PLATFORM_SETTINGS_DEFAULTS, so an absent key (including
+/// "the row doesn't exist yet") always resolves to today's documented
+/// default — no tenant or platform-admin flow can silently break because a
+/// setting was never touched.
+model PlatformSettings {
+  id        String   @id
+  settings  Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  @@map("platform_settings")
+}
+
+/// Append-only audit trail for platform-admin actions that have no single
+/// tenant to attach to (see AuditLog, which is tenant_id NOT NULL and
+/// therefore cannot record a genuinely global change like a platform
+/// settings update). Same tamper-evidence intent as audit_logs: the app
+/// role's UPDATE/DELETE are revoked in this migration.
+model PlatformAuditLog {
+  id              String  @id @default(uuid()) @db.Uuid
+  platformAdminId String  @map("platform_admin_id") @db.Uuid
+  action          String
+  entityType      String? @map("entity_type")
+  entityId        String? @map("entity_id")
+  /// Structured context: for a settings change, { changes: { key: { from, to } }, platformAdminEmail }.
+  meta            Json    @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  platformAdmin PlatformAdmin @relation(fields: [platformAdminId], references: [id])
+
+  @@index([action, createdAt])
+  @@map("platform_audit_logs")
 }
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { IntegrationsModule } from "../integrations/integrations.module";
 import { FeedbackOrderListener } from "./feedback-order.listener";
+import { FeedbackSettingsController } from "./feedback-settings.controller";
 import { FeedbackService } from "./feedback.service";
 import { PublicFeedbackController } from "./public-feedback.controller";
 
@@ -12,7 +13,7 @@ import { PublicFeedbackController } from "./public-feedback.controller";
  */
 @Module({
   imports: [IntegrationsModule],
-  controllers: [PublicFeedbackController],
+  controllers: [PublicFeedbackController, FeedbackSettingsController],
   providers: [FeedbackService, FeedbackOrderListener],
 })
 export class FeedbackModule {}

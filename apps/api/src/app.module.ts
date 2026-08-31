@@ -24,6 +24,7 @@ import { UploadsModule } from "./modules/uploads/uploads.module";
 import { AuditModule } from "./shared/audit/audit.module";
 import { BillingKernelModule } from "./shared/billing/billing-kernel.module";
 import { EventsModule } from "./shared/events/events.module";
+import { PlatformSettingsModule } from "./shared/platform-settings/platform-settings.module";
 import { PrismaModule } from "./shared/prisma/prisma.module";
 import { RbacModule } from "./shared/rbac/rbac.module";
 import { RealtimeModule } from "./shared/realtime/realtime.module";
@@ -41,6 +42,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
     RbacModule,
     BillingKernelModule,
     AuditModule,
+    PlatformSettingsModule,
     HealthModule,
     IdentityModule,
     RealtimeModule,

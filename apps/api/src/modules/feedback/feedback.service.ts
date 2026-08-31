@@ -2,14 +2,16 @@ import { ConflictException, Injectable, Logger, NotFoundException } from "@nestj
 import { Interval } from "@nestjs/schedule";
 
 import { WhatsappService } from "../integrations/whatsapp/whatsapp.service";
+import { AuditService } from "../../shared/audit/audit.service";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { GUEST_ACTOR, TenantContextService } from "../../shared/tenancy/tenant-context.service";
+import { UpdateFeedbackSettingsDto } from "./dto/feedback-settings.dto";
 
-/** Real-world tuning, not a magic constant needing config: ~30 minutes gives
- * the customer time to actually finish eating/using the order before being
- * asked to rate it. */
-const FEEDBACK_DELAY_MS = 30 * 60 * 1000;
+/** Applied when a tenant has never touched settings.feedbackDelayMinutes:
+ * ~30 minutes gives the customer time to actually finish eating/using the
+ * order before being asked to rate it. */
+const DEFAULT_FEEDBACK_DELAY_MINUTES = 30;
 const SEND_POLL_INTERVAL_MS = 60_000;
 const MAX_PER_POLL = 50;
 
@@ -43,7 +45,43 @@ export class FeedbackService {
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     private readonly whatsapp: WhatsappService,
+    private readonly audit: AuditService,
   ) {}
+
+  // ------------------------------------------------------------------ //
+  // Settings — how long after order completion the rating request goes out.
+  // ------------------------------------------------------------------ //
+
+  async getSettings() {
+    const tenant = await this.prisma.scoped.tenant.findFirst({
+      where: { deletedAt: null },
+      select: { settings: true },
+    });
+    const settings = (tenant?.settings ?? {}) as { feedbackDelayMinutes?: number };
+    return { feedbackDelayMinutes: settings.feedbackDelayMinutes ?? DEFAULT_FEEDBACK_DELAY_MINUTES };
+  }
+
+  async updateSettings(dto: UpdateFeedbackSettingsDto) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenant = await this.prisma.scoped.tenant.findFirst({
+      where: { deletedAt: null },
+      select: { settings: true },
+    });
+    const current = (tenant?.settings ?? {}) as Record<string, unknown>;
+    await this.prisma.scoped.tenant.update({
+      where: { id: this.tenantContext.tenantIdOrThrow },
+      data: {
+        settings: { ...current, feedbackDelayMinutes: dto.feedbackDelayMinutes },
+        updatedBy: ctx.userId,
+      },
+    });
+    await this.audit.log({
+      action: "tenant.settings_updated",
+      entityType: "tenant",
+      meta: { feedbackDelayMinutes: dto.feedbackDelayMinutes },
+    });
+    return this.getSettings();
+  }
 
   /** Idempotent — orderId is unique, so a duplicate event is a silent no-op. */
   async createRequestForCompletedOrder(tenantId: string, branchId: string, orderId: string): Promise<void> {
@@ -53,11 +91,14 @@ export class FeedbackService {
         const existing = await this.prisma.scoped.orderFeedbackRequest.findUnique({ where: { orderId } });
         if (existing) return;
 
-        const topItem = await this.prisma.scoped.orderItem.findFirst({
-          where: { orderId },
-          orderBy: { lineTotal: "desc" },
-          select: { productId: true },
-        });
+        const [topItem, { feedbackDelayMinutes }] = await Promise.all([
+          this.prisma.scoped.orderItem.findFirst({
+            where: { orderId },
+            orderBy: { lineTotal: "desc" },
+            select: { productId: true },
+          }),
+          this.getSettings(),
+        ]);
 
         await this.prisma.scoped.orderFeedbackRequest.create({
           data: {
@@ -65,7 +106,7 @@ export class FeedbackService {
             branchId,
             orderId,
             primaryProductId: topItem?.productId,
-            sendAfter: new Date(Date.now() + FEEDBACK_DELAY_MS),
+            sendAfter: new Date(Date.now() + feedbackDelayMinutes * 60 * 1000),
           },
         });
       },

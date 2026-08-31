@@ -5,13 +5,11 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 
+import { PlatformSettingsService } from "../../shared/platform-settings/platform-settings.service";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
 import { OtpService } from "./otp/otp.service";
 import { hashPassword, verifyPassword } from "./password";
 import { TokenService, type TokenPair } from "./token.service";
-
-const MAX_FAILED_LOGINS = 5;
-const LOCKOUT_MINUTES = 15;
 
 export interface AuthenticatedUser {
   id: string;
@@ -33,6 +31,7 @@ export class AuthService {
     private readonly db: PlatformPrismaService,
     private readonly otp: OtpService,
     private readonly tokens: TokenService,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   /** Step 1 of onboarding: create the owner account and send a verification OTP. */
@@ -149,15 +148,13 @@ export class AuthService {
 
     const valid = await verifyPassword(input.password, user.passwordHash);
     if (!valid) {
+      const { maxFailedLogins, lockoutMinutes } = await this.platformSettings.getSettings();
       const failed = user.failedLoginAttempts + 1;
       await this.db.user.update({
         where: { id: user.id },
         data: {
           failedLoginAttempts: failed,
-          lockedUntil:
-            failed >= MAX_FAILED_LOGINS
-              ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000)
-              : null,
+          lockedUntil: failed >= maxFailedLogins ? new Date(Date.now() + lockoutMinutes * 60 * 1000) : null,
         },
       });
       throw new UnauthorizedException("Invalid email or password");

@@ -25,7 +25,9 @@ export async function truncateAll(admin: PrismaClient): Promise<void> {
       tenants,
       users,
       permissions,
-      platform_admins
+      platform_admins,
+      platform_settings,
+      platform_audit_logs
     CASCADE
   `);
 }

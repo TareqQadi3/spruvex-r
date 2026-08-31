@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { PlatformSettingsService } from "../../shared/platform-settings/platform-settings.service";
+
 /**
  * Local-disk image storage for logos/product/category images — the one
  * store this project has today. No S3/Cloudinary account exists to point
@@ -19,7 +21,18 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/webp": "webp",
 };
-export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
+
+/**
+ * Multer buffers the upload before any application code (or DB lookup) runs,
+ * so its `limits.fileSize` must be a plain sync constant set at
+ * @UseInterceptors() decoration time — it cannot read the configurable
+ * platform setting below. This is therefore a fixed, generous HARD ceiling
+ * (never itself the business limit a platform owner tunes), and
+ * PlatformSettingsShape.maxUploadBytes's own valid range is capped at this
+ * same value (see platform-settings.dto.ts) so a configured limit can never
+ * exceed what multer will actually let through.
+ */
+export const MULTER_HARD_CEILING_BYTES = 20 * 1024 * 1024; // 20 MB
 
 /** Private-document uploads (e.g. a scanned supplier invoice) — a superset
  * of the public image types, since suppliers commonly send PDFs. */
@@ -48,6 +61,8 @@ function privateDir(tenantId: string, category: PrivateFileCategory): string {
 
 @Injectable()
 export class UploadsService {
+  constructor(private readonly platformSettings: PlatformSettingsService) {}
+
   async saveImage(
     tenantId: string,
     file: Express.Multer.File,
@@ -58,8 +73,9 @@ export class UploadsService {
         `Unsupported image type: ${file.mimetype}. Allowed: PNG, JPEG, WEBP.`,
       );
     }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      throw new BadRequestException(`Image exceeds the ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB limit`);
+    const { maxUploadBytes } = await this.platformSettings.getSettings();
+    if (file.size > maxUploadBytes) {
+      throw new BadRequestException(`Image exceeds the ${Math.floor(maxUploadBytes / (1024 * 1024))}MB limit`);
     }
 
     // The filename is always server-generated (UUID + extension derived from
@@ -115,8 +131,9 @@ export class UploadsService {
         `Unsupported file type: ${file.mimetype}. Allowed: PNG, JPEG, WEBP, PDF.`,
       );
     }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      throw new BadRequestException(`File exceeds the ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB limit`);
+    const { maxUploadBytes } = await this.platformSettings.getSettings();
+    if (file.size > maxUploadBytes) {
+      throw new BadRequestException(`File exceeds the ${Math.floor(maxUploadBytes / (1024 * 1024))}MB limit`);
     }
 
     // Same server-generated-filename reasoning as saveImage() — the

@@ -311,4 +311,56 @@ describe("post-order feedback & critical-stock auto-hide (e2e)", () => {
       expect(match.rating).toBe(2);
     });
   });
+
+  describe("feedback settings — tenant-configurable send delay", () => {
+    it("cashier (no tenant.settings.manage) is forbidden", async () => {
+      await request(http).get("/feedback/settings").set("Authorization", `Bearer ${cashierToken}`).expect(403);
+    });
+
+    it("defaults to 30 minutes before any owner has touched it", async () => {
+      const res = await request(http)
+        .get("/feedback/settings")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .expect(200);
+      expect(res.body).toEqual({ feedbackDelayMinutes: 30 });
+    });
+
+    it("rejects an out-of-bounds delay", async () => {
+      await request(http)
+        .patch("/feedback/settings")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ feedbackDelayMinutes: 0 })
+        .expect(400);
+      await request(http)
+        .patch("/feedback/settings")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ feedbackDelayMinutes: 5000 })
+        .expect(400);
+    });
+
+    it("persists a valid delay and every new completed order's request uses it", async () => {
+      const updated = await request(http)
+        .patch("/feedback/settings")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ feedbackDelayMinutes: 2 })
+        .expect(200);
+      expect(updated.body).toEqual({ feedbackDelayMinutes: 2 });
+
+      await request(http)
+        .post("/inventory/stock/purchase")
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ branchId, ingredientId, quantity: "200", unitCost: "0.02" })
+        .expect(201);
+
+      const before = Date.now();
+      const order = await placeAndCompleteOrder(1);
+      const row = await waitUntil(() => admin.orderFeedbackRequest.findUnique({ where: { orderId: order.id } }));
+
+      const delayMs = row.sendAfter.getTime() - before;
+      // Configured to 2 minutes, not the old hardcoded 30 — generous window
+      // for test-run jitter, but nowhere near the old default.
+      expect(delayMs).toBeGreaterThan(1.5 * 60 * 1000);
+      expect(delayMs).toBeLessThan(10 * 60 * 1000);
+    });
+  });
 });

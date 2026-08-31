@@ -5,11 +5,9 @@ import {
 } from "@nestjs/common";
 import { createHash, randomInt } from "node:crypto";
 
+import { PlatformSettingsService } from "../../../shared/platform-settings/platform-settings.service";
 import { PlatformPrismaService } from "../../../shared/prisma/platform-prisma.service";
 import { OTP_SENDER, OtpPurpose, OtpSender } from "./otp-sender";
-
-const OTP_TTL_MINUTES = 10;
-const MAX_VERIFY_ATTEMPTS = 5;
 
 function hashCode(code: string): string {
   return createHash("sha256").update(code).digest("hex");
@@ -19,6 +17,7 @@ function hashCode(code: string): string {
 export class OtpService {
   constructor(
     private readonly db: PlatformPrismaService,
+    private readonly platformSettings: PlatformSettingsService,
     @Inject(OTP_SENDER) private readonly sender: OtpSender,
   ) {}
 
@@ -29,6 +28,7 @@ export class OtpService {
    */
   async issue(destination: string, purpose: OtpPurpose, userId?: string): Promise<{ devCode?: string }> {
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const { otpTtlMinutes } = await this.platformSettings.getSettings();
 
     await this.db.otpCode.updateMany({
       where: { destination, purpose, consumedAt: null },
@@ -40,7 +40,7 @@ export class OtpService {
         purpose,
         userId,
         codeHash: hashCode(code),
-        expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
+        expiresAt: new Date(Date.now() + otpTtlMinutes * 60 * 1000),
       },
     });
 
@@ -57,7 +57,8 @@ export class OtpService {
     if (!otp || otp.expiresAt < new Date()) {
       throw new BadRequestException("Verification code expired — request a new one");
     }
-    if (otp.attempts >= MAX_VERIFY_ATTEMPTS) {
+    const { otpMaxVerifyAttempts } = await this.platformSettings.getSettings();
+    if (otp.attempts >= otpMaxVerifyAttempts) {
       throw new BadRequestException("Too many attempts — request a new code");
     }
 

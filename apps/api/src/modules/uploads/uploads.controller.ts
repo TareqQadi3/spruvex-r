@@ -16,7 +16,7 @@ import type { Response } from "express";
 import { Public } from "../../shared/rbac/public.decorator";
 import { RequireAuthenticated } from "../../shared/rbac/require-authenticated.decorator";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
-import { MAX_UPLOAD_BYTES, UploadsService } from "./uploads.service";
+import { MULTER_HARD_CEILING_BYTES, UploadsService } from "./uploads.service";
 
 const FILENAME_RE = /^[0-9a-f-]{36}\.(png|jpg|webp)$/;
 
@@ -38,7 +38,7 @@ export class UploadsController {
   @RequireAuthenticated()
   @Post("image")
   @UseInterceptors(
-    FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES } }),
+    FileInterceptor("file", { limits: { fileSize: MULTER_HARD_CEILING_BYTES } }),
   )
   async uploadImage(@UploadedFile() file?: Express.Multer.File) {
     if (!file) {

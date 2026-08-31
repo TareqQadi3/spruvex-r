@@ -16,7 +16,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 
 import { RequirePermission } from "../../shared/rbac/require-permission.decorator";
-import { MAX_UPLOAD_BYTES } from "../uploads/uploads.service";
+import { MULTER_HARD_CEILING_BYTES } from "../uploads/uploads.service";
 import {
   CancelPurchaseInvoiceDto,
   CreatePurchaseInvoiceDto,
@@ -116,7 +116,7 @@ export class PurchasesController {
 
   @RequirePermission("purchases.create")
   @Post("invoices/:id/attachment")
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_UPLOAD_BYTES } }))
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MULTER_HARD_CEILING_BYTES } }))
   async uploadAttachment(
     @Param("id", ParseUUIDPipe) id: string,
     @UploadedFile() file?: Express.Multer.File,
