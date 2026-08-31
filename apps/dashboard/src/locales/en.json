@@ -729,6 +729,12 @@
     "menuDesignCssTargetingHint": "Target elements with [data-menu-part=\"header\"], \"logo\", \"title\", \"category-nav\", \"category-button\", \"product-card\", \"product-image\", \"product-name\", \"product-description\", or \"product-price\".",
     "feedbackTitle": "Feedback request settings",
     "feedbackHint": "When the WhatsApp rating request goes out after an order completes.",
+    "reorderAlertsTitle": "Low-stock WhatsApp alerts",
+    "reorderAlertsHint": "As soon as an ingredient's balance reaches or drops below its reorder level, a WhatsApp alert goes to the restaurant's registered number — won't repeat for the same ingredient until the balance rises back above the level and drops again.",
+    "reorderAlertsEnable": "Enable low-stock WhatsApp alerts",
+    "reorderAlertsRecipient": "Alerts will be sent to: {{phone}}",
+    "reorderAlertsNoRecipient": "No main contact phone is registered for the restaurant yet — add one in the restaurant profile before enabling this alert.",
+    "reorderAlertsTemplateNote": "Also requires approving the \"Low stock alert\" template on the WhatsApp templates screen, same as any other template.",
     "feedbackDelayLabel": "Delay before sending the feedback request (minutes)",
     "feedbackDelayHint": "From {{min}} to {{max}} minutes.",
     "feedbackDelayRangeError": "Delay must be a whole number between {{min}} and {{max}} minutes."

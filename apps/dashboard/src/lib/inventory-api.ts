@@ -109,6 +109,11 @@ export interface ReorderAlertRow {
   lastSupplier: ReorderAlertSupplier | null;
 }
 
+export interface ReorderAlertWhatsappSettings {
+  whatsappEnabled: boolean;
+  recipientPhone: string | null;
+}
+
 export const inventoryApi = {
   listUnits: () => api<UnitOfMeasure[]>("/inventory/units"),
 
@@ -141,6 +146,12 @@ export const inventoryApi = {
 
   listReorderAlerts: (branchId?: string) =>
     api<ReorderAlertRow[]>(`/inventory/reorder-alerts${branchId ? `?branchId=${branchId}` : ""}`),
+  getReorderAlertSettings: () => api<ReorderAlertWhatsappSettings>("/inventory/reorder-alerts/settings"),
+  updateReorderAlertSettings: (whatsappEnabled: boolean) =>
+    api<ReorderAlertWhatsappSettings>("/inventory/reorder-alerts/settings", {
+      method: "PATCH",
+      body: JSON.stringify({ whatsappEnabled }),
+    }),
 
   getRecipe: (productId: string) => api<Recipe>(`/products/${productId}/recipe`),
   setRecipe: (

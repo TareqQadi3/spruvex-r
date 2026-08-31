@@ -24,6 +24,7 @@ import {
 import * as SpruvexTypes from "@spruvex-r/types";
 
 import { api, ApiError } from "../../lib/api";
+import { inventoryApi, type ReorderAlertWhatsappSettings } from "../../lib/inventory-api";
 
 const { MENU_PRESET_KEYS, MENU_TEMPLATES } = SpruvexTypes;
 
@@ -188,6 +189,18 @@ export function SettingsPage() {
     saveFeedbackSettings.mutate(parsed);
   }
 
+  const { data: reorderAlertSettings, isLoading: reorderAlertLoading } = useQuery({
+    queryKey: ["reorder-alert-settings"],
+    queryFn: () => inventoryApi.getReorderAlertSettings(),
+  });
+  const toggleReorderAlertWhatsapp = useMutation({
+    mutationFn: (whatsappEnabled: boolean) => inventoryApi.updateReorderAlertSettings(whatsappEnabled),
+    onSuccess: (updated: ReorderAlertWhatsappSettings) => {
+      queryClient.setQueryData(["reorder-alert-settings"], updated);
+    },
+    onError: (e) => alert(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
   const { data: zatca, isLoading: zatcaLoading } = useQuery({
     queryKey: ["zatca-settings"],
     queryFn: () => api<ZatcaSettings>("/tenant/zatca-settings"),
@@ -332,6 +345,35 @@ export function SettingsPage() {
                     )}
                   </Button>
                 </form>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("settings.reorderAlertsTitle")}</CardTitle>
+              <CardDescription>{t("settings.reorderAlertsHint")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {reorderAlertLoading && <Spinner />}
+              {reorderAlertSettings && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={reorderAlertSettings.whatsappEnabled}
+                      aria-label={t("settings.reorderAlertsEnable")}
+                      disabled={toggleReorderAlertWhatsapp.isPending}
+                      onCheckedChange={(enabled) => toggleReorderAlertWhatsapp.mutate(enabled)}
+                    />
+                    <span className="text-sm font-medium">{t("settings.reorderAlertsEnable")}</span>
+                  </div>
+                  <Alert>
+                    {reorderAlertSettings.recipientPhone
+                      ? t("settings.reorderAlertsRecipient", { phone: reorderAlertSettings.recipientPhone })
+                      : t("settings.reorderAlertsNoRecipient")}
+                  </Alert>
+                  <p className="text-xs text-muted-foreground">{t("settings.reorderAlertsTemplateNote")}</p>
+                </>
               )}
             </CardContent>
           </Card>

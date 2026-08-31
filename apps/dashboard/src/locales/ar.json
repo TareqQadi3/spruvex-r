@@ -729,6 +729,12 @@
     "menuDesignCssTargetingHint": "استهدف العناصر عبر [data-menu-part=\"header\"]، وكذلك \"logo\" و\"title\" و\"category-nav\" و\"category-button\" و\"product-card\" و\"product-image\" و\"product-name\" و\"product-description\" و\"product-price\".",
     "feedbackTitle": "إعدادات طلب التقييم",
     "feedbackHint": "متى يُرسل للعميل طلب تقييم طلبه عبر واتساب بعد اكتماله.",
+    "reorderAlertsTitle": "تنبيهات نفاد المخزون عبر واتساب",
+    "reorderAlertsHint": "عند وصول رصيد أي مكوّن إلى حد إعادة الطلب الخاص به أو دونه، يُرسل تنبيه واتساب لرقم المطعم المسجَّل — لا يتكرر لنفس المكوّن حتى يرتفع الرصيد فوق الحد ثم ينخفض مرة أخرى.",
+    "reorderAlertsEnable": "تفعيل تنبيهات نفاد المخزون عبر واتساب",
+    "reorderAlertsRecipient": "سيُرسل التنبيه إلى: {{phone}}",
+    "reorderAlertsNoRecipient": "لم يُسجَّل رقم جوال رئيسي للمطعم بعد — أضِفه من بيانات المطعم قبل تفعيل هذا التنبيه.",
+    "reorderAlertsTemplateNote": "يتطلب أيضًا اعتماد قالب \"تنبيه انخفاض المخزون\" من شاشة قوالب واتساب، تمامًا كأي قالب آخر.",
     "feedbackDelayLabel": "مدة التأخير قبل إرسال طلب التقييم (بالدقائق)",
     "feedbackDelayHint": "من {{min}} إلى {{max}} دقيقة.",
     "feedbackDelayRangeError": "يجب أن تكون المدة رقمًا صحيحًا بين {{min}} و {{max}} دقيقة."

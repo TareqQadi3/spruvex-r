@@ -16,6 +16,7 @@ import {
   CreateIngredientDto,
   UpdateIngredientDto,
 } from "./dto/ingredient.dto";
+import { UpdateReorderAlertSettingsDto } from "./dto/reorder-alert-settings.dto";
 import {
   RecordAdjustmentDto,
   RecordPurchaseDto,
@@ -157,5 +158,18 @@ export class InventoryController {
   @Get("reorder-alerts")
   listReorderAlerts(@Query("branchId") branchId?: string) {
     return this.reorderAlerts.list(branchId);
+  }
+
+  /** Whether a reorder-alert crossing sends a WhatsApp notice to the tenant's registered number, and what that number is. */
+  @RequirePermission("tenant.settings.manage")
+  @Get("reorder-alerts/settings")
+  getReorderAlertSettings() {
+    return this.reorderAlerts.getWhatsappSettings();
+  }
+
+  @RequirePermission("tenant.settings.manage")
+  @Patch("reorder-alerts/settings")
+  updateReorderAlertSettings(@Body() dto: UpdateReorderAlertSettingsDto) {
+    return this.reorderAlerts.updateWhatsappSettings(dto);
   }
 }

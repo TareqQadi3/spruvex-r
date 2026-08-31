@@ -11,6 +11,8 @@ export const DOMAIN_EVENTS = {
   SHIFT_OPENED: "shift.opened",
   SHIFT_CLOSED: "shift.closed",
   TENANT_CREATED: "tenant.created",
+  /** A branch's on-hand quantity of an ingredient just crossed AT/BELOW its reorderLevel for the first time (not yet cleared). */
+  INGREDIENT_REORDER_ALERT: "ingredient.reorder_alert",
 } as const;
 
 export type DomainEventName = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];

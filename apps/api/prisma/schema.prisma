@@ -151,6 +151,7 @@ model Tenant {
   deliveryProductMappings      DeliveryProductMapping[]
   whatsappTemplateOverrides    WhatsappTemplateOverride[]
   productStockHides            ProductStockHide[]
+  ingredientReorderAlerts      IngredientReorderAlert[]
   orderFeedbackRequests        OrderFeedbackRequest[]
   loyaltyProgramConfigs        LoyaltyProgramConfig[]
   loyaltyCustomers             LoyaltyCustomer[]
@@ -190,23 +191,24 @@ model Branch {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
-  userRoles              UserRole[]
-  posPins                PosPin[]
-  productBranchSettings  ProductBranchSetting[]
-  floors                 Floor[]
-  tables                 Table[]
-  orders                 Order[]
-  shifts                 Shift[]
-  stockLocations         StockLocation[]
-  stockLevels            StockLevel[]
-  stockMovements         StockMovement[]
-  invoiceChain           BranchInvoiceChain?
-  integrationConnections IntegrationConnection[]
-  productStockHides      ProductStockHide[]
-  feedbackRequests       OrderFeedbackRequest[]
-  loyaltyProgramConfigs  LoyaltyProgramConfig[]
-  loyaltyLedgerEntries   LoyaltyLedgerEntry[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  userRoles               UserRole[]
+  posPins                 PosPin[]
+  productBranchSettings   ProductBranchSetting[]
+  floors                  Floor[]
+  tables                  Table[]
+  orders                  Order[]
+  shifts                  Shift[]
+  stockLocations          StockLocation[]
+  stockLevels             StockLevel[]
+  stockMovements          StockMovement[]
+  invoiceChain            BranchInvoiceChain?
+  integrationConnections  IntegrationConnection[]
+  productStockHides       ProductStockHide[]
+  ingredientReorderAlerts IngredientReorderAlert[]
+  feedbackRequests        OrderFeedbackRequest[]
+  loyaltyProgramConfigs   LoyaltyProgramConfig[]
+  loyaltyLedgerEntries    LoyaltyLedgerEntry[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -1317,13 +1319,14 @@ model Ingredient {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  tenant               Tenant                   @relation(fields: [tenantId], references: [id])
   stockLevels          StockLevel[]
   stockMovements       StockMovement[]
   recipeItems          RecipeItem[]
   stockHides           ProductStockHide[]
   purchaseInvoiceItems PurchaseInvoiceItem[]
   stockTransferItems   StockTransferItem[]
+  reorderAlerts        IngredientReorderAlert[]
 
   @@index([tenantId])
   @@map("ingredients")
@@ -1538,11 +1541,11 @@ model StockTransferItem {
   ingredientId    String @map("ingredient_id") @db.Uuid
 
   /// Requested/sent quantity (base units) — set at creation, frozen once sent.
-  sentQuantity Decimal @map("sent_quantity") @db.Decimal(14, 3)
+  sentQuantity   Decimal  @map("sent_quantity") @db.Decimal(14, 3)
   /// Which fromBranch location this decrements — resolved (branch default
   /// if omitted) at creation time, same convention as
   /// PurchaseInvoiceItem.locationId.
-  fromLocationId String @map("from_location_id") @db.Uuid
+  fromLocationId String   @map("from_location_id") @db.Uuid
   /// Ingredient.averageCost snapshotted at SEND time (null while draft) —
   /// frozen the same way PurchaseInvoiceItem.unitPrice is, so a purchase
   /// elsewhere between send and receive can never retroactively change
@@ -1552,23 +1555,23 @@ model StockTransferItem {
   /// Which toBranch location received it — chosen at receive time (the
   /// receiving branch's own layout, not the sender's concern), null until
   /// actually received.
-  toLocationId String? @map("to_location_id") @db.Uuid
+  toLocationId      String?  @map("to_location_id") @db.Uuid
   /// Actually-received quantity — null until received; may be less than
   /// sentQuantity (partial/damaged receipt). The un-received remainder is
   /// simply never posted as transfer_in — it is a genuine loss, the same
   /// economic reality as a waste movement, just recorded here instead of a
   /// synthetic extra movement.
-  receivedQuantity Decimal? @map("received_quantity") @db.Decimal(14, 3)
+  receivedQuantity  Decimal? @map("received_quantity") @db.Decimal(14, 3)
   /// Mandatory whenever receivedQuantity < sentQuantity — enforced in
   /// StockTransfersService, not here (needs the real sentQuantity to
   /// compare against, which a DTO-level decorator can't see).
-  discrepancyReason String? @map("discrepancy_reason")
+  discrepancyReason String?  @map("discrepancy_reason")
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  tenant        Tenant             @relation(fields: [tenantId], references: [id])
-  stockTransfer StockTransfer      @relation(fields: [stockTransferId], references: [id])
-  ingredient    Ingredient         @relation(fields: [ingredientId], references: [id])
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  stockTransfer StockTransfer @relation(fields: [stockTransferId], references: [id])
+  ingredient    Ingredient    @relation(fields: [ingredientId], references: [id])
 
   @@index([tenantId, stockTransferId])
   @@map("stock_transfer_items")
@@ -1598,6 +1601,30 @@ model ProductStockHide {
   @@unique([productId, branchId])
   @@index([tenantId, branchId])
   @@map("product_stock_hides")
+}
+
+/// Tracks that a reorder-alert WhatsApp notification has already been sent
+/// for this (branch, ingredient) pair — the "don't re-notify while still
+/// below the threshold" state the WhatsApp round needs. Mirrors
+/// ProductStockHide's shape/lifecycle exactly: created when a stock
+/// movement first drives the branch's TOTAL on-hand quantity (summed
+/// across every stock location, same aggregation reevaluateStockGating
+/// already uses) at/below Ingredient.reorderLevel, deleted the moment it
+/// rises back above — so the next crossing notifies again.
+model IngredientReorderAlert {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  ingredientId String   @map("ingredient_id") @db.Uuid
+  alertedAt    DateTime @default(now()) @map("alerted_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@unique([branchId, ingredientId])
+  @@index([tenantId, branchId])
+  @@map("ingredient_reorder_alerts")
 }
 
 /// A vendor the tenant buys from. Deliberately minimal — no API integration

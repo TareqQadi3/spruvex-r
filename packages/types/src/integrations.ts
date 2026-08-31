@@ -98,6 +98,7 @@ export const WHATSAPP_TEMPLATE_KEYS = [
   "order_ready",
   "invoice_sent",
   "order_feedback_request",
+  "low_stock_alert",
 ] as const;
 export type WhatsappTemplateKey = (typeof WHATSAPP_TEMPLATE_KEYS)[number];
 
@@ -217,5 +218,23 @@ export const WHATSAPP_MESSAGE_TEMPLATES: Record<WhatsappTemplateKey, WhatsappMes
       { key: "feedbackLink", nameAr: "رابط التقييم", nameEn: "Feedback link", example: "https://order.spruvex.app/feedback/..." },
     ],
     bodyAr: "مرحبًا {{1}}، كيف كانت تجربتك مع طلبك رقم {{2}} من {{3}}؟ قيّمنا من هنا: {{4}}",
+  },
+  low_stock_alert: {
+    key: "low_stock_alert",
+    nameAr: "تنبيه انخفاض المخزون",
+    nameEn: "Low stock alert",
+    descriptionAr:
+      "يُرسل لرقم جوال المطعم المسجَّل فور وصول رصيد مكوّن إلى حد إعادة الطلب الخاص به أو دونه — لا يتكرر لنفس المكوّن حتى يرتفع الرصيد فوق الحد ثم ينخفض مرة أخرى",
+    descriptionEn:
+      "Sent to the restaurant's registered phone number as soon as an ingredient's balance reaches or drops below its reorder level — won't repeat for the same ingredient until the balance rises back above the level and drops again",
+    category: "UTILITY",
+    suggestedMetaName: "spruvex_low_stock_alert",
+    variables: [
+      { key: "ingredientName", nameAr: "اسم المكوّن", nameEn: "Ingredient name", example: "دقيق" },
+      { key: "currentQuantity", nameAr: "الرصيد الحالي", nameEn: "Current balance", example: "1200" },
+      { key: "reorderLevel", nameAr: "حد إعادة الطلب", nameEn: "Reorder level", example: "5000" },
+      { key: "branchName", nameAr: "الفرع", nameEn: "Branch", example: "الفرع الرئيسي" },
+    ],
+    bodyAr: "تنبيه مخزون: {{1}} في {{4}} وصل إلى {{2}}، وهو عند/دون حد إعادة الطلب ({{3}}). يُرجى إعادة الطلب.",
   },
 };

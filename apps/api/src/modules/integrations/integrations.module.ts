@@ -15,6 +15,7 @@ import { GatewayService } from "./payment-gateway/gateway.service";
 import { HyperpayProvider } from "./payment-gateway/hyperpay.provider";
 import { MoyasarProvider } from "./payment-gateway/moyasar.provider";
 import { TapProvider } from "./payment-gateway/tap.provider";
+import { ReorderAlertListener } from "./whatsapp/reorder-alert.listener";
 import { WhatsappOrderListener } from "./whatsapp/whatsapp-order.listener";
 import { WhatsappTemplatesController } from "./whatsapp/whatsapp-templates.controller";
 import { WhatsappService } from "./whatsapp/whatsapp.service";
@@ -53,6 +54,7 @@ import { WhatsappService } from "./whatsapp/whatsapp.service";
     GatewayService,
     WhatsappService,
     WhatsappOrderListener,
+    ReorderAlertListener,
   ],
   exports: [ConnectionsService, WhatsappService],
 })

@@ -5,7 +5,9 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Prisma } from "@prisma/client";
+import { DOMAIN_EVENTS } from "@spruvex-r/types";
 
 import { AuditService } from "../../shared/audit/audit.service";
 import { costUnitsToSar, sarToCostUnits } from "../../shared/common/money";
@@ -36,6 +38,15 @@ interface StockGatingEvent {
   ingredientId: string;
 }
 
+/** One reorder-alert enter/clear decision made by reevaluateReorderAlerts, for the caller to audit-log (and, on "entered", notify) after commit. */
+interface ReorderAlertEvent {
+  action: "entered" | "cleared";
+  ingredientId: string;
+  branchId: string;
+  currentQuantity: string;
+  reorderLevel: string;
+}
+
 @Injectable()
 export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
@@ -45,6 +56,7 @@ export class InventoryService {
     private readonly tenantContext: TenantContextService,
     private readonly audit: AuditService,
     private readonly locations: StockLocationsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   levels(branchId?: string, locationId?: string) {
@@ -132,6 +144,13 @@ export class InventoryService {
         dto.ingredientId,
       );
       await this.logGatingEvents(dto.branchId, gatingEvents);
+      const reorderEvents = await this.reevaluateReorderAlerts(
+        tx,
+        this.tenantContext.tenantIdOrThrow,
+        dto.branchId,
+        dto.ingredientId,
+      );
+      await this.logReorderAlertEvents(reorderEvents);
       return movement;
     };
 
@@ -244,6 +263,13 @@ export class InventoryService {
         original.ingredientId,
       );
       await this.logGatingEvents(original.branchId, gatingEvents);
+      const reorderEvents = await this.reevaluateReorderAlerts(
+        tx,
+        this.tenantContext.tenantIdOrThrow,
+        original.branchId,
+        original.ingredientId,
+      );
+      await this.logReorderAlertEvents(reorderEvents);
       return movement;
     };
 
@@ -306,6 +332,13 @@ export class InventoryService {
       input.ingredientId,
     );
     await this.logGatingEvents(input.branchId, gatingEvents);
+    const reorderEvents = await this.reevaluateReorderAlerts(
+      opts.tx,
+      this.tenantContext.tenantIdOrThrow,
+      input.branchId,
+      input.ingredientId,
+    );
+    await this.logReorderAlertEvents(reorderEvents);
     return movement;
   }
 
@@ -360,6 +393,13 @@ export class InventoryService {
       input.ingredientId,
     );
     await this.logGatingEvents(input.branchId, gatingEvents);
+    const reorderEvents = await this.reevaluateReorderAlerts(
+      opts.tx,
+      this.tenantContext.tenantIdOrThrow,
+      input.branchId,
+      input.ingredientId,
+    );
+    await this.logReorderAlertEvents(reorderEvents);
     return movement;
   }
 
@@ -398,6 +438,13 @@ export class InventoryService {
         dto.ingredientId,
       );
       await this.logGatingEvents(dto.branchId, gatingEvents);
+      const reorderEvents = await this.reevaluateReorderAlerts(
+        tx,
+        this.tenantContext.tenantIdOrThrow,
+        dto.branchId,
+        dto.ingredientId,
+      );
+      await this.logReorderAlertEvents(reorderEvents);
       return movement;
     });
   }
@@ -453,6 +500,13 @@ export class InventoryService {
         dto.ingredientId,
       );
       await this.logGatingEvents(dto.branchId, gatingEvents);
+      const reorderEvents = await this.reevaluateReorderAlerts(
+        tx,
+        this.tenantContext.tenantIdOrThrow,
+        dto.branchId,
+        dto.ingredientId,
+      );
+      await this.logReorderAlertEvents(reorderEvents);
       return movement;
     });
   }
@@ -507,7 +561,7 @@ export class InventoryService {
         return; // none of the sold products have a recipe — nothing to deduct
       }
 
-      const gatingEvents = await this.prisma.scopedTransaction(async (tx) => {
+      const { events: gatingEvents, reorderEvents } = await this.prisma.scopedTransaction(async (tx) => {
         const locationId = (await this.locations.getOrCreateDefault(branchId, tx)).id;
         const touchedIngredientIds = new Set<string>();
 
@@ -531,12 +585,15 @@ export class InventoryService {
         }
 
         const events: StockGatingEvent[] = [];
+        const reorderEvents: ReorderAlertEvent[] = [];
         for (const ingredientId of touchedIngredientIds) {
           events.push(...(await this.reevaluateStockGating(tx, tenantId, branchId, ingredientId)));
+          reorderEvents.push(...(await this.reevaluateReorderAlerts(tx, tenantId, branchId, ingredientId)));
         }
-        return events;
+        return { events, reorderEvents };
       }, tenantId);
       await this.logGatingEvents(branchId, gatingEvents);
+      await this.logReorderAlertEvents(reorderEvents);
     } catch (error) {
       // Non-blocking by design: inventory failures must never affect an
       // already-completed order. Surface loudly in logs for operators.
@@ -764,6 +821,96 @@ export class InventoryService {
         branchId,
         meta: { ingredientId: event.ingredientId },
       });
+    }
+  }
+
+  /**
+   * Reorder-alert crossing detector — same shape and call sites as
+   * reevaluateStockGating (right beside every call to it), but comparing
+   * this branch's TOTAL on-hand quantity of the ingredient (summed across
+   * every stock location, same aggregation reevaluateStockGating already
+   * uses for its own threshold) against Ingredient.reorderLevel instead of
+   * a per-recipe criticalThreshold.
+   *
+   * IngredientReorderAlert is the "already notified" state: created the
+   * moment the total first reaches/drops below reorderLevel (an "entered"
+   * event — the ONLY case the caller should act on), deleted the moment it
+   * rises back above (a "cleared" event, audit-logged but never
+   * re-notified on its own — the next entry starts a fresh notification).
+   * A row already existing when the total is still at/below the threshold
+   * is a no-op — this is exactly the "don't repeat while still low" rule.
+   *
+   * Ingredients with no reorderLevel set skip entirely, same as
+   * reevaluateStockGating skips ingredients with no critical recipe links.
+   */
+  private async reevaluateReorderAlerts(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    branchId: string,
+    ingredientId: string,
+  ): Promise<ReorderAlertEvent[]> {
+    const ingredient = await tx.ingredient.findFirst({
+      where: { id: ingredientId },
+      select: { reorderLevel: true },
+    });
+    if (!ingredient?.reorderLevel) {
+      return [];
+    }
+
+    const levels = await tx.stockLevel.findMany({
+      where: { branchId, ingredientId },
+      select: { quantity: true },
+    });
+    const totalQty = levels.reduce((sum, level) => sum + Number(level.quantity), 0);
+    const reorderLevel = Number(ingredient.reorderLevel);
+    const atOrBelow = totalQty <= reorderLevel;
+    const reorderLevelStr = ingredient.reorderLevel.toString();
+
+    const existingAlert = await tx.ingredientReorderAlert.findUnique({
+      where: { branchId_ingredientId: { branchId, ingredientId } },
+    });
+
+    if (atOrBelow && !existingAlert) {
+      await tx.ingredientReorderAlert.create({ data: { tenantId, branchId, ingredientId } });
+      return [
+        { action: "entered", ingredientId, branchId, currentQuantity: totalQty.toFixed(3), reorderLevel: reorderLevelStr },
+      ];
+    }
+    if (!atOrBelow && existingAlert) {
+      await tx.ingredientReorderAlert.delete({ where: { id: existingAlert.id } });
+      return [
+        { action: "cleared", ingredientId, branchId, currentQuantity: totalQty.toFixed(3), reorderLevel: reorderLevelStr },
+      ];
+    }
+    return [];
+  }
+
+  /**
+   * Audits every reorder-alert transition, and — for "entered" only — emits
+   * INGREDIENT_REORDER_ALERT so a decoupled WhatsApp listener (integrations
+   * module) can notify the tenant's registered number, gated by its own
+   * per-tenant toggle and template-approval state. "cleared" is audited but
+   * never re-notified on its own; the next crossing starts a fresh alert.
+   */
+  private async logReorderAlertEvents(events: ReorderAlertEvent[]): Promise<void> {
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    for (const event of events) {
+      await this.audit.log({
+        action: event.action === "entered" ? "ingredient.reorder_alert_triggered" : "ingredient.reorder_alert_cleared",
+        entityType: "ingredient",
+        entityId: event.ingredientId,
+        branchId: event.branchId,
+        meta: { currentQuantity: event.currentQuantity, reorderLevel: event.reorderLevel },
+      });
+      if (event.action === "entered") {
+        this.events.emit(DOMAIN_EVENTS.INGREDIENT_REORDER_ALERT, {
+          tenantId,
+          branchId: event.branchId,
+          ingredientId: event.ingredientId,
+          currentQuantity: event.currentQuantity,
+          reorderLevel: event.reorderLevel,
+        });
+      }
     }
   }
 

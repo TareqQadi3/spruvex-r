@@ -1,6 +1,9 @@
 import { Injectable } from "@nestjs/common";
 
+import { AuditService } from "../../shared/audit/audit.service";
 import { PrismaService } from "../../shared/prisma/prisma.service";
+import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
+import { UpdateReorderAlertSettingsDto } from "./dto/reorder-alert-settings.dto";
 
 export interface ReorderAlertSupplier {
   id: string;
@@ -51,7 +54,55 @@ export interface ReorderAlertRow {
  */
 @Injectable()
 export class ReorderAlertsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenantContext: TenantContextService,
+    private readonly audit: AuditService,
+  ) {}
+
+  // ------------------------------------------------------------------ //
+  // WhatsApp notification settings — same Tenant.settings JSON-blob
+  // convention FeedbackService already uses for feedbackDelayMinutes,
+  // rather than a new dedicated settings table/columns.
+  // ------------------------------------------------------------------ //
+
+  async getWhatsappSettings() {
+    const tenant = await this.prisma.scoped.tenant.findFirst({
+      where: { deletedAt: null },
+      select: { settings: true, contactPhone: true },
+    });
+    const settings = (tenant?.settings ?? {}) as { reorderAlertsWhatsappEnabled?: boolean };
+    return {
+      // Off by default — an existing tenant must opt in, never surprised by a message it never asked for.
+      whatsappEnabled: settings.reorderAlertsWhatsappEnabled ?? false,
+      // The number a "true" here will actually notify — Tenant.contactPhone,
+      // the restaurant's own registered contact number (see IngredientReorderAlert's
+      // doc comment on why this field, not a new one, was reused).
+      recipientPhone: tenant?.contactPhone ?? null,
+    };
+  }
+
+  async updateWhatsappSettings(dto: UpdateReorderAlertSettingsDto) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenant = await this.prisma.scoped.tenant.findFirst({
+      where: { deletedAt: null },
+      select: { settings: true },
+    });
+    const current = (tenant?.settings ?? {}) as Record<string, unknown>;
+    await this.prisma.scoped.tenant.update({
+      where: { id: this.tenantContext.tenantIdOrThrow },
+      data: {
+        settings: { ...current, reorderAlertsWhatsappEnabled: dto.whatsappEnabled },
+        updatedBy: ctx.userId,
+      },
+    });
+    await this.audit.log({
+      action: "tenant.settings_updated",
+      entityType: "tenant",
+      meta: { reorderAlertsWhatsappEnabled: dto.whatsappEnabled },
+    });
+    return this.getWhatsappSettings();
+  }
 
   async list(branchId: string | undefined): Promise<ReorderAlertRow[]> {
     const levels = await this.prisma.scoped.stockLevel.findMany({
