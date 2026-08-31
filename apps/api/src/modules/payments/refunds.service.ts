@@ -96,6 +96,13 @@ export class RefundsService {
           throw new NotFoundException("Tenant not found");
         }
 
+        // Row-locks the branch for the duration of the read-then-increment
+        // below — two concurrent refunds against the same branch would
+        // otherwise both read the same "last" creditNoteNumber and collide
+        // on its unique constraint (same fix as OrderingService.createInTransaction's
+        // orderNumber race; same FOR UPDATE idiom PurchasesService/
+        // StockTransfersService already use elsewhere).
+        await tx.$queryRaw`SELECT id FROM branches WHERE id = ${order.branchId}::uuid FOR UPDATE`;
         const last = await tx.creditNote.findFirst({
           where: { branchId: order.branchId },
           orderBy: { creditNoteNumber: "desc" },

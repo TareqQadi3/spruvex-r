@@ -1100,11 +1100,18 @@ export class OrderingService {
     const subtotalHalalas = priced.reduce((sum, item) => sum + item.lineTotalHalalas, 0);
     const vatHalalas = vatFromGross(subtotalHalalas, vatRate);
 
-    // Daily sequential number per branch.
+    // Daily sequential number per branch. Two concurrent order-creation
+    // transactions for the SAME branch (two POS terminals, or a walk-in and
+    // a QR order landing at once) would otherwise both read the same
+    // "last" number and collide on the (branchId, orderDate, orderNumber)
+    // unique constraint — row-locking the branch itself (same FOR UPDATE
+    // idiom PurchasesService/StockTransfersService already use) serializes
+    // the read-then-increment per branch without blocking other branches.
     const today = new Date();
     const orderDate = new Date(
       Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
     );
+    await tx.$queryRaw`SELECT id FROM branches WHERE id = ${branchId}::uuid FOR UPDATE`;
     const last = await tx.order.findFirst({
       where: { branchId, orderDate },
       orderBy: { orderNumber: "desc" },

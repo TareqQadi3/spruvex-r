@@ -48,6 +48,10 @@ export class DebitNotesService {
       const vatAmountHalalas = vatFromGross(amountHalalas, vatRatePercent);
       const subtotalHalalas = amountHalalas - vatAmountHalalas;
 
+      // Row-locks the branch for the duration of the read-then-increment
+      // below — same race (and same fix) as RefundsService.refund's
+      // creditNoteNumber and OrderingService.createInTransaction's orderNumber.
+      await tx.$queryRaw`SELECT id FROM branches WHERE id = ${receipt.branchId}::uuid FOR UPDATE`;
       const last = await tx.debitNote.findFirst({
         where: { branchId: receipt.branchId },
         orderBy: { debitNoteNumber: "desc" },
