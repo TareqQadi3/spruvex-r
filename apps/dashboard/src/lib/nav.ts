@@ -8,8 +8,13 @@ export interface NavItem {
   labelKey: string;
   path: string;
   icon: string;
-  /** Permission required to see the item. Undefined = visible to any member. */
-  permission?: string;
+  /**
+   * Permission(s) required to see the item. A string[] means "any one of
+   * these" (e.g. the import tool is reachable with menu.manage OR
+   * loyalty.manage, since it covers both catalog and customer data).
+   * Undefined = visible to any member.
+   */
+  permission?: string | string[];
   comingSoon?: boolean;
 }
 
@@ -26,6 +31,7 @@ export const NAV_ITEMS: NavItem[] = [
   { labelKey: "inventory", path: "/inventory", icon: "package", permission: "inventory.view" },
   { labelKey: "purchases", path: "/purchases", icon: "truck", permission: "purchases.view" },
   { labelKey: "reports", path: "/reports", icon: "bar-chart", permission: "reports.view" },
+  { labelKey: "import", path: "/import", icon: "upload", permission: ["menu.manage", "loyalty.manage"] },
   // Business modules — later phases:
   { labelKey: "orders", path: "/orders", icon: "receipt", permission: "orders.view", comingSoon: true },
   { labelKey: "pos", path: "/pos", icon: "monitor", permission: "orders.create", comingSoon: true },
@@ -37,5 +43,9 @@ export function visibleNavItems(
   permissions: ReadonlySet<string> | string[],
 ): NavItem[] {
   const set = Array.isArray(permissions) ? new Set(permissions) : permissions;
-  return items.filter((item) => !item.permission || set.has(item.permission));
+  return items.filter((item) => {
+    if (!item.permission) return true;
+    const required = Array.isArray(item.permission) ? item.permission : [item.permission];
+    return required.some((p) => set.has(p));
+  });
 }

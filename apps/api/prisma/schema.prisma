@@ -164,6 +164,7 @@ model Tenant {
   expenses                     Expense[]
   stockTransfers               StockTransfer[]
   stockTransferItems           StockTransferItem[]
+  importJobs                   ImportJob[]
 
   @@map("tenants")
 }
@@ -2344,4 +2345,60 @@ model LoyaltyLedgerEntry {
   @@index([tenantId, customerId, createdAt])
   @@index([tenantId, orderId])
   @@map("loyalty_ledger_entries")
+}
+
+enum ImportDataType {
+  categories
+  products
+  customers
+
+  @@map("import_data_type")
+}
+
+enum ImportJobStatus {
+  uploaded
+  mapped
+  completed
+
+  @@map("import_job_status")
+}
+
+/// A merchant-driven bulk data import from an uploaded spreadsheet (moving
+/// from another POS). The whole parsed file (`headers`/`rows`) is captured
+/// once at upload time so the later mapping/preview/execute steps never
+/// re-read the file — see ImportsService's doc comment for the full
+/// upload -> map -> preview -> execute flow and why each row is created
+/// through the exact same service methods a manual entry would use.
+model ImportJob {
+  id       String          @id @default(uuid()) @db.Uuid
+  tenantId String          @map("tenant_id") @db.Uuid
+  type     ImportDataType
+  status   ImportJobStatus @default(uploaded)
+
+  filename String @map("filename")
+  /// Raw header row, in file order — string[].
+  headers  Json
+  /// One object per data row, keyed by the ORIGINAL header text (not yet
+  /// mapped to our field keys) — Record<string, string>[].
+  rows     Json
+  rowCount Int    @map("row_count")
+
+  /// Record<originalHeader, ourFieldKey | null> — null means "ignore this column".
+  mapping Json?
+  /// Set once execute() finishes — one entry per row:
+  /// { rowNumber, status: "created"|"skipped_duplicate"|"failed", identifier?, error? }[].
+  results Json?
+
+  successCount Int? @map("success_count")
+  skippedCount Int? @map("skipped_count")
+  failedCount  Int? @map("failed_count")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  createdBy   String?   @map("created_by") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@map("import_jobs")
 }

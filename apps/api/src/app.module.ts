@@ -9,6 +9,7 @@ import { BillingModule } from "./modules/billing/billing.module";
 import { CatalogModule } from "./modules/catalog/catalog.module";
 import { FeedbackModule } from "./modules/feedback/feedback.module";
 import { IdentityModule } from "./modules/identity/identity.module";
+import { ImportsModule } from "./modules/imports/imports.module";
 import { IntegrationsModule } from "./modules/integrations/integrations.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
 import { LoyaltyModule } from "./modules/loyalty/loyalty.module";
@@ -61,6 +62,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
     IntegrationsModule,
     FeedbackModule,
     LoyaltyModule,
+    ImportsModule,
   ],
 })
 export class AppModule implements NestModule {

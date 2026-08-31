@@ -20,6 +20,7 @@ import { IntegrationsPage } from "./pages/dashboard/IntegrationsPage";
 import { LoyaltyPage } from "./pages/dashboard/LoyaltyPage";
 import { SettingsPage } from "./pages/dashboard/SettingsPage";
 import { TeamPage } from "./pages/dashboard/TeamPage";
+import { ImportPage } from "./pages/import/ImportPage";
 import { IngredientsPage } from "./pages/inventory/IngredientsPage";
 import { InventoryLayout } from "./pages/inventory/InventoryLayout";
 import { ReorderAlertsPage } from "./pages/inventory/ReorderAlertsPage";
@@ -125,6 +126,7 @@ const router = createBrowserRouter([
       { path: "settings", element: <SettingsPage /> },
       { path: "integrations", element: <IntegrationsPage /> },
       { path: "loyalty", element: <LoyaltyPage /> },
+      { path: "import", element: <ImportPage /> },
       { path: "billing", element: <BillingPage /> },
       {
         path: "menu",

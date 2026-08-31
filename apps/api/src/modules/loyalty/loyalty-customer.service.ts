@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import type { LoyaltyCustomer, Prisma } from "@prisma/client";
 
 import {
   type LoyaltyProgramType,
@@ -97,6 +97,33 @@ export class LoyaltyCustomerService {
       tierKey: customer?.tierKey ?? null,
       tierName: tierDef?.nameAr ?? null,
     };
+  }
+
+  /**
+   * Looks up a customer by phone, creating one if none exists yet — the
+   * same (tenantId, phone) lookup-then-create shape used inline by
+   * earnForCompletedOrderInContext, promoted to a real method so callers
+   * outside an order-completion flow (the bulk data-import feature) can
+   * reuse it instead of re-deriving loyalty-customer creation themselves.
+   * Never overwrites an existing customer's name — a merchant re-importing
+   * the same phone with a different spelling should not silently clobber
+   * what's already on file.
+   */
+  async getOrCreateByPhone(
+    phone: string,
+    name?: string,
+  ): Promise<{ customer: LoyaltyCustomer; created: boolean }> {
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const existing = await this.prisma.scoped.loyaltyCustomer.findUnique({
+      where: { tenantId_phone: { tenantId, phone } },
+    });
+    if (existing) {
+      return { customer: existing, created: false };
+    }
+    const customer = await this.prisma.scoped.loyaltyCustomer.create({
+      data: { tenantId, phone, name: name ?? null },
+    });
+    return { customer, created: true };
   }
 
   /**

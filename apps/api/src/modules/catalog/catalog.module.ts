@@ -13,6 +13,6 @@ import { ProductsService } from "./products.service";
 @Module({
   controllers: [CatalogController],
   providers: [CategoriesService, ProductsService, ModifiersService],
-  exports: [ProductsService],
+  exports: [CategoriesService, ProductsService],
 })
 export class CatalogModule {}

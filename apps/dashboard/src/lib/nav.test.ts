@@ -33,4 +33,15 @@ describe("permission-aware navigation", () => {
     const keys = visibleNavItems(NAV_ITEMS, new Set(["branches.manage"])).map((i) => i.labelKey);
     expect(keys).toEqual(["home", "branches"]);
   });
+
+  it("shows a string[]-gated item (import) to a user holding just one of the listed permissions", () => {
+    const menuOnly = visibleNavItems(NAV_ITEMS, ["menu.manage"]).map((i) => i.labelKey);
+    expect(menuOnly).toContain("import");
+
+    const loyaltyOnly = visibleNavItems(NAV_ITEMS, ["loyalty.manage"]).map((i) => i.labelKey);
+    expect(loyaltyOnly).toContain("import");
+
+    const neither = visibleNavItems(NAV_ITEMS, ["orders.view"]).map((i) => i.labelKey);
+    expect(neither).not.toContain("import");
+  });
 });

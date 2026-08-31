@@ -16,6 +16,7 @@ import {
   Settings,
   Store,
   Truck,
+  Upload,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -45,6 +46,7 @@ const ICONS: Record<string, LucideIcon> = {
   puzzle: Puzzle,
   gift: Gift,
   truck: Truck,
+  upload: Upload,
 };
 
 export function DashboardLayout() {

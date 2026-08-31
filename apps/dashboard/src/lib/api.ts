@@ -150,6 +150,27 @@ export async function uploadFile(path: string, file: File): Promise<void> {
   }
 }
 
+/** Uploads a file to a multipart endpoint that returns a JSON body (e.g. a
+ * data-import job) — same auth/retry handling as uploadFile, but returns
+ * the parsed response instead of discarding it. */
+export async function uploadFileForJson<T>(path: string, file: File): Promise<T> {
+  let res = await rawUpload(path, file);
+  if (res.status === 401 && (await tryRefresh())) {
+    res = await rawUpload(path, file);
+  }
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const body = await res.json();
+      message = Array.isArray(body.message) ? body.message.join("، ") : (body.message ?? message);
+    } catch {
+      // non-JSON error body
+    }
+    throw new ApiError(res.status, message);
+  }
+  return (await res.json()) as T;
+}
+
 /** Downloads a binary endpoint (QR PNG / PDF sheet) and saves it via the browser. */
 export async function downloadFile(path: string, filename: string): Promise<void> {
   let res = await rawRequest(path);
