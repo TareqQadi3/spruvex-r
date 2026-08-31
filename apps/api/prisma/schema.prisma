@@ -113,52 +113,54 @@ model Tenant {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  branches                  Branch[]
-  roles                     Role[]
-  userRoles                 UserRole[]
-  posPins                   PosPin[]
-  auditLogs                 AuditLog[]
-  categories                Category[]
-  products                  Product[]
-  productBranchSettings     ProductBranchSetting[]
-  modifierGroups            ModifierGroup[]
-  modifiers                 Modifier[]
-  productModifierGroups     ProductModifierGroup[]
-  floors                    Floor[]
-  tables                    Table[]
-  tableSessions             TableSession[]
-  tableSessionParticipants  TableSessionParticipant[]
-  orders                    Order[]
-  orderAppendLogs           OrderAppendLog[]
-  orderItems                OrderItem[]
-  orderItemModifiers        OrderItemModifier[]
-  orderStatusHistories      OrderStatusHistory[]
-  shifts                    Shift[]
-  payments                  Payment[]
-  receipts                  Receipt[]
-  creditNotes               CreditNote[]
-  debitNotes                DebitNote[]
-  refunds                   Refund[]
-  branchInvoiceChains       BranchInvoiceChain[]
-  ingredients               Ingredient[]
-  stockLocations            StockLocation[]
-  stockLevels               StockLevel[]
-  stockMovements            StockMovement[]
-  recipeItems               RecipeItem[]
-  subscription              Subscription?
-  subscriptionInvoices      SubscriptionInvoice[]
-  integrationConnections    IntegrationConnection[]
-  deliveryProductMappings   DeliveryProductMapping[]
-  whatsappTemplateOverrides WhatsappTemplateOverride[]
-  productStockHides         ProductStockHide[]
-  orderFeedbackRequests     OrderFeedbackRequest[]
-  loyaltyProgramConfigs     LoyaltyProgramConfig[]
-  loyaltyCustomers          LoyaltyCustomer[]
-  loyaltyLedgerEntries      LoyaltyLedgerEntry[]
-  suppliers                 Supplier[]
-  purchaseInvoices          PurchaseInvoice[]
-  purchaseInvoiceItems      PurchaseInvoiceItem[]
-  expenses                  Expense[]
+  branches                     Branch[]
+  roles                        Role[]
+  userRoles                    UserRole[]
+  posPins                      PosPin[]
+  auditLogs                    AuditLog[]
+  categories                   Category[]
+  products                     Product[]
+  productBranchSettings        ProductBranchSetting[]
+  modifierGroups               ModifierGroup[]
+  modifiers                    Modifier[]
+  productModifierGroups        ProductModifierGroup[]
+  floors                       Floor[]
+  tables                       Table[]
+  tableSessions                TableSession[]
+  tableSessionParticipants     TableSessionParticipant[]
+  orders                       Order[]
+  orderAppendLogs              OrderAppendLog[]
+  orderItems                   OrderItem[]
+  orderItemModifiers           OrderItemModifier[]
+  orderStatusHistories         OrderStatusHistory[]
+  shifts                       Shift[]
+  payments                     Payment[]
+  receipts                     Receipt[]
+  creditNotes                  CreditNote[]
+  debitNotes                   DebitNote[]
+  refunds                      Refund[]
+  branchInvoiceChains          BranchInvoiceChain[]
+  ingredients                  Ingredient[]
+  stockLocations               StockLocation[]
+  stockLevels                  StockLevel[]
+  stockMovements               StockMovement[]
+  recipeItems                  RecipeItem[]
+  subscription                 Subscription?
+  subscriptionInvoices         SubscriptionInvoice[]
+  integrationConnections       IntegrationConnection[]
+  deliveryProductMappings      DeliveryProductMapping[]
+  whatsappTemplateOverrides    WhatsappTemplateOverride[]
+  productStockHides            ProductStockHide[]
+  orderFeedbackRequests        OrderFeedbackRequest[]
+  loyaltyProgramConfigs        LoyaltyProgramConfig[]
+  loyaltyCustomers             LoyaltyCustomer[]
+  loyaltyLedgerEntries         LoyaltyLedgerEntry[]
+  suppliers                    Supplier[]
+  purchaseInvoices             PurchaseInvoice[]
+  purchaseInvoiceItems         PurchaseInvoiceItem[]
+  purchaseInvoiceReversals     PurchaseInvoiceReversal[]
+  purchaseInvoiceReversalItems PurchaseInvoiceReversalItem[]
+  expenses                     Expense[]
 
   @@map("tenants")
 }
@@ -1378,6 +1380,10 @@ enum StockMovementType {
   adjustment
   transfer_in
   transfer_out
+  /// Reverses a specific prior "purchase" movement (e.g. cancelling a
+  /// confirmed purchase invoice) — never edits or deletes the original,
+  /// same append-only principle as a sales credit note.
+  purchase_reversal
 
   @@map("stock_movement_type")
 }
@@ -1581,9 +1587,10 @@ model PurchaseInvoice {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant   Tenant                @relation(fields: [tenantId], references: [id])
-  supplier Supplier              @relation(fields: [supplierId], references: [id])
-  items    PurchaseInvoiceItem[]
+  tenant    Tenant                    @relation(fields: [tenantId], references: [id])
+  supplier  Supplier                  @relation(fields: [supplierId], references: [id])
+  items     PurchaseInvoiceItem[]
+  reversals PurchaseInvoiceReversal[]
 
   /// The same supplier invoice must never be entered twice.
   @@unique([tenantId, supplierId, supplierInvoiceNumber])
@@ -1623,12 +1630,76 @@ model PurchaseInvoiceItem {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  tenant          Tenant          @relation(fields: [tenantId], references: [id])
-  purchaseInvoice PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id])
-  ingredient      Ingredient?     @relation(fields: [ingredientId], references: [id])
+  tenant          Tenant                        @relation(fields: [tenantId], references: [id])
+  purchaseInvoice PurchaseInvoice               @relation(fields: [purchaseInvoiceId], references: [id])
+  ingredient      Ingredient?                   @relation(fields: [ingredientId], references: [id])
+  reversalItems   PurchaseInvoiceReversalItem[]
 
   @@index([tenantId, purchaseInvoiceId])
   @@map("purchase_invoice_items")
+}
+
+enum PurchaseInvoiceReversalType {
+  /// The whole invoice was cancelled — every item's full quantity is reversed.
+  cancellation
+  /// Reserved for a future standalone feature: a partial reversal against a
+  /// supplier-issued credit note, reusing this exact posting mechanism with
+  /// PurchaseInvoiceReversalItem.quantity less than the original line's.
+  supplier_credit_note
+
+  @@map("purchase_invoice_reversal_type")
+}
+
+/// One reversal EVENT against a confirmed purchase invoice — general on
+/// purpose (see reversalType) rather than a cancellation-only table, so a
+/// future supplier-credit-note feature reuses this same posting mechanism
+/// instead of a parallel one. A cancellation creates exactly one of these,
+/// reversing every item's full quantity; nothing here assumes "full
+/// invoice" beyond that.
+model PurchaseInvoiceReversal {
+  id                String @id @default(uuid()) @db.Uuid
+  tenantId          String @map("tenant_id") @db.Uuid
+  purchaseInvoiceId String @map("purchase_invoice_id") @db.Uuid
+
+  reversalType PurchaseInvoiceReversalType @map("reversal_type")
+  reason       String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  tenant          Tenant                        @relation(fields: [tenantId], references: [id])
+  purchaseInvoice PurchaseInvoice               @relation(fields: [purchaseInvoiceId], references: [id])
+  items           PurchaseInvoiceReversalItem[]
+
+  @@index([tenantId, purchaseInvoiceId])
+  @@map("purchase_invoice_reversals")
+}
+
+/// One reversed line. The resulting StockMovement (stock lines) or Expense
+/// (expense lines) is found via the SAME referenceType/referenceId
+/// convention used everywhere else in this schema
+/// (referenceType="purchase_invoice_reversal_item", referenceId=this row's
+/// id) rather than a duplicate FK column here.
+model PurchaseInvoiceReversalItem {
+  id                    String @id @default(uuid()) @db.Uuid
+  tenantId              String @map("tenant_id") @db.Uuid
+  reversalId            String @map("reversal_id") @db.Uuid
+  purchaseInvoiceItemId String @map("purchase_invoice_item_id") @db.Uuid
+
+  /// How much of the original line's quantity this undoes — the full
+  /// original quantity for a cancellation, a lesser amount for a future
+  /// partial supplier-credit-note reversal.
+  quantity Decimal @db.Decimal(14, 3)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant              Tenant                  @relation(fields: [tenantId], references: [id])
+  reversal            PurchaseInvoiceReversal @relation(fields: [reversalId], references: [id])
+  purchaseInvoiceItem PurchaseInvoiceItem     @relation(fields: [purchaseInvoiceItemId], references: [id])
+
+  @@index([tenantId, reversalId])
+  @@index([tenantId, purchaseInvoiceItemId])
+  @@map("purchase_invoice_reversal_items")
 }
 
 /// The tenant's first real operational-expense ledger — nothing like it

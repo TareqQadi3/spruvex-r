@@ -424,7 +424,12 @@
       "cancel": "Cancel",
       "confirmCancel": "Confirm cancellation",
       "cancelledNote": "Cancellation reason: {{reason}}",
-      "cancelConfirmedWarning": "This invoice is already confirmed — cancelling it now will NOT reverse the stock/expense it already posted, only exclude it from input VAT going forward.",
+      "cancelConfirmedWarning": "This invoice is already confirmed — cancelling it will post a real reversal (a reversing stock movement for goods, a reversing entry for the expense) and exclude it from input VAT going forward. If some of the goods have already been used and not enough remains to fully reverse, the cancellation will be refused with a message showing what's available.",
+      "reversal": {
+        "title": "Reversal posted with this cancellation",
+        "stockLine": "Reversing stock movement: {{quantity}}",
+        "expenseLine": "Reversing expense entry: {{total}} SAR"
+      },
       "status": {
         "title": "Status",
         "draft": "Draft",

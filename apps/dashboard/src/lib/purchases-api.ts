@@ -67,6 +67,22 @@ export interface PurchaseInvoiceSummary {
   createdAt: string;
 }
 
+export interface PurchaseInvoiceReversalItem {
+  id: string;
+  purchaseInvoiceItemId: string;
+  quantity: string;
+  stockMovement: { id: string; quantity: string; unitCost: string | null } | null;
+  expense: { id: string; amount: string; vatAmount: string; total: string } | null;
+}
+
+export interface PurchaseInvoiceReversal {
+  id: string;
+  reversalType: "cancellation" | "supplier_credit_note";
+  reason: string;
+  createdAt: string;
+  items: PurchaseInvoiceReversalItem[];
+}
+
 export interface PurchaseInvoiceDetail extends PurchaseInvoiceSummary {
   supplier: { id: string; name: string; nameEn: string | null; vatNumber: string | null };
   notes: string | null;
@@ -74,6 +90,9 @@ export interface PurchaseInvoiceDetail extends PurchaseInvoiceSummary {
   confirmedAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
+  /** Present once the invoice has been cancelled after confirmation — the
+   * real stock/expense reversal posted, for full traceability. */
+  reversals: PurchaseInvoiceReversal[];
 }
 
 export interface ListPurchaseInvoicesQuery {

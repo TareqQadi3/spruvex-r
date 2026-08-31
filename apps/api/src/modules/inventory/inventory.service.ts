@@ -149,6 +149,118 @@ export class InventoryService {
     return this.prisma.scopedTransaction(run);
   }
 
+  /**
+   * Reverses a specific prior "purchase" movement (e.g. a purchase invoice
+   * being cancelled) — never edits or deletes the original, only appends a
+   * new negative `purchase_reversal` movement, mirroring how a sales credit
+   * note never rewrites the original receipt.
+   *
+   * Refuses the reversal outright (ConflictException, quantity in the
+   * message) if the location no longer holds enough of that ingredient —
+   * some of it may already have been sold, wasted, or transferred out —
+   * rather than silently driving the stock level negative. The caller
+   * decides what to do next; this never partially reverses on its own.
+   *
+   * The average-cost math is the exact inverse of recordPurchase's blend:
+   * `(currentQty*currentAvg - reverseQty*originalUnitCost) / (currentQty -
+   * reverseQty)`. This is only well-defined while `currentQty > reverseQty`
+   * (handled: skipped when it would fully drain the location, since a
+   * blended average over zero units is meaningless) and is clamped at zero
+   * as defense-in-depth against a inconsistent state, never expected in
+   * normal operation.
+   */
+  async reversePurchase(
+    input: { movementId: string; quantity: string; reason?: string },
+    opts: { referenceType: string; referenceId: string; tx?: Prisma.TransactionClient },
+  ) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const actor = actorOrNull(ctx.userId);
+    const reverseQty = Number(input.quantity);
+
+    const run = async (tx: Prisma.TransactionClient) => {
+      const original = await tx.stockMovement.findFirst({
+        where: { id: input.movementId, type: "purchase" },
+      });
+      if (!original) {
+        throw new NotFoundException("Original purchase movement not found");
+      }
+      if (reverseQty <= 0 || reverseQty > Number(original.quantity)) {
+        throw new BadRequestException(
+          `Reversal quantity (${input.quantity}) cannot exceed the original purchase quantity (${original.quantity.toString()})`,
+        );
+      }
+
+      // Lock the exact (location, ingredient) balance this reversal would
+      // touch before reading it, so a concurrent sale/reversal against the
+      // same bucket can't race the availability check below.
+      const locked = await tx.$queryRaw<{ quantity: string }[]>`
+        SELECT quantity FROM stock_levels
+        WHERE location_id = ${original.locationId}::uuid AND ingredient_id = ${original.ingredientId}::uuid
+        FOR UPDATE
+      `;
+      const availableQty = locked.length > 0 ? Number(locked[0].quantity) : 0;
+      if (availableQty < reverseQty) {
+        throw new ConflictException(
+          `Cannot reverse ${reverseQty} unit(s) of this ingredient — only ${availableQty} unit(s) remain at this location ` +
+            `(some may already have been sold, wasted, or transferred out). Available: ${availableQty}, requested: ${reverseQty}.`,
+        );
+      }
+
+      const ingredient = await this.ingredientOrThrow(tx, original.ingredientId);
+      const movement = await this.createMovement(tx, {
+        branchId: original.branchId,
+        locationId: original.locationId,
+        ingredientId: original.ingredientId,
+        type: "purchase_reversal",
+        quantity: -reverseQty,
+        unitCost: original.unitCost?.toString(),
+        referenceType: opts.referenceType,
+        referenceId: opts.referenceId,
+        reason: input.reason,
+        performedBy: actor,
+      });
+      await this.upsertLevel(tx, original.branchId, original.locationId, original.ingredientId, -reverseQty);
+
+      const remainingQty = availableQty - reverseQty;
+      if (remainingQty > 0 && original.unitCost) {
+        const currentCostUnits = sarToCostUnits(ingredient.averageCost.toString());
+        const originalCostUnits = sarToCostUnits(original.unitCost.toString());
+        const unblended = Math.round(
+          (availableQty * currentCostUnits - reverseQty * originalCostUnits) / remainingQty,
+        );
+        await tx.ingredient.update({
+          where: { id: original.ingredientId },
+          data: { averageCost: costUnitsToSar(Math.max(0, unblended)), updatedBy: actor },
+        });
+      }
+
+      await this.audit.log({
+        action: "stock.purchase_reversed",
+        entityType: "stock_movement",
+        entityId: movement.id,
+        branchId: original.branchId,
+        meta: {
+          ingredientId: original.ingredientId,
+          originalMovementId: original.id,
+          quantity: input.quantity,
+          reason: input.reason,
+        },
+      });
+
+      const gatingEvents = await this.reevaluateStockGating(
+        tx,
+        this.tenantContext.tenantIdOrThrow,
+        original.branchId,
+        original.ingredientId,
+      );
+      await this.logGatingEvents(original.branchId, gatingEvents);
+      return movement;
+    };
+
+    if (opts.tx) return run(opts.tx);
+    return this.prisma.scopedTransaction(run);
+  }
+
   async recordWaste(dto: RecordWasteDto) {
     const ctx = this.tenantContext.contextOrThrow;
     const actor = actorOrNull(ctx.userId);
@@ -365,7 +477,14 @@ export class InventoryService {
       branchId: string;
       locationId: string;
       ingredientId: string;
-      type: "purchase" | "waste" | "adjustment" | "sale_deduction" | "transfer_in" | "transfer_out";
+      type:
+        | "purchase"
+        | "waste"
+        | "adjustment"
+        | "sale_deduction"
+        | "transfer_in"
+        | "transfer_out"
+        | "purchase_reversal";
       quantity: number;
       unitCost?: string;
       referenceType?: string;

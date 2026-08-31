@@ -387,7 +387,7 @@ describe("purchases: suppliers, purchase invoices & input VAT (e2e)", () => {
       expect(cancelled.body.status).toBe("cancelled");
     });
 
-    it("cancelling an already-CONFIRMED invoice stops it counting as input VAT, but does NOT reverse the stock/expense already posted", async () => {
+    it("cancelling an already-CONFIRMED invoice stops it counting as input VAT AND posts a real reversal — the original expense row is never edited, but a negative counter-entry cancels it out", async () => {
       const supplierId = await createSupplier(ownerA, { name: "مورد الإلغاء بعد التأكيد" });
       const created = await request(http)
         .post("/purchases/invoices")
@@ -398,21 +398,32 @@ describe("purchases: suppliers, purchase invoices & input VAT (e2e)", () => {
           supplierInvoiceNumber: `INV-${key()}`,
           invoiceDate: "2026-06-21",
           confirm: true,
-          items: [{ description: "صيانة", itemType: "expense", quantity: "1", unitPrice: "80" }],
+          items: [{ description: "صيانة", itemType: "expense", quantity: "1", unitPrice: "80", vatRatePercent: "15" }],
         })
         .expect(201);
       const expenseItemId = created.body.items[0].id;
 
-      await request(http)
+      const cancelled = await request(http)
         .post(`/purchases/invoices/${created.body.id}/cancel`)
         .set("Authorization", `Bearer ${ownerA}`)
         .send({ reason: "تراجع بعد التأكيد" })
         .expect(201);
+      expect(cancelled.body.status).toBe("cancelled");
 
-      const expense = await admin.expense.findFirst({
+      // The original posting is untouched — never edited, never deleted.
+      const originalExpense = await admin.expense.findFirst({
         where: { tenantId: tenantAId, referenceType: "purchase_invoice_item", referenceId: expenseItemId },
       });
-      expect(expense).not.toBeNull(); // still there — cancelling never reverses it
+      expect(originalExpense).not.toBeNull();
+      expect(originalExpense!.amount.toString()).toBe("80");
+
+      // A real negative counter-entry now exists too, netting the impact to zero.
+      const allExpensesForItem = await admin.expense.findMany({ where: { tenantId: tenantAId } });
+      const reversalExpense = allExpensesForItem.find((e) => Number(e.amount) < 0);
+      expect(reversalExpense).toBeDefined();
+      expect(reversalExpense!.amount.toString()).toBe("-80");
+      expect(reversalExpense!.vatAmount.toString()).toBe("-12");
+      expect(reversalExpense!.total.toString()).toBe("-92");
 
       const vat = await request(http)
         .get("/reports/vat-return")
@@ -420,6 +431,190 @@ describe("purchases: suppliers, purchase invoices & input VAT (e2e)", () => {
         .set("Authorization", `Bearer ${ownerA}`)
         .expect(200);
       expect(vat.body.inputTax.invoiceCount).toBe(0); // excluded once cancelled
+    });
+
+    it("cancelling a confirmed STOCK invoice posts a real negative stock movement and un-blends the average cost", async () => {
+      const supplierId = await createSupplier(ownerA, { name: "مورد عكس المخزون" });
+      // Seed a distinct prior purchase so blending is meaningfully testable:
+      // 1000g @ 0.05 already in stock from the very first beforeAll purchase.
+      const before = await admin.ingredient.findUniqueOrThrow({ where: { id: sugarId } });
+      const levelBefore = await admin.stockLevel.findUniqueOrThrow({
+        where: { locationId_ingredientId: { locationId: defaultLocationId, ingredientId: sugarId } },
+      });
+
+      const created = await request(http)
+        .post("/purchases/invoices")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({
+          supplierId,
+          branchId: branchA,
+          supplierInvoiceNumber: `INV-${key()}`,
+          invoiceDate: "2026-06-22",
+          confirm: true,
+          items: [
+            {
+              description: "سكر إضافي",
+              itemType: "stock",
+              quantity: "500",
+              unitPrice: "0.20",
+              ingredientId: sugarId,
+              locationId: defaultLocationId,
+            },
+          ],
+        })
+        .expect(201);
+      const afterPurchase = await admin.ingredient.findUniqueOrThrow({ where: { id: sugarId } });
+      expect(afterPurchase.averageCost.toString()).not.toBe(before.averageCost.toString());
+
+      await request(http)
+        .post(`/purchases/invoices/${created.body.id}/cancel`)
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({ reason: "خطأ بالكمية" })
+        .expect(201);
+
+      const reversalMovement = await admin.stockMovement.findFirst({
+        where: { tenantId: tenantAId, type: "purchase_reversal", referenceType: "purchase_invoice_reversal_item" },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(reversalMovement).not.toBeNull();
+      expect(reversalMovement!.quantity.toString()).toBe("-500");
+
+      // Stock level exactly back to what it was before this purchase.
+      const levelAfter = await admin.stockLevel.findUniqueOrThrow({
+        where: { locationId_ingredientId: { locationId: defaultLocationId, ingredientId: sugarId } },
+      });
+      expect(levelAfter.quantity.toString()).toBe(levelBefore.quantity.toString());
+
+      // Average cost un-blended back to exactly what it was before this purchase.
+      const afterReversal = await admin.ingredient.findUniqueOrThrow({ where: { id: sugarId } });
+      expect(afterReversal.averageCost.toString()).toBe(before.averageCost.toString());
+    });
+
+    it("refuses to cancel a confirmed invoice when the location no longer holds enough stock to reverse, and leaves the invoice untouched", async () => {
+      // A fresh, isolated ingredient — starts at exactly 0 stock, so the
+      // scenario below ("only 5 remain of the 50 received") is deterministic
+      // regardless of what other tests in this file did to sugarId's level.
+      const freshIngredient = await request(http)
+        .post("/inventory/ingredients")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({ name: `مكوّن ${key()}`, unitType: "mass" })
+        .expect(201);
+      const freshIngredientId = freshIngredient.body.id as string;
+
+      const supplierId = await createSupplier(ownerA, { name: "مورد نفاد المخزون" });
+      const created = await request(http)
+        .post("/purchases/invoices")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({
+          supplierId,
+          branchId: branchA,
+          supplierInvoiceNumber: `INV-${key()}`,
+          invoiceDate: "2026-06-23",
+          confirm: true,
+          items: [
+            {
+              description: "سكر سينفد",
+              itemType: "stock",
+              quantity: "50",
+              unitPrice: "0.10",
+              ingredientId: freshIngredientId,
+              locationId: defaultLocationId,
+            },
+          ],
+        })
+        .expect(201);
+
+      // Consume most of what was just received via a real waste movement,
+      // simulating "it was already used" — only 5 of the 50 units remain.
+      await request(http)
+        .post("/inventory/stock/waste")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({ branchId: branchA, ingredientId: freshIngredientId, locationId: defaultLocationId, quantity: "45", reason: "اختبار" })
+        .expect(201);
+
+      const res = await request(http)
+        .post(`/purchases/invoices/${created.body.id}/cancel`)
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({ reason: "محاولة إلغاء" })
+        .expect(409);
+      expect(res.body.message).toMatch(/5/); // available
+      expect(res.body.message).toMatch(/50/); // requested
+
+      // Nothing changed — the invoice is still confirmed, no reversal posted.
+      const stillConfirmed = await admin.purchaseInvoice.findUniqueOrThrow({ where: { id: created.body.id } });
+      expect(stillConfirmed.status).toBe("confirmed");
+      const reversalCount = await admin.purchaseInvoiceReversal.count({
+        where: { purchaseInvoiceId: created.body.id },
+      });
+      expect(reversalCount).toBe(0);
+    });
+
+    it("cannot cancel the same confirmed invoice twice concurrently — one succeeds, one gets a clean 409, only one reversal is posted", async () => {
+      const supplierId = await createSupplier(ownerA, { name: "مورد تزامن الإلغاء" });
+      const created = await request(http)
+        .post("/purchases/invoices")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({
+          supplierId,
+          branchId: branchA,
+          supplierInvoiceNumber: `INV-${key()}`,
+          invoiceDate: "2026-06-24",
+          confirm: true,
+          items: [{ description: "صيانة", itemType: "expense", quantity: "1", unitPrice: "60" }],
+        })
+        .expect(201);
+
+      const [a, b] = await Promise.all([
+        request(http)
+          .post(`/purchases/invoices/${created.body.id}/cancel`)
+          .set("Authorization", `Bearer ${ownerA}`)
+          .send({ reason: "محاولة أولى" }),
+        request(http)
+          .post(`/purchases/invoices/${created.body.id}/cancel`)
+          .set("Authorization", `Bearer ${ownerA}`)
+          .send({ reason: "محاولة ثانية" }),
+      ]);
+      const statuses = [a.status, b.status].sort();
+      expect(statuses).toEqual([201, 409]);
+
+      const reversalCount = await admin.purchaseInvoiceReversal.count({
+        where: { purchaseInvoiceId: created.body.id },
+      });
+      expect(reversalCount).toBe(1);
+    });
+
+    it("exposes the reversal and its resolved stock/expense movements on the invoice detail endpoint for full traceability", async () => {
+      const supplierId = await createSupplier(ownerA, { name: "مورد أثر التتبع" });
+      const created = await request(http)
+        .post("/purchases/invoices")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({
+          supplierId,
+          branchId: branchA,
+          supplierInvoiceNumber: `INV-${key()}`,
+          invoiceDate: "2026-06-25",
+          confirm: true,
+          items: [{ description: "صيانة", itemType: "expense", quantity: "1", unitPrice: "40" }],
+        })
+        .expect(201);
+
+      await request(http)
+        .post(`/purchases/invoices/${created.body.id}/cancel`)
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({ reason: "تتبع" })
+        .expect(201);
+
+      const detail = await request(http)
+        .get(`/purchases/invoices/${created.body.id}`)
+        .set("Authorization", `Bearer ${ownerA}`)
+        .expect(200);
+      expect(detail.body.reversals).toHaveLength(1);
+      expect(detail.body.reversals[0].reversalType).toBe("cancellation");
+      expect(detail.body.reversals[0].reason).toBe("تتبع");
+      expect(detail.body.reversals[0].items).toHaveLength(1);
+      expect(detail.body.reversals[0].items[0].expense).not.toBeNull();
+      expect(detail.body.reversals[0].items[0].expense.amount).toBe("-40");
+      expect(detail.body.reversals[0].items[0].stockMovement).toBeNull();
     });
   });
 

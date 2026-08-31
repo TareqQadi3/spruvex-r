@@ -587,6 +587,32 @@ function InvoiceDetailDialog({
             <Alert>{t("purchases.invoices.cancelledNote", { reason: invoice.cancelReason })}</Alert>
           )}
 
+          {invoice.reversals.length > 0 && (
+            <div className="space-y-2 rounded-lg border p-3">
+              <p className="text-sm font-medium">{t("purchases.invoices.reversal.title")}</p>
+              {invoice.reversals.map((reversal) => (
+                <div key={reversal.id} className="space-y-1">
+                  {reversal.items.map((ri) => (
+                    <div key={ri.id} className="flex items-center justify-between text-xs">
+                      {ri.stockMovement && (
+                        <span dir="ltr">
+                          {t("purchases.invoices.reversal.stockLine", {
+                            quantity: ri.stockMovement.quantity,
+                          })}
+                        </span>
+                      )}
+                      {ri.expense && (
+                        <span dir="ltr">
+                          {t("purchases.invoices.reversal.expenseLine", { total: ri.expense.total })}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2 border-t pt-3">
             <input
               ref={fileInputRef}
@@ -636,7 +662,7 @@ function InvoiceDetailDialog({
           {showCancelForm && (
             <div className="space-y-2 rounded-lg border border-destructive/40 p-3">
               {invoice.status === "confirmed" && (
-                <Alert variant="destructive">{t("purchases.invoices.cancelConfirmedWarning")}</Alert>
+                <Alert>{t("purchases.invoices.cancelConfirmedWarning")}</Alert>
               )}
               <Label htmlFor="cancelReason">{t("purchases.invoices.form.cancelReason")}</Label>
               <Input id="cancelReason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />

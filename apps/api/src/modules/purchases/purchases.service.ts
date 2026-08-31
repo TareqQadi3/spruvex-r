@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from "@prisma/client";
 
 import { AuditService } from "../../shared/audit/audit.service";
-import { halalasToSar } from "../../shared/common/money";
+import { halalasToSar, sarToHalalas } from "../../shared/common/money";
 import { InventoryService } from "../inventory/inventory.service";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { actorOrNull, TenantContextService } from "../../shared/tenancy/tenant-context.service";
@@ -113,12 +113,49 @@ export class PurchasesService {
   async get(id: string) {
     const invoice = await this.prisma.scoped.purchaseInvoice.findFirst({
       where: { id, deletedAt: null },
-      include: INVOICE_INCLUDE,
+      include: {
+        ...INVOICE_INCLUDE,
+        reversals: {
+          orderBy: { createdAt: "asc" },
+          include: { items: { orderBy: { createdAt: "asc" } } },
+        },
+      },
     });
     if (!invoice) {
       throw new NotFoundException("Purchase invoice not found");
     }
-    return invoice;
+    if (invoice.reversals.length === 0) {
+      return invoice;
+    }
+
+    // Resolve each reversal item's resulting StockMovement/Expense for
+    // traceability — same referenceType/referenceId lookup convention used
+    // throughout, not a duplicate FK column.
+    const reversalItemIds = invoice.reversals.flatMap((r) => r.items.map((i) => i.id));
+    const [movements, expenses] = await Promise.all([
+      this.prisma.scoped.stockMovement.findMany({
+        where: { referenceType: "purchase_invoice_reversal_item", referenceId: { in: reversalItemIds } },
+        select: { id: true, referenceId: true, quantity: true, unitCost: true },
+      }),
+      this.prisma.scoped.expense.findMany({
+        where: { referenceType: "purchase_invoice_reversal_item", referenceId: { in: reversalItemIds } },
+        select: { id: true, referenceId: true, amount: true, vatAmount: true, total: true },
+      }),
+    ]);
+    const movementByRefId = new Map(movements.map((m) => [m.referenceId, m]));
+    const expenseByRefId = new Map(expenses.map((e) => [e.referenceId, e]));
+
+    return {
+      ...invoice,
+      reversals: invoice.reversals.map((r) => ({
+        ...r,
+        items: r.items.map((ri) => ({
+          ...ri,
+          stockMovement: movementByRefId.get(ri.id) ?? null,
+          expense: expenseByRefId.get(ri.id) ?? null,
+        })),
+      })),
+    };
   }
 
   async create(dto: CreatePurchaseInvoiceDto) {
@@ -302,17 +339,17 @@ export class PurchasesService {
   }
 
   /**
-   * Cancelling a DRAFT is a true no-op reversal (nothing was ever posted).
-   * Cancelling an already-CONFIRMED invoice only stops it from counting as
-   * input VAT going forward — see vat-return.service.ts's status filter —
-   * it deliberately does NOT reverse the stock received or the expense
-   * already posted (that needs its own compensating-movement design, the
-   * same way an Order refund creates a new credit note rather than
-   * un-doing the original sale; out of scope for this round, disclosed
-   * rather than silently half-done).
+   * Cancelling a DRAFT is a true no-op (nothing was ever posted). Cancelling
+   * an already-CONFIRMED invoice posts a full PurchaseInvoiceReversal first
+   * (see reverseConfirmedInvoice) — the stock received and the expense
+   * posted are both actually undone, not just excluded from a future VAT
+   * return. Row-locked exactly like confirm(), so a racing or repeated
+   * cancel on the same invoice resolves to one success and a clean 409,
+   * never a double reversal.
    */
   async cancel(id: string, dto: CancelPurchaseInvoiceDto) {
     const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
     const actor = actorOrNull(ctx.userId);
 
     const invoice = await this.prisma.scopedTransaction(async (tx) => {
@@ -322,13 +359,21 @@ export class PurchasesService {
       if (locked.length === 0) {
         throw new NotFoundException("Purchase invoice not found");
       }
-      const current = await tx.purchaseInvoice.findFirst({ where: { id, deletedAt: null } });
+      const current = await tx.purchaseInvoice.findFirst({
+        where: { id, deletedAt: null },
+        include: { items: true },
+      });
       if (!current) {
         throw new NotFoundException("Purchase invoice not found");
       }
       if (current.status === "cancelled") {
         throw new ConflictException("Invoice is already cancelled");
       }
+
+      if (current.status === "confirmed") {
+        await this.reverseConfirmedInvoice(tx, tenantId, actor, current, dto.reason);
+      }
+
       return tx.purchaseInvoice.update({
         where: { id },
         data: {
@@ -347,16 +392,78 @@ export class PurchasesService {
       entityType: "purchase_invoice",
       entityId: invoice.id,
       branchId: invoice.branchId,
-      meta: {
-        reason: dto.reason,
-        wasConfirmed: invoice.confirmedAt !== null,
-        note:
-          invoice.confirmedAt !== null
-            ? "Cancelled after confirmation — stock/expense entries already posted were NOT reversed"
-            : undefined,
-      },
+      meta: { reason: dto.reason, wasConfirmed: invoice.confirmedAt !== null },
     });
     return invoice;
+  }
+
+  /**
+   * Posts one PurchaseInvoiceReversal undoing every item's FULL quantity —
+   * the general mechanism (see the model's schema doc comment) a future
+   * partial supplier-credit-note feature can reuse by posting a lesser
+   * quantity per item instead of building a parallel one. Stock lines
+   * reverse through InventoryService.reversePurchase (same weighted-average
+   * math as the original purchase, in reverse — refuses outright if the
+   * location no longer holds enough to reverse, e.g. because it was already
+   * sold, rather than driving stock negative). Expense lines get a negative
+   * counter-entry, never an edit to the original row. All inside the
+   * caller's already-locked transaction, so a failure on any line rolls
+   * back every line reversed so far in this same call — no partial state.
+   */
+  private async reverseConfirmedInvoice(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    actor: string | null,
+    invoice: Prisma.PurchaseInvoiceGetPayload<{ include: { items: true } }>,
+    reason: string,
+  ) {
+    const reversal = await tx.purchaseInvoiceReversal.create({
+      data: { tenantId, purchaseInvoiceId: invoice.id, reversalType: "cancellation", reason, createdBy: actor },
+    });
+
+    for (const item of invoice.items) {
+      const reversalItem = await tx.purchaseInvoiceReversalItem.create({
+        data: { tenantId, reversalId: reversal.id, purchaseInvoiceItemId: item.id, quantity: item.quantity },
+      });
+
+      if (item.itemType === "stock") {
+        const originalMovement = await tx.stockMovement.findFirst({
+          where: { tenantId, type: "purchase", referenceType: "purchase_invoice_item", referenceId: item.id },
+        });
+        if (!originalMovement) {
+          throw new ConflictException(
+            `No stock movement found for item "${item.description}" — cannot verify what to reverse`,
+          );
+        }
+        await this.inventory.reversePurchase(
+          {
+            movementId: originalMovement.id,
+            quantity: item.quantity.toString(),
+            reason: `Cancelled purchase invoice ${invoice.supplierInvoiceNumber}`,
+          },
+          { referenceType: "purchase_invoice_reversal_item", referenceId: reversalItem.id, tx },
+        );
+      } else {
+        await tx.expense.create({
+          data: {
+            tenantId,
+            branchId: invoice.branchId,
+            category: item.expenseCategory,
+            description: `Reversal: ${item.description}`,
+            amount: negateDecimal(item.lineSubtotal),
+            vatAmount: negateDecimal(item.lineVat),
+            total: negateDecimal(item.lineTotal),
+            // Booked today (when the correction actually happens), not
+            // backdated to the original invoice date, so a closed
+            // accounting period is never silently altered.
+            incurredAt: new Date(),
+            referenceType: "purchase_invoice_reversal_item",
+            referenceId: reversalItem.id,
+            createdBy: actor,
+          },
+        });
+      }
+    }
   }
 
   // ------------------------------------------------------------------ //
@@ -423,4 +530,9 @@ function priceLine(item: PurchaseInvoiceItemDto, defaultVatRate: string): LinePr
     lineVatHalalas,
     lineTotalHalalas,
   };
+}
+
+/** Flips the sign of a stored money amount — the negative counter-entry for a reversed expense line. */
+function negateDecimal(value: { toString(): string }): string {
+  return halalasToSar(-sarToHalalas(value.toString()));
 }
