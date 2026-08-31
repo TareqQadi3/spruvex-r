@@ -9,6 +9,7 @@ import {
   DailySalesQueryDto,
   DateRangeQueryDto,
 } from "./dto/reports-query.dto";
+import { MenuProfitabilityService } from "./menu-profitability.service";
 import { ReportsService } from "./reports.service";
 import { VatReturnService } from "./vat-return.service";
 
@@ -18,6 +19,7 @@ export class ReportsController {
     private readonly reports: ReportsService,
     private readonly vatReturn: VatReturnService,
     private readonly branchComparisonService: BranchComparisonService,
+    private readonly menuProfitability: MenuProfitabilityService,
   ) {}
 
   @RequirePermission("reports.view")
@@ -96,5 +98,25 @@ export class ReportsController {
   @Get("branch-comparison")
   branchComparison(@Query() query: BranchComparisonQueryDto) {
     return this.branchComparisonService.compare(query.from, query.to, query.branchIds);
+  }
+
+  /** Menu profitability: current recipe cost vs. selling price vs. actual units sold, per product. */
+  @RequirePermission("reports.view")
+  @Get("menu-profitability")
+  menuProfitabilityJson(@Query() query: DateRangeQueryDto) {
+    return this.menuProfitability.menuProfitability(query.branchId, query.from, query.to);
+  }
+
+  @RequirePermission("reports.export")
+  @Get("menu-profitability.csv")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  async menuProfitabilityCsv(@Query() query: DateRangeQueryDto, @Res() res: Response) {
+    const result = await this.menuProfitability.menuProfitability(query.branchId, query.from, query.to);
+    const csv = this.menuProfitability.toCsv(result);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="menu-profitability-${result.period.from}-to-${result.period.to}.csv"`,
+    );
+    res.send("﻿" + csv);
   }
 }

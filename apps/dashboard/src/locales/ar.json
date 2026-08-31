@@ -527,7 +527,8 @@
     "tabs": {
       "overview": "نظرة عامة",
       "vatReturn": "الإقرار الضريبي",
-      "branchComparison": "مقارنة الفروع"
+      "branchComparison": "مقارنة الفروع",
+      "menuProfitability": "ربحية القائمة"
     },
     "vatReturn": {
       "allBranches": "كل الفروع",
@@ -597,6 +598,21 @@
         "loyaltyDisabled": "غير مفعّل",
         "avgRating": "متوسط التقييم"
       }
+    },
+    "menuProfitability": {
+      "allBranches": "كل الفروع",
+      "noBranchNote": "التكلفة وسعر البيع الحاليان لا يختلفان بين الفروع (التكلفة موحّدة لكل المطعم، والسعر يستخدم السعر الأساسي إلا عند اختيار فرع له سعر خاص) — اختيار فرع يغيّر فقط عدد الوحدات المباعة وإجمالي هامش المساهمة.",
+      "downloadCsv": "تنزيل CSV",
+      "product": "الصنف",
+      "cost": "التكلفة الحالية",
+      "sellingPrice": "سعر البيع الحالي",
+      "grossMargin": "هامش الربح",
+      "grossMarginPercent": "نسبة الهامش",
+      "quantitySold": "الكمية المباعة",
+      "totalContributionMargin": "إجمالي هامش المساهمة",
+      "noRecipe": "بدون وصفة",
+      "lossAlert": "يُباع بخسارة أو بدون ربح",
+      "empty": "لا توجد أصناف نشطة"
     },
     "financial": {
       "title": "الملخص المالي",

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { BranchComparisonService } from "./branch-comparison.service";
+import { MenuProfitabilityService } from "./menu-profitability.service";
 import { ReportsController } from "./reports.controller";
 import { ReportsService } from "./reports.service";
 import { VatReturnService } from "./vat-return.service";
@@ -12,6 +13,6 @@ import { VatReturnService } from "./vat-return.service";
  */
 @Module({
   controllers: [ReportsController],
-  providers: [ReportsService, VatReturnService, BranchComparisonService],
+  providers: [ReportsService, VatReturnService, BranchComparisonService, MenuProfitabilityService],
 })
 export class ReportsModule {}

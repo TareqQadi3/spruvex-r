@@ -7,6 +7,7 @@ const TABS = [
   { key: "overview", path: "/reports" },
   { key: "vatReturn", path: "/reports/vat-return" },
   { key: "branchComparison", path: "/reports/branch-comparison" },
+  { key: "menuProfitability", path: "/reports/menu-profitability" },
 ];
 
 export function ReportsLayout() {

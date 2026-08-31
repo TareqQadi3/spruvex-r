@@ -527,7 +527,8 @@
     "tabs": {
       "overview": "Overview",
       "vatReturn": "VAT return",
-      "branchComparison": "Branch comparison"
+      "branchComparison": "Branch comparison",
+      "menuProfitability": "Menu profitability"
     },
     "vatReturn": {
       "allBranches": "All branches",
@@ -597,6 +598,21 @@
         "loyaltyDisabled": "Not enabled",
         "avgRating": "Avg. rating"
       }
+    },
+    "menuProfitability": {
+      "allBranches": "All branches",
+      "noBranchNote": "Current cost and selling price don't vary by branch (cost is one restaurant-wide moving average, and price uses the base price unless a selected branch has an override) — picking a branch only changes units sold and total contribution margin.",
+      "downloadCsv": "Download CSV",
+      "product": "Item",
+      "cost": "Current cost",
+      "sellingPrice": "Current selling price",
+      "grossMargin": "Gross margin",
+      "grossMarginPercent": "Margin %",
+      "quantitySold": "Quantity sold",
+      "totalContributionMargin": "Total contribution margin",
+      "noRecipe": "No recipe",
+      "lossAlert": "Sold at a loss or break-even",
+      "empty": "No active menu items"
     },
     "financial": {
       "title": "Financial summary",

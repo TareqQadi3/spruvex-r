@@ -34,6 +34,7 @@ import { PurchaseInvoicesPage } from "./pages/purchases/PurchaseInvoicesPage";
 import { PurchasesLayout } from "./pages/purchases/PurchasesLayout";
 import { SuppliersPage } from "./pages/purchases/SuppliersPage";
 import { BranchComparisonPage } from "./pages/reports/BranchComparisonPage";
+import { MenuProfitabilityPage } from "./pages/reports/MenuProfitabilityPage";
 import { ReportsLayout } from "./pages/reports/ReportsLayout";
 import { ReportsPage } from "./pages/reports/ReportsPage";
 import { VatReturnPage } from "./pages/reports/VatReturnPage";
@@ -168,6 +169,7 @@ const router = createBrowserRouter([
           { index: true, element: <ReportsPage /> },
           { path: "vat-return", element: <VatReturnPage /> },
           { path: "branch-comparison", element: <BranchComparisonPage /> },
+          { path: "menu-profitability", element: <MenuProfitabilityPage /> },
         ],
       },
       { path: "*", element: <Navigate to="/" replace /> },

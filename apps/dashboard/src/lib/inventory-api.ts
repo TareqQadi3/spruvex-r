@@ -274,6 +274,25 @@ export interface BranchComparisonResult {
   rows: BranchComparisonRow[];
 }
 
+export interface MenuProfitabilityRow {
+  productId: string;
+  productName: string;
+  productNameEn: string | null;
+  hasRecipe: boolean;
+  cost: string;
+  sellingPrice: string;
+  grossMargin: string;
+  grossMarginPercent: string;
+  quantitySold: number;
+  totalContributionMargin: string;
+}
+
+export interface MenuProfitabilityResult {
+  branch: { id: string; name: string; nameEn: string | null } | null;
+  period: { from: string; to: string };
+  rows: MenuProfitabilityRow[];
+}
+
 export const reportsApi = {
   dailySales: (branchId?: string, date?: string) => {
     const params = new URLSearchParams();
@@ -339,5 +358,21 @@ export const reportsApi = {
     if (branchIds && branchIds.length > 0) params.set("branchIds", branchIds.join(","));
     const qs = params.toString();
     return api<BranchComparisonResult>(`/reports/branch-comparison${qs ? `?${qs}` : ""}`);
+  },
+  menuProfitability: (branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return api<MenuProfitabilityResult>(`/reports/menu-profitability${qs ? `?${qs}` : ""}`);
+  },
+  menuProfitabilityDownloadPath: (branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return `/reports/menu-profitability.csv${qs ? `?${qs}` : ""}`;
   },
 };
