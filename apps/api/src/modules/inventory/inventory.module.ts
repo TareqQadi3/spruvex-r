@@ -6,6 +6,7 @@ import { InventoryController } from "./inventory.controller";
 import { InventoryService } from "./inventory.service";
 import { RecipesController } from "./recipes.controller";
 import { RecipesService } from "./recipes.service";
+import { ReorderAlertsService } from "./reorder-alerts.service";
 import { StockDeductionListener } from "./stock-deduction.listener";
 import { StockLocationsService } from "./stock-locations.service";
 import { StockTransfersController } from "./stock-transfers.controller";
@@ -28,6 +29,7 @@ import { StockTransfersService } from "./stock-transfers.service";
     FoodCostService,
     StockDeductionListener,
     StockTransfersService,
+    ReorderAlertsService,
   ],
   exports: [InventoryService, FoodCostService],
 })

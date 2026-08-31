@@ -84,6 +84,31 @@ export interface ProductCost {
   hasRecipe: boolean;
 }
 
+export interface ReorderAlertSupplier {
+  id: string;
+  name: string;
+  nameEn: string | null;
+  lastUnitPrice: string;
+  lastPurchasedAt: string;
+}
+
+export interface ReorderAlertRow {
+  ingredientId: string;
+  ingredientName: string;
+  ingredientNameEn: string | null;
+  unitType: UnitType;
+  branchId: string;
+  branchName: string;
+  branchNameEn: string | null;
+  locationId: string;
+  locationName: string;
+  locationNameEn: string | null;
+  currentQuantity: string;
+  reorderLevel: string;
+  suggestedQuantity: string;
+  lastSupplier: ReorderAlertSupplier | null;
+}
+
 export const inventoryApi = {
   listUnits: () => api<UnitOfMeasure[]>("/inventory/units"),
 
@@ -113,6 +138,9 @@ export const inventoryApi = {
   recordPurchase: (body: unknown) => post<StockMovement>("/inventory/stock/purchase", body),
   recordWaste: (body: unknown) => post<StockMovement>("/inventory/stock/waste", body),
   recordAdjustment: (body: unknown) => post<StockMovement>("/inventory/stock/adjustment", body),
+
+  listReorderAlerts: (branchId?: string) =>
+    api<ReorderAlertRow[]>(`/inventory/reorder-alerts${branchId ? `?branchId=${branchId}` : ""}`),
 
   getRecipe: (productId: string) => api<Recipe>(`/products/${productId}/recipe`),
   setRecipe: (

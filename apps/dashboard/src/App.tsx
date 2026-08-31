@@ -22,6 +22,7 @@ import { SettingsPage } from "./pages/dashboard/SettingsPage";
 import { TeamPage } from "./pages/dashboard/TeamPage";
 import { IngredientsPage } from "./pages/inventory/IngredientsPage";
 import { InventoryLayout } from "./pages/inventory/InventoryLayout";
+import { ReorderAlertsPage } from "./pages/inventory/ReorderAlertsPage";
 import { StockPage } from "./pages/inventory/StockPage";
 import { StockTransfersPage } from "./pages/inventory/StockTransfersPage";
 import { CategoriesPage } from "./pages/menu/CategoriesPage";
@@ -152,6 +153,7 @@ const router = createBrowserRouter([
           { index: true, element: <IngredientsPage /> },
           { path: "stock", element: <StockPage /> },
           { path: "transfers", element: <StockTransfersPage /> },
+          { path: "reorder-alerts", element: <ReorderAlertsPage /> },
         ],
       },
       {

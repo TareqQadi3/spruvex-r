@@ -339,7 +339,8 @@
     "tabs": {
       "ingredients": "Ingredients",
       "stock": "Stock",
-      "transfers": "Stock transfers"
+      "transfers": "Stock transfers",
+      "reorderAlerts": "Reorder alerts"
     },
     "unitTypes": {
       "mass": "Mass",
@@ -444,6 +445,23 @@
         "receiveHint": "Received quantity is pre-filled with the sent quantity and can be edited. Any item received below its sent quantity requires a stated reason.",
         "cancelReason": "Cancellation reason",
         "rejectReason": "Rejection reason"
+      }
+    },
+    "reorderAlerts": {
+      "empty": "No items at or below their reorder level right now",
+      "ingredient": "Ingredient",
+      "currentQuantity": "Current balance",
+      "lastSupplier": "Last supplier",
+      "suggestedQuantity": "Suggested quantity",
+      "neverPurchased": "Never purchased through a purchase invoice",
+      "critical": "Critical",
+      "createDraftInvoice": "Create draft purchase invoice ({{count}})",
+      "createDraftInvoiceTitle": "Draft purchase invoice — reorder",
+      "form": {
+        "chooseSupplier": "Choose the supplier",
+        "incompleteLine": "Fill in the quantity and unit price for every item",
+        "items": "Items",
+        "saveDraft": "Save as draft"
       }
     }
   },

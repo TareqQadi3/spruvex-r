@@ -339,7 +339,8 @@
     "tabs": {
       "ingredients": "المكونات",
       "stock": "المخزون",
-      "transfers": "تحويلات المخزون"
+      "transfers": "تحويلات المخزون",
+      "reorderAlerts": "تنبيهات إعادة الطلب"
     },
     "unitTypes": {
       "mass": "وزن",
@@ -444,6 +445,23 @@
         "receiveHint": "الكمية المستلمة معبّأة مسبقاً بالكمية المرسلة ويمكن تعديلها. أي صنف تقل كميته المستلمة عن المرسلة يتطلب توضيح السبب.",
         "cancelReason": "سبب الإلغاء",
         "rejectReason": "سبب الرفض"
+      }
+    },
+    "reorderAlerts": {
+      "empty": "لا توجد أصناف عند أو دون حد إعادة الطلب حالياً",
+      "ingredient": "المكوّن",
+      "currentQuantity": "الرصيد الحالي",
+      "lastSupplier": "آخر مورّد",
+      "suggestedQuantity": "الكمية المقترحة",
+      "neverPurchased": "لم يُشترَ من قبل عبر فواتير المشتريات",
+      "critical": "حرج",
+      "createDraftInvoice": "إنشاء فاتورة مشتريات مسودة ({{count}})",
+      "createDraftInvoiceTitle": "فاتورة مشتريات مسودة — إعادة طلب",
+      "form": {
+        "chooseSupplier": "اختر المورّد",
+        "incompleteLine": "أكمل الكمية وسعر الوحدة لكل صنف",
+        "items": "الأصناف",
+        "saveDraft": "حفظ كمسودة"
       }
     }
   },

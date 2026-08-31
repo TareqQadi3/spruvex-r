@@ -27,6 +27,7 @@ import {
 } from "./dto/stock-location.dto";
 import { IngredientsService } from "./ingredients.service";
 import { InventoryService } from "./inventory.service";
+import { ReorderAlertsService } from "./reorder-alerts.service";
 import { StockLocationsService } from "./stock-locations.service";
 
 @Controller("inventory")
@@ -35,6 +36,7 @@ export class InventoryController {
     private readonly ingredients: IngredientsService,
     private readonly locations: StockLocationsService,
     private readonly inventory: InventoryService,
+    private readonly reorderAlerts: ReorderAlertsService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -148,5 +150,12 @@ export class InventoryController {
   @Get("auto-hidden")
   listAutoHidden(@Query("branchId") branchId?: string) {
     return this.inventory.listAutoHidden(branchId);
+  }
+
+  /** Every stock level at/below its ingredient's reorderLevel, most critical first, with the last supplier bought from (if any). */
+  @RequirePermission("inventory.view")
+  @Get("reorder-alerts")
+  listReorderAlerts(@Query("branchId") branchId?: string) {
+    return this.reorderAlerts.list(branchId);
   }
 }
