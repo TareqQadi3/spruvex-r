@@ -1,21 +1,26 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
-import { costUnitsToSar, halalasToSar, sarToCostUnits, sarToHalalas } from "../../shared/common/money";
+import { halalasToSar, sarToHalalas } from "../../shared/common/money";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { resolveRange } from "./report-utils";
 
 export type VatReturnResult = Awaited<ReturnType<VatReturnService["vatReturn"]>>;
 
 export interface VatReturnLineItem {
-  type: "sale" | "credit_note" | "debit_note";
+  type: "sale" | "credit_note" | "debit_note" | "purchase";
   branchName: string;
   branchNameEn: string | null;
-  /** Receipt/credit-note/debit-note number, unique per branch (ZATCA-style sequencing) — the accountant's audit trail back to the source document. */
-  documentNumber: number;
+  /** Receipt/credit-note/debit-note number (ZATCA-style sequencing) for sales-side
+   * lines; the SUPPLIER's own invoice number (a string, not our sequencing) for a
+   * "purchase" line — still the accountant's trail back to the source document. */
+  documentNumber: number | string;
   /** For a credit/debit note: the receipt number of the original invoice it adjusts. */
   referenceReceiptNumber: number | null;
   orderNumber: number | null;
+  /** "purchase" lines only — who the invoice was billed by. */
+  supplierName?: string;
+  supplierNameEn?: string | null;
   issuedAt: Date;
   vatRatePercent: string;
   netAmount: string;
@@ -41,12 +46,13 @@ export interface VatReturnRateBucket {
 }
 
 /**
- * VAT return export — built ENTIRELY from real, already-issued documents
- * (Receipt/CreditNote/DebitNote), never a separately re-estimated figure.
- * Read-only: touches no sale/payment/order pathway.
+ * VAT return export — built ENTIRELY from real, already-issued documents on
+ * the output side (Receipt/CreditNote/DebitNote) and real, CONFIRMED
+ * PurchaseInvoice rows on the input side, never a separately re-estimated
+ * figure. Read-only: touches no sale/payment/order/purchase-invoice pathway.
  *
- * Two data-model facts that shape this report, discovered while building it
- * (documented here rather than silently assumed away):
+ * Data-model facts that shape this report, documented here rather than
+ * silently assumed away:
  *
  * 1. VAT registration is per-TENANT, not per-branch (Tenant.vatNumber is the
  *    only VAT-number field in the schema; Branch has none). A tenant's
@@ -54,14 +60,14 @@ export interface VatReturnRateBucket {
  *    this report defaults to combining all branches for exactly that reason,
  *    though a single branch can still be selected for internal analysis.
  *
- * 2. There is no input-VAT (purchase-invoice) tracking anywhere in the
- *    system. Inventory purchases (InventoryService.recordPurchase) only
- *    capture a unit cost for food-cost/margin math — never a VAT amount, a
- *    supplier name, or a purchase-invoice number. This report's "input tax"
- *    section is therefore explicitly marked unsupported (not silently
- *    zeroed without explanation) and the net amount due is computed as
- *    OUTPUT TAX ONLY — the accountant must add any real input tax from
- *    actual supplier tax invoices before filing.
+ * 2. Input VAT is computed from PurchaseInvoice rows with status="confirmed"
+ *    only, filtered by invoiceDate falling inside the requested period — a
+ *    draft (not yet reviewed) or cancelled invoice never counts. This is
+ *    necessarily only as complete as what's been entered: if a supplier
+ *    invoice for the period hasn't been recorded and confirmed yet, it
+ *    won't appear here (see the `inputTax.note` returned alongside the
+ *    figure), same as any bookkeeping system reflects only what's been
+ *    entered.
  */
 @Injectable()
 export class VatReturnService {
@@ -96,7 +102,7 @@ export class VatReturnService {
     const branchById = new Map(branches.map((b) => [b.id, b]));
     const branchNameOf = (id: string) => branchById.get(id) ?? { name: "?", nameEn: null };
 
-    const [receipts, creditNotes, debitNotes] = await Promise.all([
+    const [receipts, creditNotes, debitNotes, purchaseInvoices] = await Promise.all([
       this.prisma.scoped.receipt.findMany({
         where: { issuedAt: { gte: start, lte: end }, ...branchWhere },
         select: {
@@ -135,6 +141,19 @@ export class VatReturnService {
           receipt: { select: { receiptNumber: true } },
         },
         orderBy: { issuedAt: "asc" },
+      }),
+      this.prisma.scoped.purchaseInvoice.findMany({
+        where: { status: "confirmed", invoiceDate: { gte: start, lte: end }, ...branchWhere },
+        select: {
+          supplierInvoiceNumber: true,
+          invoiceDate: true,
+          subtotal: true,
+          vatAmount: true,
+          total: true,
+          branchId: true,
+          supplier: { select: { name: true, nameEn: true } },
+        },
+        orderBy: { invoiceDate: "asc" },
       }),
     ]);
 
@@ -242,6 +261,40 @@ export class VatReturnService {
       });
     }
 
+    // Input tax: only CONFIRMED purchase invoices count (a draft hasn't been
+    // reviewed yet; a cancelled one was withdrawn) — see the class doc
+    // comment. Deliberately kept separate from the sales-side `byRate`
+    // buckets above: a single supplier invoice can mix VAT rates across its
+    // own lines, so folding it into the sales rate table would conflate two
+    // different rate populations rather than clarify anything.
+    let totalInputNetHalalas = 0;
+    let totalInputVatHalalas = 0;
+    for (const pi of purchaseInvoices) {
+      const totalHalalas = sarToHalalas(pi.total.toString());
+      const vatHalalas = sarToHalalas(pi.vatAmount.toString());
+      const netHalalas = sarToHalalas(pi.subtotal.toString());
+      totalInputNetHalalas += netHalalas;
+      totalInputVatHalalas += vatHalalas;
+
+      lineItems.push({
+        type: "purchase",
+        branchName: branchNameOf(pi.branchId).name,
+        branchNameEn: branchNameOf(pi.branchId).nameEn,
+        documentNumber: pi.supplierInvoiceNumber,
+        referenceReceiptNumber: null,
+        orderNumber: null,
+        supplierName: pi.supplier.name,
+        supplierNameEn: pi.supplier.nameEn,
+        issuedAt: pi.invoiceDate,
+        // Mixed-rate invoices have no single rate to report here — the per-line
+        // rates live on PurchaseInvoiceItem, out of this summary's scope.
+        vatRatePercent: "—",
+        netAmount: halalasToSar(netHalalas),
+        vatAmount: halalasToSar(vatHalalas),
+        total: halalasToSar(totalHalalas),
+      });
+    }
+
     lineItems.sort((a, b) => a.issuedAt.getTime() - b.issuedAt.getTime());
 
     const byRate: VatReturnRateBucket[] = [...buckets.entries()]
@@ -274,15 +327,7 @@ export class VatReturnService {
       0,
     );
 
-    // Informational only (see class doc comment) — NOT part of the VAT calculation below.
-    const purchases = await this.prisma.scoped.stockMovement.findMany({
-      where: { type: "purchase", createdAt: { gte: start, lte: end }, ...branchWhere },
-      select: { quantity: true, unitCost: true },
-    });
-    const purchaseCostUnits = purchases.reduce((sum, m) => {
-      if (!m.unitCost) return sum;
-      return sum + Math.round(Number(m.quantity) * sarToCostUnits(m.unitCost.toString()));
-    }, 0);
+    const netVatDueHalalas = totalOutputVatHalalas - totalInputVatHalalas;
 
     return {
       tenant,
@@ -294,13 +339,16 @@ export class VatReturnService {
         outputVat: halalasToSar(totalOutputVatHalalas),
       },
       inputTax: {
-        supported: false,
+        supported: true,
         note:
-          "النظام لا يسجّل فواتير مشتريات مع تفاصيل ضريبة المدخلات — فقط تكلفة المكوّن لأغراض حساب هامش الربح. " +
-          "أضِف ضريبة المدخلات الفعلية من فواتير الموردين الضريبية قبل رفع الإقرار.",
-        recordedPurchaseCost: costUnitsToSar(purchaseCostUnits),
+          "محسوبة من فواتير المشتريات المؤكدة (Confirmed) فقط لهذه الفترة — تأكد من إدخال وتأكيد كل فواتير " +
+          "الموردين قبل رفع الإقرار، فأي فاتورة غير مسجّلة أو ما زالت مسودة لن تُحتسب هنا.",
+        netAmount: halalasToSar(totalInputNetHalalas),
+        vatAmount: halalasToSar(totalInputVatHalalas),
+        invoiceCount: purchaseInvoices.length,
       },
-      netVatDue: halalasToSar(totalOutputVatHalalas),
+      /** outputVat - inputVat — negative means a refund position, not an amount owed. */
+      netVatDue: halalasToSar(netVatDueHalalas),
       lineItems,
     };
   }
@@ -317,6 +365,7 @@ export class VatReturnService {
       sale: "مبيعات",
       credit_note: "إشعار دائن",
       debit_note: "إشعار مدين",
+      purchase: "فاتورة مشتريات",
     };
 
     rows.push(["تقرير الإقرار الضريبي / VAT Return Export"]);
@@ -372,9 +421,14 @@ export class VatReturnService {
       result.totals.outputVat,
     ]);
     rows.push([]);
-    rows.push(["ضريبة المدخلات / Input VAT", "غير مدعومة حاليًا / Not supported — " + result.inputTax.note]);
-    rows.push(["تكلفة المشتريات المسجّلة (معلوماتي فقط) / Recorded purchase cost (informational only)", result.inputTax.recordedPurchaseCost]);
-    rows.push(["صافي الضريبة المستحقة (مخرجات فقط) / Net VAT Due (output only)", result.netVatDue]);
+    rows.push(["صافي ضريبة المدخلات / Input VAT Net Amount", result.inputTax.netAmount]);
+    rows.push(["ضريبة المدخلات / Input VAT", result.inputTax.vatAmount]);
+    rows.push(["عدد فواتير المشتريات المؤكدة / Confirmed Purchase Invoice Count", String(result.inputTax.invoiceCount)]);
+    rows.push(["ملاحظة / Note", result.inputTax.note]);
+    rows.push([
+      "صافي الضريبة المستحقة (سالب = رصيد مسترد) / Net VAT Due (negative = refund position)",
+      result.netVatDue,
+    ]);
     rows.push([]);
 
     rows.push([
@@ -384,6 +438,7 @@ export class VatReturnService {
       "رقم المستند / Document #",
       "مرجع الفاتورة الأصلية / Reference Receipt #",
       "رقم الطلب / Order #",
+      "المورّد / Supplier",
       "التاريخ / Issued At",
       "نسبة الضريبة % / VAT Rate %",
       "صافي المبلغ / Net Amount",
@@ -398,6 +453,7 @@ export class VatReturnService {
         String(li.documentNumber),
         li.referenceReceiptNumber !== null ? String(li.referenceReceiptNumber) : "",
         li.orderNumber !== null ? String(li.orderNumber) : "",
+        li.supplierName ?? "",
         li.issuedAt.toISOString(),
         li.vatRatePercent,
         li.netAmount,
@@ -446,18 +502,25 @@ export class VatReturnService {
 
     line(`Total Net Taxable Sales: SAR ${result.totals.netTaxableSales}`, 12, font);
     line(`Total Output VAT: SAR ${result.totals.outputVat}`, 12, font);
-    line(`Net VAT Due (output only): SAR ${result.netVatDue}`, 13, font);
-    y -= 10;
+    y -= 4;
 
     // Standard PDF fonts can't shape Arabic glyphs, so the PDF summary stays
     // English-only; the CSV export carries the full bilingual note.
-    line("Input VAT: NOT SUPPORTED", 11, font);
+    line(`Input VAT (from ${result.inputTax.invoiceCount} confirmed purchase invoice(s)):`, 11, font);
+    line(`  Net Amount: SAR ${result.inputTax.netAmount}   VAT: SAR ${result.inputTax.vatAmount}`, 11);
     const inputVatNoteEn =
-      "The system does not record supplier purchase invoices with input VAT detail, only " +
-      "ingredient cost for margin calculation. Add real input VAT from actual supplier tax " +
-      "invoices before filing. See the CSV export for the Arabic note.";
+      "Computed from CONFIRMED purchase invoices for this period only. Make sure every supplier " +
+      "invoice for the period has been entered and confirmed — anything still draft or cancelled " +
+      "is excluded. See the CSV export for the Arabic note.";
     for (const nl of wrapText(inputVatNoteEn, 90)) line(nl, 9);
-    line(`Recorded purchase cost (informational only): SAR ${result.inputTax.recordedPurchaseCost}`, 9);
+    y -= 6;
+
+    const netVatDueIsRefund = Number(result.netVatDue) < 0;
+    line(
+      `Net VAT Due: SAR ${result.netVatDue}${netVatDueIsRefund ? " (refund position)" : ""}`,
+      13,
+      font,
+    );
 
     return Buffer.from(await pdf.save());
   }

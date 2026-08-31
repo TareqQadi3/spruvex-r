@@ -15,6 +15,7 @@ import { LoyaltyModule } from "./modules/loyalty/loyalty.module";
 import { OrderingModule } from "./modules/ordering/ordering.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
 import { PlatformModule } from "./modules/platform/platform.module";
+import { PurchasesModule } from "./modules/purchases/purchases.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { ShiftsModule } from "./modules/shifts/shifts.module";
 import { TablesModule } from "./modules/tables/tables.module";
@@ -50,6 +51,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
     ShiftsModule,
     PaymentsModule,
     InventoryModule,
+    PurchasesModule,
     ReportsModule,
     BillingModule,
     PlatformModule,

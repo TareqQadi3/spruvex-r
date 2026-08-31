@@ -261,8 +261,11 @@ describe("VAT return export (e2e)", () => {
       expect(res.body.totals.outputVat).toBe("3.53");
       expect(res.body.netVatDue).toBe("3.53");
 
-      // Input VAT must be honestly flagged unsupported, never guessed.
-      expect(res.body.inputTax.supported).toBe(false);
+      // No confirmed purchase invoices recorded in this test's period —
+      // input VAT is a real, computed zero, not an "unsupported" placeholder.
+      expect(res.body.inputTax.supported).toBe(true);
+      expect(res.body.inputTax.vatAmount).toBe("0.00");
+      expect(res.body.inputTax.invoiceCount).toBe(0);
       expect(typeof res.body.inputTax.note).toBe("string");
 
       // 3 sales + 1 credit note + 1 debit note = 5 traceable line items.

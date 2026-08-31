@@ -187,6 +187,7 @@
     "kds": "شاشة المطبخ",
     "tables": "الطاولات",
     "inventory": "المخزون",
+    "purchases": "المشتريات",
     "reports": "التقارير",
     "billing": "الاشتراك والفوترة",
     "integrations": "الإضافات",
@@ -394,6 +395,70 @@
       "criticalThreshold": "الإخفاء عند الوصول لـ (اختياري، الافتراضي صفر)"
     }
   },
+  "purchases": {
+    "tabs": { "invoices": "فواتير المشتريات", "suppliers": "الموردون" },
+    "suppliers": {
+      "title": "الموردون",
+      "add": "إضافة مورّد",
+      "editTitle": "تعديل المورّد",
+      "empty": "لا يوجد موردون بعد",
+      "inactive": "غير نشط",
+      "activate": "تفعيل",
+      "deactivate": "إلغاء التفعيل",
+      "vatNumber": "الرقم الضريبي",
+      "vatNumberPlaceholder": "اتركه فارغًا إن لم يكن المورد مسجلاً بالضريبة",
+      "contactPhone": "رقم الجوال",
+      "contactEmail": "البريد الإلكتروني",
+      "address": "العنوان"
+    },
+    "invoices": {
+      "allBranches": "كل الفروع",
+      "allStatuses": "كل الحالات",
+      "add": "فاتورة مشتريات جديدة",
+      "empty": "لا توجد فواتير مشتريات",
+      "supplier": "المورّد",
+      "number": "رقم فاتورة المورد",
+      "date": "التاريخ",
+      "total": "الإجمالي",
+      "confirm": "تأكيد الفاتورة",
+      "cancel": "إلغاء",
+      "confirmCancel": "تأكيد الإلغاء",
+      "cancelledNote": "سبب الإلغاء: {{reason}}",
+      "cancelConfirmedWarning": "هذه الفاتورة مؤكدة بالفعل — إلغاؤها الآن لن يُرجع حركة المخزون أو المصروف المسجّلين، فقط يستثنيها من ضريبة المدخلات لاحقًا.",
+      "status": {
+        "title": "الحالة",
+        "draft": "مسودة",
+        "confirmed": "مؤكدة",
+        "cancelled": "ملغاة"
+      },
+      "form": {
+        "chooseSupplier": "اختر المورّد",
+        "chooseBranch": "اختر الفرع",
+        "branch": "الفرع",
+        "supplierInvoiceNumber": "رقم فاتورة المورد",
+        "items": "بنود الفاتورة",
+        "addLine": "إضافة بند",
+        "removeLine": "حذف البند",
+        "itemType": { "stock": "بضاعة/مخزون", "expense": "مصروف تشغيلي" },
+        "description": "الوصف",
+        "chooseIngredient": "اختر المكوّن",
+        "expenseCategory": "تصنيف المصروف (إيجار، فواتير، صيانة...)",
+        "quantity": "الكمية",
+        "unitPrice": "سعر الوحدة (قبل الضريبة)",
+        "vatRate": "نسبة الضريبة %",
+        "notes": "ملاحظات",
+        "confirmNow": "تأكيد الفاتورة فورًا بعد الإنشاء",
+        "needAtLeastOneItem": "أضف بندًا واحدًا على الأقل",
+        "stockNeedsIngredient": "كل بند بضاعة يحتاج اختيار مكوّن",
+        "cancelReason": "سبب الإلغاء",
+        "addAttachment": "إرفاق صورة الفاتورة",
+        "replaceAttachment": "استبدال المرفق",
+        "downloadAttachment": "تنزيل المرفق",
+        "net": "الصافي",
+        "vat": "الضريبة"
+      }
+    }
+  },
   "reports": {
     "todayOrders": "طلبات اليوم",
     "todaySales": "مبيعات اليوم",
@@ -418,7 +483,8 @@
       "downloadPdf": "تنزيل PDF",
       "netTaxableSales": "صافي المبيعات الخاضعة",
       "outputVat": "ضريبة المخرجات (المبيعات)",
-      "netVatDue": "صافي الضريبة المستحقة (مخرجات فقط)",
+      "netVatDue": "صافي الضريبة المستحقة",
+      "netVatDueRefund": "(رصيد مسترد)",
       "empty": "لا توجد مستندات في هذه الفترة",
       "presets": {
         "thisMonth": "هذا الشهر",
@@ -426,8 +492,10 @@
         "thisQuarter": "هذا الربع"
       },
       "inputTax": {
-        "title": "النظام لا يسجّل ضريبة المدخلات",
-        "recordedPurchaseCost": "تكلفة المشتريات المسجّلة (معلوماتي فقط، غير مضمّن في الإجمالي أعلاه)"
+        "title": "ضريبة المدخلات (من فواتير المشتريات المؤكدة)",
+        "netAmount": "الصافي",
+        "vatAmount": "الضريبة",
+        "invoiceCount": "عدد الفواتير المؤكدة"
       },
       "byRate": {
         "title": "التفصيل حسب نسبة الضريبة",
@@ -445,6 +513,7 @@
         "branch": "الفرع",
         "documentNumber": "رقم المستند",
         "reference": "الفاتورة المرجعية",
+        "supplier": "المورّد",
         "date": "التاريخ",
         "net": "الصافي",
         "vat": "الضريبة",
@@ -452,7 +521,8 @@
         "types": {
           "sale": "مبيعات",
           "credit_note": "إشعار دائن",
-          "debit_note": "إشعار مدين"
+          "debit_note": "إشعار مدين",
+          "purchase": "فاتورة مشتريات"
         }
       }
     },

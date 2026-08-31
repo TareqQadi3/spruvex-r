@@ -15,6 +15,7 @@ import {
   Receipt,
   Settings,
   Store,
+  Truck,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -43,6 +44,7 @@ const ICONS: Record<string, LucideIcon> = {
   "credit-card": CreditCard,
   puzzle: Puzzle,
   gift: Gift,
+  truck: Truck,
 };
 
 export function DashboardLayout() {

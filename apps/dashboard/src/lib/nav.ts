@@ -24,6 +24,7 @@ export const NAV_ITEMS: NavItem[] = [
   { labelKey: "menu", path: "/menu", icon: "book-open", permission: "menu.manage" },
   { labelKey: "tables", path: "/tables", icon: "layout-grid", permission: "tables.manage" },
   { labelKey: "inventory", path: "/inventory", icon: "package", permission: "inventory.view" },
+  { labelKey: "purchases", path: "/purchases", icon: "truck", permission: "purchases.view" },
   { labelKey: "reports", path: "/reports", icon: "bar-chart", permission: "reports.view" },
   // Business modules — later phases:
   { labelKey: "orders", path: "/orders", icon: "receipt", permission: "orders.view", comingSoon: true },

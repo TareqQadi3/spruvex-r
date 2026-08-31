@@ -212,12 +212,16 @@ export interface RatingsSummary {
 }
 
 export interface VatReturnLineItem {
-  type: "sale" | "credit_note" | "debit_note";
+  type: "sale" | "credit_note" | "debit_note" | "purchase";
   branchName: string;
   branchNameEn: string | null;
-  documentNumber: number;
+  /** A ZATCA-style sequential number for sales-side lines; the supplier's own
+   * (string) invoice number for a "purchase" line. */
+  documentNumber: number | string;
   referenceReceiptNumber: number | null;
   orderNumber: number | null;
+  supplierName?: string;
+  supplierNameEn?: string | null;
   issuedAt: string;
   vatRatePercent: string;
   netAmount: string;
@@ -246,7 +250,7 @@ export interface VatReturnResult {
   period: { from: string; to: string };
   byRate: VatReturnRateBucket[];
   totals: { netTaxableSales: string; outputVat: string };
-  inputTax: { supported: boolean; note: string; recordedPurchaseCost: string };
+  inputTax: { supported: boolean; note: string; netAmount: string; vatAmount: string; invoiceCount: number };
   netVatDue: string;
   lineItems: VatReturnLineItem[];
 }

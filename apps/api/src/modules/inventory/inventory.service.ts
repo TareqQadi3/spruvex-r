@@ -76,12 +76,26 @@ export class InventoryService {
     });
   }
 
-  async recordPurchase(dto: RecordPurchaseDto) {
+  /**
+   * `opts.tx` lets a caller that already holds an open transaction (e.g.
+   * PurchasesService confirming a purchase invoice) fold this into the SAME
+   * atomic unit instead of opening a second, independent transaction —
+   * Prisma's interactive transactions don't nest, and this feature must
+   * never leave stock posted for an invoice whose confirm then fails.
+   * `opts.referenceType`/`referenceId` tag the resulting movement for
+   * idempotent tracing back to whatever caused it (same convention as the
+   * system-triggered sale_deduction rows) — omitted for the plain manual
+   * "record a purchase" form, which has no such source document.
+   */
+  async recordPurchase(
+    dto: RecordPurchaseDto,
+    opts: { referenceType?: string; referenceId?: string; tx?: Prisma.TransactionClient } = {},
+  ) {
     const ctx = this.tenantContext.contextOrThrow;
     const actor = actorOrNull(ctx.userId);
     const quantityBase = Number(dto.quantity);
 
-    return this.prisma.scopedTransaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       const ingredient = await this.ingredientOrThrow(tx, dto.ingredientId);
       const locationId = await this.resolveLocationId(tx, dto.branchId, dto.locationId);
 
@@ -92,6 +106,8 @@ export class InventoryService {
         type: "purchase",
         quantity: quantityBase,
         unitCost: dto.unitCost,
+        referenceType: opts.referenceType,
+        referenceId: opts.referenceId,
         reason: dto.reason,
         performedBy: actor,
       });
@@ -127,7 +143,10 @@ export class InventoryService {
       );
       await this.logGatingEvents(dto.branchId, gatingEvents);
       return movement;
-    });
+    };
+
+    if (opts.tx) return run(opts.tx);
+    return this.prisma.scopedTransaction(run);
   }
 
   async recordWaste(dto: RecordWasteDto) {

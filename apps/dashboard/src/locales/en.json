@@ -187,6 +187,7 @@
     "kds": "Kitchen Display",
     "tables": "Tables",
     "inventory": "Inventory",
+    "purchases": "Purchases",
     "reports": "Reports",
     "billing": "Billing & subscription",
     "integrations": "Integrations",
@@ -394,6 +395,70 @@
       "criticalThreshold": "Hide at/below (optional, default 0)"
     }
   },
+  "purchases": {
+    "tabs": { "invoices": "Purchase invoices", "suppliers": "Suppliers" },
+    "suppliers": {
+      "title": "Suppliers",
+      "add": "Add supplier",
+      "editTitle": "Edit supplier",
+      "empty": "No suppliers yet",
+      "inactive": "Inactive",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "vatNumber": "VAT number",
+      "vatNumberPlaceholder": "Leave blank if this supplier isn't VAT-registered",
+      "contactPhone": "Phone",
+      "contactEmail": "Email",
+      "address": "Address"
+    },
+    "invoices": {
+      "allBranches": "All branches",
+      "allStatuses": "All statuses",
+      "add": "New purchase invoice",
+      "empty": "No purchase invoices",
+      "supplier": "Supplier",
+      "number": "Supplier invoice #",
+      "date": "Date",
+      "total": "Total",
+      "confirm": "Confirm invoice",
+      "cancel": "Cancel",
+      "confirmCancel": "Confirm cancellation",
+      "cancelledNote": "Cancellation reason: {{reason}}",
+      "cancelConfirmedWarning": "This invoice is already confirmed — cancelling it now will NOT reverse the stock/expense it already posted, only exclude it from input VAT going forward.",
+      "status": {
+        "title": "Status",
+        "draft": "Draft",
+        "confirmed": "Confirmed",
+        "cancelled": "Cancelled"
+      },
+      "form": {
+        "chooseSupplier": "Choose a supplier",
+        "chooseBranch": "Choose a branch",
+        "branch": "Branch",
+        "supplierInvoiceNumber": "Supplier invoice number",
+        "items": "Invoice items",
+        "addLine": "Add line",
+        "removeLine": "Remove line",
+        "itemType": { "stock": "Stock/inventory", "expense": "Operating expense" },
+        "description": "Description",
+        "chooseIngredient": "Choose an ingredient",
+        "expenseCategory": "Expense category (rent, utilities, maintenance...)",
+        "quantity": "Quantity",
+        "unitPrice": "Unit price (before VAT)",
+        "vatRate": "VAT rate %",
+        "notes": "Notes",
+        "confirmNow": "Confirm the invoice immediately after creating it",
+        "needAtLeastOneItem": "Add at least one item",
+        "stockNeedsIngredient": "Every stock line needs an ingredient",
+        "cancelReason": "Cancellation reason",
+        "addAttachment": "Attach invoice image",
+        "replaceAttachment": "Replace attachment",
+        "downloadAttachment": "Download attachment",
+        "net": "Net",
+        "vat": "VAT"
+      }
+    }
+  },
   "reports": {
     "todayOrders": "Today's orders",
     "todaySales": "Today's sales",
@@ -418,7 +483,8 @@
       "downloadPdf": "Download PDF",
       "netTaxableSales": "Net taxable sales",
       "outputVat": "Output VAT (sales)",
-      "netVatDue": "Net VAT due (output only)",
+      "netVatDue": "Net VAT due",
+      "netVatDueRefund": "(refund position)",
       "empty": "No documents in this period",
       "presets": {
         "thisMonth": "This month",
@@ -426,8 +492,10 @@
         "thisQuarter": "This quarter"
       },
       "inputTax": {
-        "title": "Input VAT is not tracked by this system",
-        "recordedPurchaseCost": "Recorded purchase cost (informational only, not part of the total above)"
+        "title": "Input VAT (from confirmed purchase invoices)",
+        "netAmount": "Net amount",
+        "vatAmount": "VAT",
+        "invoiceCount": "Confirmed invoices"
       },
       "byRate": {
         "title": "Breakdown by VAT rate",
@@ -445,6 +513,7 @@
         "branch": "Branch",
         "documentNumber": "Document #",
         "reference": "Reference invoice",
+        "supplier": "Supplier",
         "date": "Date",
         "net": "Net",
         "vat": "VAT",
@@ -452,7 +521,8 @@
         "types": {
           "sale": "Sale",
           "credit_note": "Credit note",
-          "debit_note": "Debit note"
+          "debit_note": "Debit note",
+          "purchase": "Purchase invoice"
         }
       }
     },

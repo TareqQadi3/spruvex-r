@@ -64,6 +64,11 @@ export const PERMISSIONS = {
   // Loyalty program
   "loyalty.manage": "Configure loyalty programs (stamps, spend threshold, points, tiers)",
   "loyalty.redeem": "View a customer's loyalty balance and apply redemptions at checkout",
+
+  // Purchasing (suppliers & purchase invoices)
+  "purchases.create": "Create suppliers, enter and confirm purchase invoices",
+  "purchases.view": "View suppliers and purchase invoices",
+  "purchases.void": "Cancel a purchase invoice",
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

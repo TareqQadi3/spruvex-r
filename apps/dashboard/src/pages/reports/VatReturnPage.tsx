@@ -146,8 +146,10 @@ export function VatReturnPage() {
           <Alert>
             <p className="font-medium">{t("reports.vatReturn.inputTax.title")}</p>
             <p className="mt-1 text-sm">{data.inputTax.note}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t("reports.vatReturn.inputTax.recordedPurchaseCost")}: {data.inputTax.recordedPurchaseCost} SAR
+            <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
+              {t("reports.vatReturn.inputTax.netAmount")}: {data.inputTax.netAmount} SAR ·{" "}
+              {t("reports.vatReturn.inputTax.vatAmount")}: {data.inputTax.vatAmount} SAR ·{" "}
+              {t("reports.vatReturn.inputTax.invoiceCount")}: {data.inputTax.invoiceCount}
             </p>
           </Alert>
 
@@ -174,6 +176,11 @@ export function VatReturnPage() {
               </CardHeader>
               <CardContent className="text-2xl font-bold text-primary" dir="ltr">
                 {data.netVatDue} SAR
+                {Number(data.netVatDue) < 0 && (
+                  <span className="ms-2 text-sm font-normal text-muted-foreground">
+                    {t("reports.vatReturn.netVatDueRefund")}
+                  </span>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -231,6 +238,7 @@ export function VatReturnPage() {
                     <th className="p-3 text-start">{t("reports.vatReturn.lineItems.branch")}</th>
                     <th className="p-3 text-start">{t("reports.vatReturn.lineItems.documentNumber")}</th>
                     <th className="p-3 text-start">{t("reports.vatReturn.lineItems.reference")}</th>
+                    <th className="p-3 text-start">{t("reports.vatReturn.lineItems.supplier")}</th>
                     <th className="p-3 text-start">{t("reports.vatReturn.lineItems.date")}</th>
                     <th className="p-3 text-start">{t("reports.vatReturn.lineItems.net")}</th>
                     <th className="p-3 text-start">{t("reports.vatReturn.lineItems.vat")}</th>
@@ -241,13 +249,28 @@ export function VatReturnPage() {
                   {data.lineItems.map((li, idx) => (
                     <tr key={`${li.type}-${li.documentNumber}-${li.branchName}-${idx}`} className="border-b last:border-0">
                       <td className="p-3">
-                        <Badge variant={li.type === "sale" ? "muted" : li.type === "credit_note" ? "destructive" : "default"}>
+                        <Badge
+                          variant={
+                            li.type === "sale"
+                              ? "muted"
+                              : li.type === "credit_note"
+                                ? "destructive"
+                                : li.type === "purchase"
+                                  ? "success"
+                                  : "default"
+                          }
+                        >
                           {t(`reports.vatReturn.lineItems.types.${li.type}`)}
                         </Badge>
                       </td>
                       <td className="p-3">{localizedName({ name: li.branchName, nameEn: li.branchNameEn }, i18n.language)}</td>
                       <td className="p-3" dir="ltr">#{li.documentNumber}</td>
                       <td className="p-3" dir="ltr">{li.referenceReceiptNumber ? `#${li.referenceReceiptNumber}` : "—"}</td>
+                      <td className="p-3">
+                        {li.supplierName
+                          ? localizedName({ name: li.supplierName, nameEn: li.supplierNameEn ?? null }, i18n.language)
+                          : "—"}
+                      </td>
                       <td className="p-3" dir="ltr">{formatDocumentDate(li.issuedAt)}</td>
                       <td className="p-3" dir="ltr">{li.netAmount} SAR</td>
                       <td className="p-3" dir="ltr">{li.vatAmount} SAR</td>
@@ -256,7 +279,7 @@ export function VatReturnPage() {
                   ))}
                   {data.lineItems.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="p-4 text-center text-muted-foreground">
+                      <td colSpan={9} className="p-4 text-center text-muted-foreground">
                         {t("reports.vatReturn.empty")}
                       </td>
                     </tr>

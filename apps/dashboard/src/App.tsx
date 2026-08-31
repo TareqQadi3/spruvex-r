@@ -29,6 +29,9 @@ import { ModifiersPage } from "./pages/menu/ModifiersPage";
 import { ProductEditorPage } from "./pages/menu/ProductEditorPage";
 import { ProductsPage } from "./pages/menu/ProductsPage";
 import { OnboardingWizard } from "./pages/onboarding/OnboardingWizard";
+import { PurchaseInvoicesPage } from "./pages/purchases/PurchaseInvoicesPage";
+import { PurchasesLayout } from "./pages/purchases/PurchasesLayout";
+import { SuppliersPage } from "./pages/purchases/SuppliersPage";
 import { BranchComparisonPage } from "./pages/reports/BranchComparisonPage";
 import { ReportsLayout } from "./pages/reports/ReportsLayout";
 import { ReportsPage } from "./pages/reports/ReportsPage";
@@ -146,6 +149,14 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <IngredientsPage /> },
           { path: "stock", element: <StockPage /> },
+        ],
+      },
+      {
+        path: "purchases",
+        element: <PurchasesLayout />,
+        children: [
+          { index: true, element: <PurchaseInvoicesPage /> },
+          { path: "suppliers", element: <SuppliersPage /> },
         ],
       },
       {
