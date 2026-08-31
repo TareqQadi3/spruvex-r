@@ -116,7 +116,12 @@ export class TableSessionsService {
     return closed;
   }
 
-  /** Every currently open session for the cashier's "open tables" view. */
+  /**
+   * Every currently open session for the cashier's "open tables" view. Polled
+   * every ~15s by the POS UI, so this is batched rather than per-session: one
+   * query for the latest order per session and one grouped aggregate for
+   * payments, instead of 2 queries per open session.
+   */
   async listOpen(branchId?: string) {
     const sessions = await this.prisma.scoped.tableSession.findMany({
       where: { closedAt: null, ...(branchId ? { branchId } : {}) },
@@ -130,28 +135,59 @@ export class TableSessionsService {
       },
     });
 
-    return Promise.all(
-      sessions.map(async (session) => {
-        const order = await this.prisma.scoped.order.findFirst({
-          where: { tableSessionId: session.id, deletedAt: null },
+    const sessionIds = sessions.map((s) => s.id);
+    const orders = sessionIds.length
+      ? await this.prisma.scoped.order.findMany({
+          where: { tableSessionId: { in: sessionIds }, deletedAt: null },
           orderBy: { createdAt: "desc" },
-          select: { id: true, orderNumber: true, status: true, total: true },
-        });
-        const unpaidHalalas = order ? await this.unpaidBalanceHalalas(session.id, order) : 0;
-        return {
-          sessionId: session.id,
-          table: session.table,
-          openedAt: session.openedAt,
-          lastActivityAt: session.lastActivityAt,
-          staleFlaggedAt: session.staleFlaggedAt,
-          participants: session.participants,
-          order: order
-            ? { id: order.id, orderNumber: order.orderNumber, status: order.status, total: order.total.toString() }
-            : null,
-          unpaidBalance: halalasToSar(unpaidHalalas),
-        };
-      }),
-    );
+          select: { id: true, tableSessionId: true, orderNumber: true, status: true, total: true },
+        })
+      : [];
+    // orders is globally sorted by createdAt desc, so the first occurrence
+    // per session while scanning it in order is that session's latest order.
+    const latestOrderBySession = new Map<string, (typeof orders)[number]>();
+    for (const order of orders) {
+      if (!latestOrderBySession.has(order.tableSessionId!)) {
+        latestOrderBySession.set(order.tableSessionId!, order);
+      }
+    }
+
+    const activeOrderIds = [...latestOrderBySession.values()]
+      .filter((order) => (ACTIVE_ORDER_STATUSES as readonly string[]).includes(order.status))
+      .map((order) => order.id);
+    const paidHalalasByOrderId = new Map<string, number>();
+    if (activeOrderIds.length) {
+      const paidGroups = await this.prisma.scoped.payment.groupBy({
+        by: ["orderId"],
+        where: { orderId: { in: activeOrderIds }, status: "completed" },
+        _sum: { amount: true },
+      });
+      for (const group of paidGroups) {
+        paidHalalasByOrderId.set(group.orderId, sarToHalalas((group._sum.amount ?? 0).toString()));
+      }
+    }
+
+    return sessions.map((session) => {
+      const order = latestOrderBySession.get(session.id);
+      let unpaidHalalas = 0;
+      if (order && (ACTIVE_ORDER_STATUSES as readonly string[]).includes(order.status)) {
+        const paidHalalas = paidHalalasByOrderId.get(order.id) ?? 0;
+        const totalHalalas = sarToHalalas(order.total.toString());
+        unpaidHalalas = Math.max(0, totalHalalas - paidHalalas);
+      }
+      return {
+        sessionId: session.id,
+        table: session.table,
+        openedAt: session.openedAt,
+        lastActivityAt: session.lastActivityAt,
+        staleFlaggedAt: session.staleFlaggedAt,
+        participants: session.participants,
+        order: order
+          ? { id: order.id, orderNumber: order.orderNumber, status: order.status, total: order.total.toString() }
+          : null,
+        unpaidBalance: halalasToSar(unpaidHalalas),
+      };
+    });
   }
 
   /**

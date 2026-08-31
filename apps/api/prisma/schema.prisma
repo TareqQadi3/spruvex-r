@@ -1097,6 +1097,7 @@ model Receipt {
 
   @@unique([branchId, receiptNumber])
   @@index([tenantId, branchId])
+  @@index([tenantId, issuedAt])
   @@map("receipts")
 }
 
@@ -1145,6 +1146,7 @@ model CreditNote {
 
   @@unique([branchId, creditNoteNumber])
   @@index([tenantId, receiptId])
+  @@index([tenantId, issuedAt])
   @@map("credit_notes")
 }
 
@@ -1189,6 +1191,7 @@ model DebitNote {
 
   @@unique([branchId, debitNoteNumber])
   @@index([tenantId, receiptId])
+  @@index([tenantId, issuedAt])
   @@map("debit_notes")
 }
 

@@ -14,7 +14,8 @@
     "prisma:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:sync-permissions": "ts-node --transpile-only prisma/sync-role-permissions.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"
