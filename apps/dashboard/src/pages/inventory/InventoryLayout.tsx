@@ -6,6 +6,7 @@ import { cn } from "@spruvex-r/ui";
 const TABS = [
   { key: "ingredients", path: "/inventory" },
   { key: "stock", path: "/inventory/stock" },
+  { key: "transfers", path: "/inventory/transfers" },
 ];
 
 export function InventoryLayout() {

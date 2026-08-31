@@ -338,7 +338,8 @@
   "inventory": {
     "tabs": {
       "ingredients": "المكونات",
-      "stock": "المخزون"
+      "stock": "المخزون",
+      "transfers": "تحويلات المخزون"
     },
     "unitTypes": {
       "mass": "وزن",
@@ -393,6 +394,57 @@
       "addIngredient": "إضافة مكوّن",
       "criticalToggle": "مكوّن حرج — أخفِ المنتج عند نفاده",
       "criticalThreshold": "الإخفاء عند الوصول لـ (اختياري، الافتراضي صفر)"
+    },
+    "transfers": {
+      "add": "تحويل جديد",
+      "empty": "لا توجد تحويلات بعد",
+      "allStatuses": "كل الحالات",
+      "from": "من فرع",
+      "to": "إلى فرع",
+      "itemCount": "عدد الأصناف",
+      "updatedAt": "آخر تحديث",
+      "send": "إرسال",
+      "cancel": "إلغاء",
+      "receive": "استلام",
+      "reject": "رفض التحويل بالكامل",
+      "confirmReceive": "تأكيد الاستلام",
+      "confirmCancel": "تأكيد الإلغاء",
+      "confirmReject": "تأكيد الرفض",
+      "rejectWarning": "سيتم رفض التحويل بالكامل وإعادة كامل الكمية المرسلة إلى الفرع المصدر. هذا إجراء منفصل عن الاستلام الجزئي.",
+      "rejectedNote": "تم رفض هذا التحويل. السبب: {{reason}}",
+      "cancelledNote": "تم إلغاء هذا التحويل. السبب: {{reason}}",
+      "status": {
+        "title": "الحالة",
+        "draft": "مسودة",
+        "sent": "مُرسَل",
+        "received": "مُستلَم",
+        "rejected": "مرفوض",
+        "cancelled": "ملغى"
+      },
+      "form": {
+        "destination": "الفرع الوجهة",
+        "chooseDestination": "اختر الفرع الوجهة",
+        "items": "الأصناف",
+        "addLine": "إضافة صنف",
+        "removeLine": "حذف الصنف",
+        "chooseIngredient": "اختر المكوّن",
+        "ingredient": "المكوّن",
+        "quantity": "الكمية",
+        "available": "المتاح حالياً في الفرع: {{quantity}}",
+        "needAtLeastOneItem": "أضف صنفاً واحداً على الأقل",
+        "incompleteLine": "أكمل بيانات كل الأصناف",
+        "exceedsStock": "الكمية المطلوبة في أحد الأصناف تتجاوز المتاح فعلياً في مخزون الفرع",
+        "saveDraft": "حفظ كمسودة",
+        "sendNow": "إرسال مباشرة",
+        "createdButSendFailed": "تم إنشاء التحويل كمسودة، لكن تعذّر إرساله: {{message}}. يمكنك إرساله لاحقاً من شاشة التفاصيل.",
+        "sentQuantity": "الكمية المرسلة",
+        "receivedQuantity": "الكمية المستلمة",
+        "discrepancyReason": "سبب الفرق",
+        "discrepancyReasonPlaceholder": "سبب النقص في الكمية المستلمة (إلزامي)",
+        "receiveHint": "الكمية المستلمة معبّأة مسبقاً بالكمية المرسلة ويمكن تعديلها. أي صنف تقل كميته المستلمة عن المرسلة يتطلب توضيح السبب.",
+        "cancelReason": "سبب الإلغاء",
+        "rejectReason": "سبب الرفض"
+      }
     }
   },
   "purchases": {

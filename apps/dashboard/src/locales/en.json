@@ -338,7 +338,8 @@
   "inventory": {
     "tabs": {
       "ingredients": "Ingredients",
-      "stock": "Stock"
+      "stock": "Stock",
+      "transfers": "Stock transfers"
     },
     "unitTypes": {
       "mass": "Mass",
@@ -393,6 +394,57 @@
       "addIngredient": "Add ingredient",
       "criticalToggle": "Critical — hide product when out of stock",
       "criticalThreshold": "Hide at/below (optional, default 0)"
+    },
+    "transfers": {
+      "add": "New transfer",
+      "empty": "No transfers yet",
+      "allStatuses": "All statuses",
+      "from": "From branch",
+      "to": "To branch",
+      "itemCount": "Item count",
+      "updatedAt": "Last updated",
+      "send": "Send",
+      "cancel": "Cancel",
+      "receive": "Receive",
+      "reject": "Reject entire transfer",
+      "confirmReceive": "Confirm receipt",
+      "confirmCancel": "Confirm cancellation",
+      "confirmReject": "Confirm rejection",
+      "rejectWarning": "The entire transfer will be rejected and the full sent quantity returned to the source branch. This is a separate action from a partial receive.",
+      "rejectedNote": "This transfer was rejected. Reason: {{reason}}",
+      "cancelledNote": "This transfer was cancelled. Reason: {{reason}}",
+      "status": {
+        "title": "Status",
+        "draft": "Draft",
+        "sent": "Sent",
+        "received": "Received",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled"
+      },
+      "form": {
+        "destination": "Destination branch",
+        "chooseDestination": "Choose the destination branch",
+        "items": "Items",
+        "addLine": "Add item",
+        "removeLine": "Remove item",
+        "chooseIngredient": "Choose ingredient",
+        "ingredient": "Ingredient",
+        "quantity": "Quantity",
+        "available": "Currently available in branch: {{quantity}}",
+        "needAtLeastOneItem": "Add at least one item",
+        "incompleteLine": "Fill in every item's details",
+        "exceedsStock": "One item's requested quantity exceeds what's actually available in the branch's stock",
+        "saveDraft": "Save as draft",
+        "sendNow": "Send directly",
+        "createdButSendFailed": "The transfer was created as a draft, but sending it failed: {{message}}. You can send it later from the detail screen.",
+        "sentQuantity": "Sent quantity",
+        "receivedQuantity": "Received quantity",
+        "discrepancyReason": "Discrepancy reason",
+        "discrepancyReasonPlaceholder": "Reason for the shortfall in received quantity (required)",
+        "receiveHint": "Received quantity is pre-filled with the sent quantity and can be edited. Any item received below its sent quantity requires a stated reason.",
+        "cancelReason": "Cancellation reason",
+        "rejectReason": "Rejection reason"
+      }
     }
   },
   "purchases": {
