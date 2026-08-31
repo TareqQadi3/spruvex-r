@@ -115,17 +115,7 @@ export class InventoryService {
       // Weighted moving average: (oldQty*oldCost + newQty*newCost) / (oldQty+newQty).
       const level = await this.upsertLevel(tx, dto.branchId, locationId, dto.ingredientId, quantityBase);
       const priorQty = Number(level.quantity) - quantityBase;
-      const priorCostUnits = sarToCostUnits(ingredient.averageCost.toString());
-      const newCostUnits = sarToCostUnits(dto.unitCost);
-      const blendedUnits =
-        priorQty > 0
-          ? Math.round((priorQty * priorCostUnits + quantityBase * newCostUnits) / (priorQty + quantityBase))
-          : newCostUnits;
-
-      await tx.ingredient.update({
-        where: { id: dto.ingredientId },
-        data: { averageCost: costUnitsToSar(blendedUnits), updatedBy: actor },
-      });
+      await this.blendAverageCost(tx, ingredient, priorQty, quantityBase, dto.unitCost, actor);
 
       await this.audit.log({
         action: "stock.purchase_recorded",
@@ -259,6 +249,118 @@ export class InventoryService {
 
     if (opts.tx) return run(opts.tx);
     return this.prisma.scopedTransaction(run);
+  }
+
+  /**
+   * The "out" leg of an inter-branch stock transfer (StockTransfersService.send).
+   * Never touches Ingredient.averageCost — removing units at their existing
+   * cost doesn't change the average of what remains, same reasoning as
+   * recordWaste/deductForCompletedOrder. Refuses outright (ConflictException)
+   * rather than driving the source location negative; the row lock on
+   * stock_levels makes a concurrent sale/transfer against the same bucket
+   * resolve safely instead of racing the availability check.
+   */
+  async recordTransferOut(
+    input: { branchId: string; locationId: string; ingredientId: string; quantity: string },
+    opts: { referenceType: string; referenceId: string; tx: Prisma.TransactionClient },
+  ) {
+    const actor = actorOrNull(this.tenantContext.contextOrThrow.userId);
+    const quantityBase = Number(input.quantity);
+
+    const locked = await opts.tx.$queryRaw<{ quantity: string }[]>`
+      SELECT quantity FROM stock_levels
+      WHERE location_id = ${input.locationId}::uuid AND ingredient_id = ${input.ingredientId}::uuid
+      FOR UPDATE
+    `;
+    const availableQty = locked.length > 0 ? Number(locked[0].quantity) : 0;
+    if (availableQty < quantityBase) {
+      throw new ConflictException(
+        `Insufficient stock to transfer: only ${availableQty} unit(s) available at the source location, ${quantityBase} requested.`,
+      );
+    }
+
+    const movement = await this.createMovement(opts.tx, {
+      branchId: input.branchId,
+      locationId: input.locationId,
+      ingredientId: input.ingredientId,
+      type: "transfer_out",
+      quantity: -quantityBase,
+      referenceType: opts.referenceType,
+      referenceId: opts.referenceId,
+      performedBy: actor,
+    });
+    await this.upsertLevel(opts.tx, input.branchId, input.locationId, input.ingredientId, -quantityBase);
+
+    await this.audit.log({
+      action: "stock.transfer_out_recorded",
+      entityType: "stock_movement",
+      entityId: movement.id,
+      branchId: input.branchId,
+      meta: { ingredientId: input.ingredientId, quantity: input.quantity },
+    });
+
+    const gatingEvents = await this.reevaluateStockGating(
+      opts.tx,
+      this.tenantContext.tenantIdOrThrow,
+      input.branchId,
+      input.ingredientId,
+    );
+    await this.logGatingEvents(input.branchId, gatingEvents);
+    return movement;
+  }
+
+  /**
+   * The "in" leg — used both for a genuine receive at the destination
+   * branch AND for returning stock to the ORIGIN branch when a transfer is
+   * rejected (same operation, different branch/location arguments; see
+   * StockTransfersService.reject). Blends `unitCostSar` into
+   * Ingredient.averageCost via the exact same weighted-average formula
+   * recordPurchase uses — `unitCostSar` is normally the transfer item's
+   * frozen unitCostAtSend (the ingredient's own average cost at send time),
+   * so blending it back in is mathematically a no-op on the average
+   * (moving already-owned inventory doesn't introduce new cost
+   * information) — this is intentional, not routed around, so a future
+   * change to the blend formula automatically applies here too.
+   */
+  async recordTransferReceipt(
+    input: { branchId: string; locationId: string; ingredientId: string; quantity: string; unitCostSar: string },
+    opts: { referenceType: string; referenceId: string; tx: Prisma.TransactionClient },
+  ) {
+    const actor = actorOrNull(this.tenantContext.contextOrThrow.userId);
+    const quantityBase = Number(input.quantity);
+    const ingredient = await this.ingredientOrThrow(opts.tx, input.ingredientId);
+
+    const movement = await this.createMovement(opts.tx, {
+      branchId: input.branchId,
+      locationId: input.locationId,
+      ingredientId: input.ingredientId,
+      type: "transfer_in",
+      quantity: quantityBase,
+      unitCost: input.unitCostSar,
+      referenceType: opts.referenceType,
+      referenceId: opts.referenceId,
+      performedBy: actor,
+    });
+    const level = await this.upsertLevel(opts.tx, input.branchId, input.locationId, input.ingredientId, quantityBase);
+    const priorQty = Number(level.quantity) - quantityBase;
+    await this.blendAverageCost(opts.tx, ingredient, priorQty, quantityBase, input.unitCostSar, actor);
+
+    await this.audit.log({
+      action: "stock.transfer_in_recorded",
+      entityType: "stock_movement",
+      entityId: movement.id,
+      branchId: input.branchId,
+      meta: { ingredientId: input.ingredientId, quantity: input.quantity },
+    });
+
+    const gatingEvents = await this.reevaluateStockGating(
+      opts.tx,
+      this.tenantContext.tenantIdOrThrow,
+      input.branchId,
+      input.ingredientId,
+    );
+    await this.logGatingEvents(input.branchId, gatingEvents);
+    return movement;
   }
 
   async recordWaste(dto: RecordWasteDto) {
@@ -446,7 +548,8 @@ export class InventoryService {
 
   // --------------------------------------------------------------------- //
 
-  private async ingredientOrThrow(tx: Prisma.TransactionClient, id: string) {
+  /** Public: StockTransfersService validates ingredients and reads averageCost within its own transaction. */
+  async ingredientOrThrow(tx: Prisma.TransactionClient, id: string) {
     const ingredient = await tx.ingredient.findFirst({ where: { id, deletedAt: null } });
     if (!ingredient) {
       throw new NotFoundException("Ingredient not found");
@@ -454,7 +557,8 @@ export class InventoryService {
     return ingredient;
   }
 
-  private async resolveLocationId(
+  /** Public: StockTransfersService resolves the from/to location the same way every other stock op does. */
+  async resolveLocationId(
     tx: Prisma.TransactionClient,
     branchId: string,
     locationId?: string,
@@ -469,6 +573,33 @@ export class InventoryService {
       throw new NotFoundException("Stock location not found in this branch");
     }
     return location.id;
+  }
+
+  /**
+   * Weighted moving average: (priorQty*priorCost + incomingQty*incomingCost)
+   * / (priorQty+incomingQty). The ONE place this math lives — recordPurchase
+   * and recordTransferReceipt both call this rather than each keeping their
+   * own copy, so a future change to the formula can't drift between them.
+   */
+  private async blendAverageCost(
+    tx: Prisma.TransactionClient,
+    ingredient: { id: string; averageCost: { toString(): string } },
+    priorQty: number,
+    incomingQty: number,
+    incomingUnitCostSar: string,
+    actor: string | null,
+  ): Promise<void> {
+    const priorCostUnits = sarToCostUnits(ingredient.averageCost.toString());
+    const newCostUnits = sarToCostUnits(incomingUnitCostSar);
+    const blendedUnits =
+      priorQty > 0
+        ? Math.round((priorQty * priorCostUnits + incomingQty * newCostUnits) / (priorQty + incomingQty))
+        : newCostUnits;
+
+    await tx.ingredient.update({
+      where: { id: ingredient.id },
+      data: { averageCost: costUnitsToSar(blendedUnits), updatedBy: actor },
+    });
   }
 
   private async createMovement(

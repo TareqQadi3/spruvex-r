@@ -69,6 +69,10 @@ export const PERMISSIONS = {
   "purchases.create": "Create suppliers, enter and confirm purchase invoices",
   "purchases.view": "View suppliers and purchase invoices",
   "purchases.void": "Cancel a purchase invoice",
+
+  // Inter-branch stock transfers
+  "inventory.transfer.create": "Create, send and cancel stock transfers from a branch",
+  "inventory.transfer.receive": "Receive or reject an incoming stock transfer",
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

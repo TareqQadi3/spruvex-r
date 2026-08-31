@@ -161,6 +161,8 @@ model Tenant {
   purchaseInvoiceReversals     PurchaseInvoiceReversal[]
   purchaseInvoiceReversalItems PurchaseInvoiceReversalItem[]
   expenses                     Expense[]
+  stockTransfers               StockTransfer[]
+  stockTransferItems           StockTransferItem[]
 
   @@map("tenants")
 }
@@ -1321,6 +1323,7 @@ model Ingredient {
   recipeItems          RecipeItem[]
   stockHides           ProductStockHide[]
   purchaseInvoiceItems PurchaseInvoiceItem[]
+  stockTransferItems   StockTransferItem[]
 
   @@index([tenantId])
   @@map("ingredients")
@@ -1466,6 +1469,109 @@ model RecipeItem {
   @@unique([productId, ingredientId])
   @@index([tenantId, productId])
   @@map("recipe_items")
+}
+
+/// Status is deliberately an open enum, not a boolean/pair of booleans —
+/// see StockTransfersService's doc comment for the exact transition graph.
+/// A future intermediate state (e.g. "in_transit" for courier tracking)
+/// is one more enum value plus one more `if (current.status === ...)`
+/// branch, not a redesign.
+enum StockTransferStatus {
+  draft
+  sent
+  received
+  rejected
+  cancelled
+
+  @@map("stock_transfer_status")
+}
+
+/// Inter-branch stock transfer. The critical invariant this whole model
+/// exists to express: while status = "sent", the transferred quantity is
+/// counted at NEITHER branch — stock_levels at fromBranch was already
+/// decremented (transfer_out) and toBranch's stock_levels is only
+/// incremented on receive (transfer_in). Goods genuinely in transit are
+/// genuinely absent from every branch's book, which is the honest picture,
+/// not a rounding error to paper over.
+model StockTransfer {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  /// Loose reference, not a Prisma relation — same convention as
+  /// PurchaseInvoice.branchId (see vat-return.service.ts's doc comment);
+  /// branch names are resolved via a lookup map when needed.
+  fromBranchId String @map("from_branch_id") @db.Uuid
+  toBranchId   String @map("to_branch_id") @db.Uuid
+
+  status StockTransferStatus @default(draft)
+  notes  String?
+
+  sentAt       DateTime? @map("sent_at")
+  sentBy       String?   @map("sent_by") @db.Uuid
+  receivedAt   DateTime? @map("received_at")
+  receivedBy   String?   @map("received_by") @db.Uuid
+  rejectedAt   DateTime? @map("rejected_at")
+  rejectedBy   String?   @map("rejected_by") @db.Uuid
+  rejectReason String?   @map("reject_reason")
+  cancelledAt  DateTime? @map("cancelled_at")
+  cancelledBy  String?   @map("cancelled_by") @db.Uuid
+  cancelReason String?   @map("cancel_reason")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id])
+  items  StockTransferItem[]
+
+  @@index([tenantId, fromBranchId])
+  @@index([tenantId, toBranchId])
+  @@index([tenantId, status])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id              String @id @default(uuid()) @db.Uuid
+  tenantId        String @map("tenant_id") @db.Uuid
+  stockTransferId String @map("stock_transfer_id") @db.Uuid
+  ingredientId    String @map("ingredient_id") @db.Uuid
+
+  /// Requested/sent quantity (base units) — set at creation, frozen once sent.
+  sentQuantity Decimal @map("sent_quantity") @db.Decimal(14, 3)
+  /// Which fromBranch location this decrements — resolved (branch default
+  /// if omitted) at creation time, same convention as
+  /// PurchaseInvoiceItem.locationId.
+  fromLocationId String @map("from_location_id") @db.Uuid
+  /// Ingredient.averageCost snapshotted at SEND time (null while draft) —
+  /// frozen the same way PurchaseInvoiceItem.unitPrice is, so a purchase
+  /// elsewhere between send and receive can never retroactively change
+  /// what this transfer is valued at.
+  unitCostAtSend Decimal? @map("unit_cost_at_send") @db.Decimal(12, 4)
+
+  /// Which toBranch location received it — chosen at receive time (the
+  /// receiving branch's own layout, not the sender's concern), null until
+  /// actually received.
+  toLocationId String? @map("to_location_id") @db.Uuid
+  /// Actually-received quantity — null until received; may be less than
+  /// sentQuantity (partial/damaged receipt). The un-received remainder is
+  /// simply never posted as transfer_in — it is a genuine loss, the same
+  /// economic reality as a waste movement, just recorded here instead of a
+  /// synthetic extra movement.
+  receivedQuantity Decimal? @map("received_quantity") @db.Decimal(14, 3)
+  /// Mandatory whenever receivedQuantity < sentQuantity — enforced in
+  /// StockTransfersService, not here (needs the real sentQuantity to
+  /// compare against, which a DTO-level decorator can't see).
+  discrepancyReason String? @map("discrepancy_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant             @relation(fields: [tenantId], references: [id])
+  stockTransfer StockTransfer      @relation(fields: [stockTransferId], references: [id])
+  ingredient    Ingredient         @relation(fields: [ingredientId], references: [id])
+
+  @@index([tenantId, stockTransferId])
+  @@map("stock_transfer_items")
 }
 
 /// Tracks a product currently auto-hidden by the system because a critical
