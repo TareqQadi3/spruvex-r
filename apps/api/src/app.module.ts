@@ -13,6 +13,7 @@ import { PaymentsModule } from "./modules/payments/payments.module";
 import { PlatformModule } from "./modules/platform/platform.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { ShiftsModule } from "./modules/shifts/shifts.module";
+import { SiteIntegrationModule } from "./modules/site-integration/site-integration.module";
 import { TablesModule } from "./modules/tables/tables.module";
 import { TenancyModule } from "./modules/tenancy/tenancy.module";
 import { AuditModule } from "./shared/audit/audit.module";
@@ -47,6 +48,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
     ReportsModule,
     BillingModule,
     PlatformModule,
+    SiteIntegrationModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -43,6 +43,11 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # Not generateValue: spruvex-site (a separate deployment) must be
+      # configured with this exact same value — generate one with
+      # `openssl rand -hex 32` and paste it into both places by hand.
+      - key: SPRUVEX_SITE_API_KEY
+        sync: false
       - key: JWT_ACCESS_TTL_SECONDS
         value: "900"
       - key: REFRESH_TOKEN_TTL_DAYS

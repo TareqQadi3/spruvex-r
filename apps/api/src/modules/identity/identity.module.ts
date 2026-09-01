@@ -40,6 +40,6 @@ import { TokenService } from "./token.service";
       useClass: process.env.RESEND_API_KEY ? ResendOtpSender : DevOtpSender,
     },
   ],
-  exports: [AuthService, TokenService, ResendService],
+  exports: [AuthService, TokenService, OtpService, ResendService],
 })
 export class IdentityModule {}

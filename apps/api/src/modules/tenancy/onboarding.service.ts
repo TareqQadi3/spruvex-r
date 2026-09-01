@@ -9,6 +9,7 @@ import { DOMAIN_EVENTS, type SystemRole } from "@spruvex-r/types";
 
 import { AuditService } from "../../shared/audit/audit.service";
 import { LimitsService } from "../../shared/billing/limits.service";
+import { dashboardUrl } from "../../shared/config/dashboard-url";
 import { ResendService } from "../../shared/email/resend.service";
 import { staffCredentialsEmail, welcomeEmail } from "../../shared/email/templates";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
@@ -16,20 +17,7 @@ import { PrismaService } from "../../shared/prisma/prisma.service";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
 import { hashPassword } from "../identity/password";
 import { TokenService, type TokenPair } from "../identity/token.service";
-import { provisionTenant } from "./tenant-provisioning";
-
-function dashboardUrl(): string {
-  return process.env.DASHBOARD_BASE_URL ?? "http://localhost:5173";
-}
-
-function slugify(value: string): string {
-  const base = value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9؀-ۿ]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return base || "restaurant";
-}
+import { findAvailableSlug, provisionTenant, slugify } from "./tenant-provisioning";
 
 export interface OnboardingStatus {
   /** 2 = restaurant info, 3 = first branch, 4 = staff, 5 = complete */
@@ -77,7 +65,7 @@ export class OnboardingService {
       throw new ConflictException("This account already belongs to a restaurant");
     }
 
-    const slug = await this.availableSlug(slugify(input.nameEn ?? input.name));
+    const slug = await findAvailableSlug(this.platformDb, slugify(input.nameEn ?? input.name));
     const provisioned = await provisionTenant(this.platformDb, {
       ...input,
       slug,
@@ -247,14 +235,5 @@ export class OnboardingService {
       hasBranch: branchCount > 0,
       staffCount: memberCount - 1,
     };
-  }
-
-  private async availableSlug(base: string): Promise<string> {
-    let candidate = base;
-    for (let i = 2; ; i++) {
-      const taken = await this.platformDb.tenant.findUnique({ where: { slug: candidate } });
-      if (!taken) return candidate;
-      candidate = `${base}-${i}`;
-    }
   }
 }

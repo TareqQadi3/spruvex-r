@@ -53,6 +53,7 @@ services:
       DATABASE_URL: postgresql://spruvex_app:${SPRUVEX_APP_PASSWORD:?required}@postgres:5432/spruvex_r?schema=public
       ADMIN_DATABASE_URL: postgresql://spruvex_admin:${SPRUVEX_ADMIN_PASSWORD:?required}@postgres:5432/spruvex_r?schema=public
       JWT_SECRET: ${JWT_SECRET:?required}
+      SPRUVEX_SITE_API_KEY: ${SPRUVEX_SITE_API_KEY:?required}
       JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}
       REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
       CORS_ORIGINS: ${CORS_ORIGINS:?required}
