@@ -42,6 +42,7 @@ Full reference lives in `.env.example` at the repo root (dev defaults) and
 | `DATABASE_URL` | yes | `spruvex_app` connection — RLS always enforced |
 | `ADMIN_DATABASE_URL` | yes | `spruvex_admin` connection — migrations/seed/platform module |
 | `JWT_SECRET` | yes | HMAC secret for **both** tenant access tokens and platform admin tokens — generate a long random value per environment, never reuse across environments |
+| `SPRUVEX_SITE_API_KEY` | yes | shared secret spruvex-site sends as `x-spruvex-site-key` when calling `POST /public/trial-signup` — must match the value configured on spruvex-site exactly; generate with `openssl rand -hex 32` |
 | `JWT_ACCESS_TTL_SECONDS` | no (default 900) | tenant access token lifetime |
 | `REFRESH_TOKEN_TTL_DAYS` | no (default 30) | tenant refresh token lifetime |
 | `REDIS_URL` | no | Socket.io fan-out + health check; degrades gracefully (in-memory adapter) if unset/unreachable — fine for one instance, not for multiple |

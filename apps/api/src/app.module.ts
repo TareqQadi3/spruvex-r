@@ -19,6 +19,7 @@ import { PlatformModule } from "./modules/platform/platform.module";
 import { PurchasesModule } from "./modules/purchases/purchases.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { ShiftsModule } from "./modules/shifts/shifts.module";
+import { SiteIntegrationModule } from "./modules/site-integration/site-integration.module";
 import { TablesModule } from "./modules/tables/tables.module";
 import { TenancyModule } from "./modules/tenancy/tenancy.module";
 import { UploadsModule } from "./modules/uploads/uploads.module";
@@ -63,6 +64,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
     FeedbackModule,
     LoyaltyModule,
     ImportsModule,
+    SiteIntegrationModule,
   ],
 })
 export class AppModule implements NestModule {

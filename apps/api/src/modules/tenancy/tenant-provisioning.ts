@@ -49,6 +49,26 @@ export interface ProvisionedTenant {
   roleIdsByKey: Record<string, string>;
 }
 
+/** URL-safe slug from a restaurant name — keeps Arabic letters, ASCII-lowercases the rest. */
+export function slugify(value: string): string {
+  const base = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9؀-ۿ]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "restaurant";
+}
+
+/** Appends `-2`, `-3`, ... to `base` until an unused tenant slug is found. */
+export async function findAvailableSlug(db: PrismaClient, base: string): Promise<string> {
+  let candidate = base;
+  for (let i = 2; ; i++) {
+    const taken = await db.tenant.findUnique({ where: { slug: candidate } });
+    if (!taken) return candidate;
+    candidate = `${base}-${i}`;
+  }
+}
+
 /** Upserts the global permission catalog from @spruvex-r/types. Idempotent. */
 export async function syncPermissionCatalog(db: PrismaClient): Promise<void> {
   for (const key of ALL_PERMISSION_KEYS) {
