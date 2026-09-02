@@ -73,6 +73,7 @@
     "branchPhone": "Branch phone",
     "branchEmail": "Branch email (optional)",
     "staffHint": "Add your branch manager and cashier now, or skip and add them later.",
+    "staffSelfNote": "Running the restaurant yourself? Enter your own signed-in email in the manager field — the manager role is added to your existing account automatically, no new account is created. The password field is ignored in that case (your account keeps its current password).",
     "staffManager": "Branch manager",
     "staffCashier": "Cashier",
     "staffAdd": "Add",

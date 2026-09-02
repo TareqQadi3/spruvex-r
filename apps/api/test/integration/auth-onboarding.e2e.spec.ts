@@ -246,6 +246,66 @@ describe("auth & onboarding (e2e)", () => {
         .expect(200);
       expect(status.body.step).toBe("done");
     });
+
+    it("adding the OWNER's own email as staff assigns the role to the existing account (no 409)", async () => {
+      // The dashboard's staff step invites reusing the owner's email for the
+      // manager role (a one-person restaurant). This used to dead-end on
+      // "An account with email ... already exists" on the owner's FIRST
+      // session. Now the manager role attaches to the existing account.
+      const res = await request(http)
+        .post("/onboarding/staff")
+        .set("Authorization", `Bearer ${accessToken}`)
+        .send({
+          users: [
+            {
+              name: "المالك نفسه كمدير",
+              email: owner.email, // the OWNER's own address
+              password: "Irrelevant-1", // must be ignored for an existing account
+              role: "manager",
+            },
+          ],
+        })
+        .expect(201);
+      expect(res.body.created).toHaveLength(1);
+      expect(res.body.created[0].email).toBe(owner.email);
+
+      // The owner now carries BOTH memberships (owner + manager) in the tenant.
+      const memberships = await admin.userRole.findMany({
+        where: { user: { email: owner.email } },
+        include: { role: true },
+      });
+      const keys = memberships.map((m) => m.role.key).sort();
+      expect(keys).toContain("owner");
+      expect(keys).toContain("manager");
+
+      // The owner's password was NOT clobbered by the throwaway input above.
+      const login = await request(http)
+        .post("/auth/login")
+        .send({ email: owner.email, password: owner.password })
+        .expect(200);
+      expect(login.body.tokens.accessToken).toBeDefined();
+    });
+
+    it("an email owned by a DIFFERENT tenant still gets the 409 (no cross-tenant linking)", async () => {
+      // A second, unrelated account (e.g. another restaurant's staff member).
+      await admin.user.create({
+        data: {
+          name: "خارجي",
+          email: "outsider@e2e.test",
+          passwordHash: "x",
+          emailVerifiedAt: new Date(),
+        },
+      });
+      await request(http)
+        .post("/onboarding/staff")
+        .set("Authorization", `Bearer ${accessToken}`)
+        .send({
+          users: [
+            { name: "خارجي", email: "outsider@e2e.test", password: "Outsider-1", role: "cashier" },
+          ],
+        })
+        .expect(409);
+    });
   });
 
   describe("permission enforcement (e2e)", () => {

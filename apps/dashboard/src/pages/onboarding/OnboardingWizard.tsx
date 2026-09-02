@@ -333,6 +333,9 @@ export function OnboardingWizard() {
             {step === 4 && (
               <form onSubmit={submitStaff} className="space-y-6">
                 <p className="text-sm text-muted-foreground">{t("onboarding.staffHint")}</p>
+                <p className="rounded-lg border bg-secondary/50 p-3 text-xs leading-relaxed text-muted-foreground">
+                  {t("onboarding.staffSelfNote")}
+                </p>
                 {(
                   [
                     { key: "staffManager", state: manager, set: setManager },
