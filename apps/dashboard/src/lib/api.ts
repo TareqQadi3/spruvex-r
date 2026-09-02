@@ -86,7 +86,17 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       const body = await res.json();
       message = Array.isArray(body.message) ? body.message.join("، ") : (body.message ?? message);
     } catch {
-      // non-JSON error body
+      // non-JSON error body (e.g. a bare "Too Many Requests" from a proxy)
+    }
+    if (!message) {
+      // Empty statusText on 4xx/5xx leaves the UI silently doing nothing —
+      // give the user something actionable instead (rate limits especially).
+      message =
+        res.status === 429
+          ? "عدد كبير من المحاولات — انتظر دقيقة ثم أعد المحاولة"
+          : res.status >= 500
+            ? "خطأ في الخادم — أعد المحاولة بعد قليل"
+            : "تعذّر إكمال الطلب";
     }
     throw new ApiError(res.status, message);
   }
