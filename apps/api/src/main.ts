@@ -8,12 +8,14 @@ import { AllExceptionsFilter } from "./shared/errors/all-exceptions.filter";
 import { initSentry } from "./shared/monitoring/sentry";
 import { requestLoggingMiddleware } from "./shared/monitoring/request-logging.middleware";
 import { bootstrapAppRoleIfRequested } from "./shared/prisma/bootstrap-app-role";
+import { repairLegacyEmailsIfRequested } from "./shared/prisma/repair-legacy-emails";
 import { runDbMigrationsIfRequested } from "./shared/prisma/run-db-migrations";
 
 async function bootstrap() {
   initSentry();
   await bootstrapAppRoleIfRequested();
   await runDbMigrationsIfRequested();
+  await repairLegacyEmailsIfRequested();
 
   const app = await NestFactory.create(AppModule);
 
