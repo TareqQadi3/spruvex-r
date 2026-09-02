@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
+import { normalizeEmail } from "./email-normalization";
 import { OtpService } from "./otp/otp.service";
 import { hashPassword, verifyPassword } from "./password";
 import { TokenService, type TokenPair } from "./token.service";
@@ -42,7 +43,7 @@ export class AuthService {
     phone?: string;
     password: string;
   }): Promise<{ userId: string; devOtp?: string }> {
-    const email = input.email.toLowerCase();
+    const email = normalizeEmail(input.email);
     const existing = await this.db.user.findUnique({ where: { email } });
 
     if (existing?.emailVerifiedAt) {
@@ -69,7 +70,7 @@ export class AuthService {
     input: { email: string; code: string },
     meta?: { ip?: string; userAgent?: string },
   ): Promise<{ user: AuthenticatedUser; tokens: TokenPair }> {
-    const email = input.email.toLowerCase();
+    const email = normalizeEmail(input.email);
     const user = await this.db.user.findUnique({ where: { email } });
     if (!user) {
       throw new UnauthorizedException("Account not found");
@@ -87,7 +88,7 @@ export class AuthService {
   }
 
   async resendRegistrationOtp(email: string): Promise<{ devOtp?: string }> {
-    const user = await this.db.user.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await this.db.user.findUnique({ where: { email: normalizeEmail(email) } });
     if (!user || user.emailVerifiedAt) {
       // Do not disclose whether the account exists.
       return {};
@@ -98,7 +99,7 @@ export class AuthService {
 
   /** Issues a password-reset OTP. Silent no-op for unknown/unverified emails — never discloses account existence. */
   async forgotPassword(email: string): Promise<{ devOtp?: string }> {
-    const user = await this.db.user.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await this.db.user.findUnique({ where: { email: normalizeEmail(email) } });
     if (!user || !user.emailVerifiedAt || !user.isActive) {
       return {};
     }
@@ -111,7 +112,7 @@ export class AuthService {
    * refresh-token family so a stolen session can't survive a reset.
    */
   async resetPassword(input: { email: string; code: string; newPassword: string }): Promise<void> {
-    const email = input.email.toLowerCase();
+    const email = normalizeEmail(input.email);
     const user = await this.db.user.findUnique({ where: { email } });
     if (!user) {
       throw new UnauthorizedException("Invalid or expired code");
@@ -135,7 +136,7 @@ export class AuthService {
     meta?: { ip?: string; userAgent?: string },
   ): Promise<{ user: AuthenticatedUser; tokens: TokenPair }> {
     const user = await this.db.user.findUnique({
-      where: { email: input.email.toLowerCase() },
+      where: { email: normalizeEmail(input.email) },
     });
     // Uniform error for unknown email / wrong password — no account enumeration.
     if (!user || !user.isActive || user.deletedAt) {

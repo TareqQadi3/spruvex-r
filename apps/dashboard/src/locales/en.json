@@ -38,7 +38,13 @@
     "forgotSend": "Send code",
     "forgotNewPassword": "New password",
     "forgotSubmit": "Set password",
-    "backToLogin": "Back to sign in"
+    "backToLogin": "Back to sign in",
+    "handoffTitle": "Signing you in...",
+    "handoffFailedTitle": "Sign-in link expired",
+    "emailUnverifiedTitle": "Your email isn't verified yet",
+    "emailUnverifiedBody": "You started an account but never confirmed its email. Enter the code we just sent you to confirm and sign in — or resend the code.",
+    "resendCode": "Resend code",
+    "codeResent": "Code resent — check your inbox (and spam)"
   },
   "onboarding": {
     "title": "Set up your restaurant",

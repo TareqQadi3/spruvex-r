@@ -154,8 +154,28 @@ model User {
   posPins       PosPin[]
   refreshTokens RefreshToken[]
   otpCodes      OtpCode[]
+  handoffTokens HandoffToken[]
 
   @@map("users")
+}
+
+/// One-time handoff tokens — let the marketing site hand a freshly-verified
+/// merchant to the dashboard ALREADY SIGNED IN (closes HANDOFF §7.4): the
+/// site's verify proxy claims one right after successful OTP verification,
+/// the dashboard exchanges it at POST /auth/handoff for a full token pair.
+/// Opaque random secret stored hashed, single use, short TTL, revocable
+/// server-side — deliberately not a JWT.
+model HandoffToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("handoff_tokens")
 }
 
 /// Refresh-token sessions (global identity table, like users — no tenant_id).

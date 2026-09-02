@@ -10,6 +10,8 @@ import { TRIAL_PERIOD_DAYS } from "@spruvex-r/types";
 
 import { AuditService } from "../../shared/audit/audit.service";
 import { dashboardUrl } from "../../shared/config/dashboard-url";
+import { normalizeEmail } from "../identity/email-normalization";
+import { HandoffService } from "../identity/handoff.service";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
 import { hashPassword } from "../identity/password";
@@ -23,6 +25,13 @@ export interface PublicTrialSignupResult {
   email: string;
   trialEndsAt: Date;
   dashboardUrl: string;
+  /**
+   * One-time auto sign-in token for this merchant: the marketing site's
+   * verify proxy returns it to the browser AFTER a successful OTP check,
+   * and the dashboard exchanges it at POST /auth/handoff — the merchant
+   * lands inside the app without re-typing credentials (closes §7.4).
+   */
+  handoffToken: string;
   /** Same non-production-only convention as OtpService.issue(). */
   devOtp?: string;
 }
@@ -43,6 +52,7 @@ export class SitePublicService {
   constructor(
     private readonly platformDb: PlatformPrismaService,
     private readonly otp: OtpService,
+    private readonly handoff: HandoffService,
     private readonly audit: AuditService,
     private readonly tenantContext: TenantContextService,
   ) {}
@@ -51,19 +61,45 @@ export class SitePublicService {
     input: PublicTrialSignupDto,
     meta: { ip?: string },
   ): Promise<PublicTrialSignupResult> {
-    const email = input.email.toLowerCase();
+    const email = normalizeEmail(input.email);
+
+    // Recovery path for a stuck unverified account — MUST run before the
+    // phone check: someone who started at the dashboard wizard (register,
+    // no tenant yet) and then tries the marketing-site form with the SAME
+    // email and phone would otherwise hit the phone-409 dead end before we
+    // ever reach the adoption logic. If this email already exists but was
+    // never verified AND never got a tenant (an abandoned attempt — the
+    // user closed the tab, the OTP email never arrived, ...), ADOPT it
+    // instead of 409-ing into a dead end ("already registered" + login
+    // refuses "email not verified"). Refresh their details, including the
+    // newly chosen password, and continue provisioning the trial below —
+    // exactly like AuthService.register()'s unverified re-registration
+    // path. A verified account, or one that already owns a tenant, keeps
+    // the real 409 (a genuine duplicate).
+    const existingByEmail = await this.platformDb.user.findUnique({
+      where: { email },
+      include: { userRoles: { select: { id: true } } },
+    });
+    if (existingByEmail?.emailVerifiedAt || (existingByEmail && existingByEmail.userRoles.length > 0)) {
+      throw new ConflictException("An account with this email already exists.");
+    }
 
     // One free trial per phone number — the explicit anti-abuse rule this
-    // endpoint was built for. Checked up front for a clear error message;
-    // the phone column's own unique constraint (caught below) is the
-    // authoritative guard against a race between two concurrent requests.
-    const existingByPhone = await this.platformDb.user.findUnique({
-      where: { phone: input.phone },
-    });
-    if (existingByPhone) {
-      throw new ConflictException(
-        "This phone number already has a SpruVex R account — free trials are limited to one per restaurant.",
-      );
+    // endpoint was built for. ADOPTED accounts are exempt (same human,
+    // finishing what they started): the check below compares phones only for
+    // genuinely new accounts, and the phone column's own unique constraint
+    // (caught below) remains the authoritative guard against races. If the
+    // adopted account's phone differs from input.phone, the update inside
+    // the try-block re-points it to the merchant's current number.
+    if (!existingByEmail) {
+      const existingByPhone = await this.platformDb.user.findUnique({
+        where: { phone: input.phone },
+      });
+      if (existingByPhone) {
+        throw new ConflictException(
+          "This phone number already has a SpruVex R account — free trials are limited to one per restaurant.",
+        );
+      }
     }
 
     // The merchant chose this password themselves on the trial form —
@@ -73,16 +109,17 @@ export class SitePublicService {
 
     let userId: string;
     try {
+      const userData = {
+        name: input.restaurantName,
+        email,
+        phone: input.phone,
+        passwordHash,
+      };
       // No `name` field on the trial-signup form — the restaurant name
       // doubles as the owner's display name until they set one in Settings.
-      const user = await this.platformDb.user.create({
-        data: {
-          name: input.restaurantName,
-          email,
-          phone: input.phone,
-          passwordHash,
-        },
-      });
+      const user = existingByEmail
+        ? await this.platformDb.user.update({ where: { id: existingByEmail.id }, data: userData })
+        : await this.platformDb.user.create({ data: userData });
       userId = user.id;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -152,12 +189,15 @@ export class SitePublicService {
     // first time. See report for why this was chosen over a magic link.
     const { devCode } = await this.otp.issue(email, "email_verification", userId);
 
+    const { token: handoffToken } = await this.handoff.issue(userId);
+
     return {
       tenantId,
       slug,
       email,
       trialEndsAt,
       dashboardUrl: dashboardUrl(),
+      handoffToken,
       devOtp: devCode,
     };
   }

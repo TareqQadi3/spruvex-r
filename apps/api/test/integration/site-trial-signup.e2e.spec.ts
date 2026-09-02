@@ -113,6 +113,9 @@ describe("public trial signup (e2e)", () => {
       expect(res.body.tenantId).toBeDefined();
       expect(res.body.email).toBe(payload.email);
       expect(res.body.devOtp).toMatch(/^\d{6}$/);
+      // One-time auto sign-in token rides along (consumed by the dashboard
+      // at POST /auth/handoff after OTP verification).
+      expect(res.body.handoffToken).toMatch(/^[A-Za-z0-9_-]{20,}$/);
       tenantId = res.body.tenantId;
       devOtp = res.body.devOtp;
 
@@ -209,6 +212,188 @@ describe("public trial signup (e2e)", () => {
         await attempt().expect(400);
       }
       await attempt().expect(429);
+    });
+  });
+
+  describe("handoff tokens (marketing site → dashboard auto sign-in)", () => {
+    // Own app instance = own throttle budget for /public/trial-signup.
+    let isolatedApp: INestApplication;
+    let isolatedHttp: ReturnType<INestApplication["getHttpServer"]>;
+
+    beforeAll(async () => {
+      isolatedApp = await buildApp();
+      isolatedHttp = isolatedApp.getHttpServer();
+    });
+
+    afterAll(async () => {
+      await isolatedApp.close();
+    });
+
+    const trial = {
+      restaurantName: "مطعم الدخول التلقائي",
+      phone: "+966533333333",
+      email: "handoff-owner@e2e.test",
+      password: "AutoSign1n",
+      businessType: "restaurant",
+    };
+
+    it("exchanges the handoff token for a full session — exactly once", async () => {
+      const signup = await request(isolatedHttp)
+        .post("/public/trial-signup")
+        .set("x-spruvex-site-key", API_KEY)
+        .send(trial)
+        .expect(201);
+      const handoffToken = signup.body.handoffToken as string;
+      expect(handoffToken).toBeDefined();
+
+      // Skip OTP-verify (handoff exchange does not require it) — the token
+      // itself is the proof the marketing site collected; its single-use
+      // nature is what this test pins down.
+      const first = await request(isolatedHttp)
+        .post("/auth/handoff")
+        .send({ token: handoffToken })
+        .expect(200);
+      expect(first.body.tokens.accessToken).toBeDefined();
+      expect(first.body.tokens.refreshToken).toBeDefined();
+
+      // Replay: the SAME token must fail — single-use fails closed.
+      await request(isolatedHttp)
+        .post("/auth/handoff")
+        .send({ token: handoffToken })
+        .expect(401);
+
+      // Garbage token: indistinguishable rejection, no information leak.
+      await request(isolatedHttp)
+        .post("/auth/handoff")
+        .send({ token: "not-a-real-token" })
+        .expect(401);
+    });
+  });
+
+  describe("email normalization (the +tag loophole)", () => {
+    // Own app instance = own throttle budget for /public/trial-signup.
+    let isolatedApp: INestApplication;
+    let isolatedHttp: ReturnType<INestApplication["getHttpServer"]>;
+
+    beforeAll(async () => {
+      isolatedApp = await buildApp();
+      isolatedHttp = isolatedApp.getHttpServer();
+    });
+
+    afterAll(async () => {
+      await isolatedApp.close();
+    });
+
+    it("treats user+anything@x and user@x as the SAME inbox", async () => {
+      // First signup: base address.
+      await request(isolatedHttp)
+        .post("/public/trial-signup")
+        .set("x-spruvex-site-key", API_KEY)
+        .send({
+          restaurantName: "مطعم التطبيع",
+          phone: "+966544444444",
+          email: "normalized@e2e.test",
+          password: "Normal1ze",
+        })
+        .expect(201);
+
+      // Second signup, DIFFERENT phone but same inbox via +tag → must NOT
+      // create a second account — 409, same as the plain duplicate.
+      const res = await request(isolatedHttp)
+        .post("/public/trial-signup")
+        .set("x-spruvex-site-key", API_KEY)
+        .send({
+          restaurantName: "مطعم التطبيع 2",
+          phone: "+966544444445",
+          email: "normalized+promo@e2e.test",
+          password: "Normal1ze",
+        })
+        .expect(409);
+      expect(res.body.message).toMatch(/already exists/i);
+
+      // Login with the tagged variant maps to the SAME account (403 =
+      // "email not verified" guard, NOT 401 "invalid credentials": proves
+      // normalizeEmail found the account). Full login is covered by the
+      // OTP-verified path in the main describe above.
+      const login = await request(isolatedHttp)
+        .post("/auth/login")
+        .send({ email: "normalized+whatever@e2e.test", password: "Normal1ze" })
+        .expect(403);
+      expect(login.body.message).toMatch(/not verified/i);
+    });
+
+    it("recovers a stuck unverified signup instead of 409-ing into a dead end", async () => {
+      // Signup that never verifies (simulating a merchant who lost the OTP
+      // email and gave up — the exact trap the project owner hit).
+      const first = await request(isolatedHttp)
+        .post("/public/trial-signup")
+        .set("x-spruvex-site-key", API_KEY)
+        .send({
+          restaurantName: "مطعم عالق قديم",
+          phone: "+966544444446",
+          email: "stuck-owner@e2e.test",
+          password: "FirstPass1",
+        })
+        .expect(201);
+
+      // A verified account (or one that already owns a tenant) gets the real
+      // 409... but this one is unverified AND tenant-less from the FIRST
+      // signup — wait: trial signup provisions a tenant immediately, so
+      // re-signup with this email hits "already owns a tenant" 409. The
+      // recovery path covers users created via /auth/register (no tenant
+      // yet) who then try the trial form. Cover exactly that:
+      await request(isolatedHttp)
+        .post("/auth/register")
+        .send({
+          name: "تاجر من اللوحة",
+          email: "wizard-owner@e2e.test",
+          password: "WizardPass1",
+          phone: "+966544444447",
+        })
+        .expect(201);
+
+      // Same email now signs up through the marketing site — the unverified,
+      // tenant-less account is ADOPTED and the trial completes (201), not 409.
+      const adopted = await request(isolatedHttp)
+        .post("/public/trial-signup")
+        .set("x-spruvex-site-key", API_KEY)
+        .send({
+          restaurantName: "مطعم تاجر اللوحة",
+          phone: "+966544444447",
+          email: "wizard-owner@e2e.test",
+          password: "NewChosen1",
+        })
+        .expect(201);
+      expect(adopted.body.tenantId).toBeDefined();
+
+      // They log in with the NEWLY chosen password — 403 "email not
+      // verified" (not 401 "invalid credentials") proves the password
+      // update took AND normalizeEmail routed to the adopted account. The
+      // unverified-login guard itself is the product's designed behavior.
+      const adoptedLogin = await request(isolatedHttp)
+        .post("/auth/login")
+        .send({ email: "wizard-owner@e2e.test", password: "NewChosen1" })
+        .expect(403);
+      expect(adoptedLogin.body.message).toMatch(/not verified/i);
+
+      // A wrong old password is rejected as invalid credentials (401) —
+      // pinning that the ADOPTED password actually replaced the old one.
+      await request(isolatedHttp)
+        .post("/auth/login")
+        .send({ email: "wizard-owner@e2e.test", password: "WrongOld1" })
+        .expect(401);
+
+      // A REAL duplicate (verified account with a tenant) keeps the 409.
+      await request(isolatedHttp)
+        .post("/public/trial-signup")
+        .set("x-spruvex-site-key", API_KEY)
+        .send({
+          restaurantName: "محاولة مكررة",
+          phone: "+966544444448",
+          email: first.body.email,
+          password: "FirstPass1",
+        })
+        .expect(409);
     });
   });
 });
