@@ -5,7 +5,6 @@ import {
   Logger,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import crypto from "node:crypto";
 
 import { TRIAL_PERIOD_DAYS } from "@spruvex-r/types";
 
@@ -67,8 +66,10 @@ export class SitePublicService {
       );
     }
 
-    const randomPassword = crypto.randomBytes(24).toString("base64url");
-    const passwordHash = await hashPassword(randomPassword);
+    // The merchant chose this password themselves on the trial form —
+    // hash and store it directly so they can log in later (no more random
+    // placeholder that left every trial account effectively locked).
+    const passwordHash = await hashPassword(input.password);
 
     let userId: string;
     try {
@@ -105,6 +106,7 @@ export class SitePublicService {
         name: input.restaurantName,
         slug,
         ownerUserId: userId,
+        type: input.businessType, // pass through to Tenant.type, like the wizard does
         branch: {}, // auto-create a default branch — no interactive wizard here to do step 3 later
       });
       tenantId = provisioned.tenantId;

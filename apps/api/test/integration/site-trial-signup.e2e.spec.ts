@@ -59,13 +59,23 @@ describe("public trial signup (e2e)", () => {
   it("rejects a request with no API key or the wrong one (hits 1-2/5)", async () => {
     await request(http)
       .post("/public/trial-signup")
-      .send({ restaurantName: "مطعم بلا مفتاح", phone: "+966511111111", email: "nokey@e2e.test" })
+      .send({
+        restaurantName: "مطعم بلا مفتاح",
+        phone: "+966511111111",
+        email: "nokey@e2e.test",
+        password: "abc12345",
+      })
       .expect(401);
 
     await request(http)
       .post("/public/trial-signup")
       .set("x-spruvex-site-key", "not-the-real-key")
-      .send({ restaurantName: "مطعم مفتاح خاطئ", phone: "+966511111112", email: "wrongkey@e2e.test" })
+      .send({
+        restaurantName: "مطعم مفتاح خاطئ",
+        phone: "+966511111112",
+        email: "wrongkey@e2e.test",
+        password: "abc12345",
+      })
       .expect(401);
   });
 
@@ -73,7 +83,12 @@ describe("public trial signup (e2e)", () => {
     await request(http)
       .post("/public/trial-signup")
       .set("x-spruvex-site-key", API_KEY)
-      .send({ restaurantName: "مطعم", phone: "not-a-phone", email: "bad@e2e.test" })
+      .send({
+        restaurantName: "مطعم",
+        phone: "not-a-phone",
+        email: "bad@e2e.test",
+        password: "abc12345",
+      })
       .expect(400);
   });
 
@@ -82,6 +97,8 @@ describe("public trial signup (e2e)", () => {
       restaurantName: "مطعم التجربة المجانية",
       phone: "+966522222222",
       email: "trial-owner@e2e.test",
+      password: "secret123",
+      businessType: "dessert_cafe",
     };
     let devOtp = "";
     let tenantId = "";
@@ -108,6 +125,10 @@ describe("public trial signup (e2e)", () => {
       // subscription, owner role, and default branch all exist for real.
       const subscription = await admin.subscription.findUnique({ where: { tenantId } });
       expect(subscription?.status).toBe("trialing");
+
+      // businessType passes through to Tenant.type, like the wizard does.
+      const tenant = await admin.tenant.findUnique({ where: { id: tenantId } });
+      expect(tenant?.type).toBe(payload.businessType);
 
       const owner = await admin.user.findUnique({ where: { email: payload.email } });
       expect(owner).toBeTruthy();
@@ -139,11 +160,23 @@ describe("public trial signup (e2e)", () => {
       expect(owner?.emailVerifiedAt).toBeTruthy();
     });
 
+    it("lets the merchant log in later with the password they chose on the form", async () => {
+      // The whole point of storing input.password (not a random placeholder):
+      // /auth/login must accept it, same endpoint every owner uses.
+      const res = await request(http)
+        .post("/auth/login")
+        .send({ email: payload.email, password: payload.password })
+        .expect(200);
+
+      expect(res.body.tokens.accessToken).toBeDefined();
+      expect(res.body.user.email).toBe(payload.email);
+    });
+
     it("rejects a second trial for the same phone number (hit 5/5)", async () => {
       const res = await request(http)
         .post("/public/trial-signup")
         .set("x-spruvex-site-key", API_KEY)
-        .send({ ...payload, email: "different-email@e2e.test" })
+        .send({ ...payload, email: "different-email@e2e.test", password: "secret123" })
         .expect(409);
       expect(res.body.message).toMatch(/already has a SpruVex R account/i);
     });
