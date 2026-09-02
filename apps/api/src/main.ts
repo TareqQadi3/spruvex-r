@@ -1,5 +1,6 @@
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import helmet from "helmet";
 
 import { AppModule } from "./app.module";
@@ -17,13 +18,23 @@ async function bootstrap() {
   await runDbMigrationsIfRequested();
   await repairLegacyEmailsIfRequested();
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const ioAdapter = new RedisIoAdapter(app);
   await ioAdapter.connectToRedis();
   app.useWebSocketAdapter(ioAdapter);
 
   app.use(requestLoggingMiddleware);
+  // Render terminates TLS at its edge and nginx (dashboard/POS/KDS/ordering
+  // proxies) adds one more hop, so Express must honor X-Forwarded-For to see
+  // the real client IP. Without this, EVERY dashboard user shares the
+  // proxy's internal IP as far as the ThrottlerGuard is concerned — one
+  // busy restaurant could burn the whole login rate budget for everyone and
+  // the dashboard silently 429s ("button does nothing" in production).
+  // One trusted hop (Render's edge) + the proxies set X-Forwarded-For
+  // correctly; a fixed count (not `true`) keeps a malicious client from
+  // spoofing an IP chain to dodge rate limits.
+  app.set("trust proxy", 2);
   app.use(helmet());
   app.enableCors({
     origin: (process.env.CORS_ORIGINS ?? "").split(",").filter(Boolean),
