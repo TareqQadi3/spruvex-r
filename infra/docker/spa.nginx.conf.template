@@ -26,8 +26,14 @@ server {
   resolver 1.1.1.1 8.8.8.8 valid=30s;
 
   location /api/ {
+    # With a variable proxy_pass target, nginx does NOT do location-prefix
+    # substitution — it passes the ORIGINAL request URI unchanged. So the
+    # variable must carry the full destination and we must not append a path
+    # here (appending /api/ truncated the URI to /api/ and NestJS 404'd
+    # with "Cannot GET /api/"). The SPA already calls same-origin /api/v1/...,
+    # which is exactly the path the API expects — forward it verbatim.
     set $upstream_api ${API_INTERNAL_ORIGIN};
-    proxy_pass $upstream_api/api/;
+    proxy_pass $upstream_api;
     proxy_ssl_server_name on;
     proxy_http_version 1.1;
     # Host must be the upstream's own host, NOT $host: Render's edge routes
@@ -44,12 +50,12 @@ server {
   # WebSocket upgrade for Socket.io (KDS / POS realtime).
   location /socket.io/ {
     set $upstream_ws ${API_INTERNAL_ORIGIN};
-    proxy_pass $upstream_ws/socket.io/;
+    proxy_pass $upstream_ws;
     proxy_ssl_server_name on;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
-    # Same 508-loop fix as /api/ above.
+    # Same 508-loop + verbatim-URI fixes as /api/ above.
     proxy_set_header Host spruvex-r-api.onrender.com;
   }
 
