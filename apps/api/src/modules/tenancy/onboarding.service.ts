@@ -14,6 +14,7 @@ import { staffCredentialsEmail, welcomeEmail } from "../../shared/email/template
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
+import { normalizeEmail } from "../identity/email-normalization";
 import { hashPassword } from "../identity/password";
 import { TokenService, type TokenPair } from "../identity/token.service";
 import { provisionTenant } from "./tenant-provisioning";
@@ -171,9 +172,49 @@ export class OnboardingService {
         throw new BadRequestException(`Unknown role: ${input.role}`);
       }
 
-      const email = input.email.toLowerCase();
-      const existingUser = await this.platformDb.user.findUnique({ where: { email } });
+      // Same folding rule as registration/login, so a staff member whose
+      // address differs only by a +tag maps to the account they already own.
+      const email = normalizeEmail(input.email);
+      const existingUser = await this.platformDb.user.findUnique({
+        where: { email },
+        include: { userRoles: { where: { tenantId }, select: { roleId: true } } },
+      });
+
+      // A small restaurant's manager is very often the OWNER themselves (the
+      // dashboard's staff step even invites reusing the owner's own email).
+      // Rejecting that with "account already exists" dead-ends onboarding on
+      // the owner's FIRST session. Instead: assign the extra role to the
+      // existing account — no new account, no password overwrite, no
+      // credentials email. The same applies to an existing member of THIS
+      // tenant (adding the cashier role to someone already on the team).
+      // An account belonging to a DIFFERENT tenant (or an unverified straggler
+      // with no tenant) keeps the 409: silently linking an outside identity
+      // into this restaurant would be a trust-boundary violation.
       if (existingUser) {
+        const isSelf = existingUser.id === ctx.userId;
+        const isSameTenantMember =
+          existingUser.userRoles.some((ur) => ur.roleId === role.id);
+        if (isSelf || isSameTenantMember) {
+          if (!existingUser.userRoles.some((ur) => ur.roleId === role.id)) {
+            await this.prisma.scoped.userRole.create({
+              data: {
+                tenantId,
+                userId: existingUser.id,
+                roleId: role.id,
+                branchId: input.branchId ?? null,
+                createdBy: ctx.userId,
+              },
+            });
+            await this.audit.log({
+              action: "user.role_assigned",
+              entityType: "user",
+              entityId: existingUser.id,
+              meta: { email, role: input.role, branchId: input.branchId ?? null, via: "existing-account" },
+            });
+          }
+          created.push({ userId: existingUser.id, email, role: input.role });
+          continue;
+        }
         throw new ConflictException(`An account with email ${email} already exists`);
       }
 
