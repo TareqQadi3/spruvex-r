@@ -10,6 +10,7 @@ import { Spinner } from "@spruvex-r/ui";
 
 import { AuthProvider, useAuth } from "./lib/auth";
 import { DashboardLayout } from "./layouts/DashboardLayout";
+import { AuthCallbackPage } from "./pages/auth/AuthCallbackPage";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
@@ -75,6 +76,13 @@ const router = createBrowserRouter([
         <LoginPage />
       </GuestOnly>
     ),
+  },
+  {
+    // One-time handoff landing (marketing site → dashboard, auto sign-in).
+    // Deliberately NOT GuestOnly: it must work even while a stale session
+    // exists; it replaces whatever session was there with the fresh one.
+    path: "/auth/callback",
+    element: <AuthCallbackPage />,
   },
   {
     path: "/register",

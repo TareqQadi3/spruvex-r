@@ -38,7 +38,13 @@
     "forgotSend": "إرسال الرمز",
     "forgotNewPassword": "كلمة المرور الجديدة",
     "forgotSubmit": "تعيين كلمة المرور",
-    "backToLogin": "العودة لتسجيل الدخول"
+    "backToLogin": "العودة لتسجيل الدخول",
+    "handoffTitle": "جارٍ تسجيل دخولك...",
+    "handoffFailedTitle": "انتهت صلاحية رابط الدخول",
+    "emailUnverifiedTitle": "بريدك غير مُوثَّق بعد",
+    "emailUnverifiedBody": "أنشأت حسابًا سابقًا ولم يكتمل تأكيد بريده. أدخل الرمز المرسل إليك الآن لتأكيده وتسجيل الدخول — أو أعد إرسال الرمز.",
+    "resendCode": "إعادة إرسال الرمز",
+    "codeResent": "أُعيد إرسال الرمز — افحص بريدك (وSpam)"
   },
   "onboarding": {
     "title": "إعداد مطعمك",
