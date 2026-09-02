@@ -25,7 +25,7 @@ interface SocketContext {
 }
 
 interface SubscribePayload {
-  channel: "orders" | "kitchen" | "order";
+  channel: "orders" | "kitchen" | "catalog" | "order";
   branchId?: string;
   orderId?: string;
 }
@@ -133,6 +133,24 @@ export class RealtimeGateway implements OnGatewayConnection {
         return { ok: false, error: "branch not found" };
       }
       const room = rtRooms.branchKitchen(body.branchId);
+      await socket.join(room);
+      return { ok: true, room };
+    }
+
+    if (body?.channel === "catalog") {
+      if (!ctx.permissions.has("menu.view")) {
+        return { ok: false, error: "forbidden" };
+      }
+      if (!body.branchId) {
+        return { ok: false, error: "branchId required" };
+      }
+      const branch = await this.prisma
+        .forTenant(ctx.tenantId)
+        .branch.findFirst({ where: { id: body.branchId, deletedAt: null } });
+      if (!branch) {
+        return { ok: false, error: "branch not found" };
+      }
+      const room = rtRooms.branchCatalog(body.branchId);
       await socket.join(room);
       return { ok: true, room };
     }

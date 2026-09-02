@@ -124,8 +124,16 @@ export function BoardScreen({
   function orderLabel(order: KdsOrder): string {
     if (order.table) return t("board.table", { number: order.table.number });
     if (order.source === "qr") return t("board.qr");
+    if (order.type === "delivery") return t("board.delivery");
     if (order.type === "takeaway") return t("board.takeaway");
     return t("board.walkin");
+  }
+
+  /** Distinguishing the order's channel by color helps the kitchen prioritize at a glance. */
+  function orderBadgeVariant(order: KdsOrder): "default" | "destructive" | "success" {
+    if (order.type === "delivery") return "destructive";
+    if (order.type === "takeaway") return "success";
+    return "default";
   }
 
   return (
@@ -185,7 +193,7 @@ export function BoardScreen({
                               #{order.orderNumber}
                             </span>
                             <div className="flex items-center gap-2">
-                              <Badge variant="default">{orderLabel(order)}</Badge>
+                              <Badge variant={orderBadgeVariant(order)}>{orderLabel(order)}</Badge>
                               <ElapsedTimer createdAt={order.createdAt} />
                             </div>
                           </div>

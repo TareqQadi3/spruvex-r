@@ -81,3 +81,8 @@ export class CreateModifierDto {
 }
 
 export class UpdateModifierDto extends PartialType(CreateModifierDto) {}
+
+export class ModifierBranchAvailabilityDto {
+  @IsBoolean()
+  isAvailable!: boolean;
+}

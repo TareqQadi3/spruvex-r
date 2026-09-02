@@ -9,7 +9,25 @@ import { useLocale, useLocalizedField } from "./LocaleProvider";
 import type { MenuModifier, MenuProduct } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
 
-export function ProductCard({ product, currency }: { product: MenuProduct; currency: string }) {
+const BADGE_LABEL_KEY: Record<string, string> = {
+  bestseller: "menu.badge.bestseller",
+  new: "menu.badge.new",
+  spicy: "menu.badge.spicy",
+  vegetarian: "menu.badge.vegetarian",
+  contains_nuts: "menu.badge.containsNuts",
+  contains_dairy: "menu.badge.containsDairy",
+  gluten_free: "menu.badge.glutenFree",
+};
+
+export function ProductCard({
+  product,
+  currency,
+  disabled,
+}: {
+  product: MenuProduct;
+  currency: string;
+  disabled?: boolean;
+}) {
   const { t, locale } = useLocale();
   const name = useLocalizedField();
   const description =
@@ -21,6 +39,7 @@ export function ProductCard({ product, currency }: { product: MenuProduct; curre
   const [error, setError] = useState<string | null>(null);
 
   function openPicker() {
+    if (disabled) return;
     if (product.modifierGroups.length === 0) {
       addLine(product, []);
       return;
@@ -54,7 +73,9 @@ export function ProductCard({ product, currency }: { product: MenuProduct; curre
         type="button"
         data-menu-part="product-card"
         onClick={openPicker}
-        className="flex w-full items-start gap-3 bg-card p-3 text-start transition-transform active:scale-[0.99]"
+        disabled={disabled}
+        aria-disabled={disabled}
+        className="flex w-full items-start gap-3 bg-card p-3 text-start transition-transform active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
         style={{
           borderRadius: "var(--menu-card-radius, 0.75rem)",
           border: "var(--menu-card-border, 1px solid hsl(var(--border)))",
@@ -70,6 +91,15 @@ export function ProductCard({ product, currency }: { product: MenuProduct; curre
           />
         )}
         <div className="min-w-0 flex-1">
+          {product.badges.length > 0 && (
+            <div data-menu-part="product-badges" className="mb-1 flex flex-wrap gap-1">
+              {product.badges.map((badge) => (
+                <Badge key={badge} variant="muted">
+                  {BADGE_LABEL_KEY[badge] ? t(BADGE_LABEL_KEY[badge]) : badge}
+                </Badge>
+              ))}
+            </div>
+          )}
           <h3
             data-menu-part="product-name"
             className="leading-snug"
@@ -85,14 +115,21 @@ export function ProductCard({ product, currency }: { product: MenuProduct; curre
               {description}
             </p>
           )}
-          <p
-            data-menu-part="product-price"
-            className="mt-1.5 font-bold"
-            dir="ltr"
-            style={{ color: "hsl(var(--menu-primary, var(--primary)))" }}
-          >
-            {formatMoney(product.price, currency)}
-          </p>
+          <div className="mt-1.5 flex items-center justify-between">
+            <p
+              data-menu-part="product-price"
+              className="font-bold"
+              dir="ltr"
+              style={{ color: "hsl(var(--menu-primary, var(--primary)))" }}
+            >
+              {formatMoney(product.price, currency)}
+            </p>
+            {product.prepTimeMinutes != null && (
+              <span className="text-xs text-muted-foreground">
+                {t("menu.prepTime", { minutes: product.prepTimeMinutes })}
+              </span>
+            )}
+          </div>
         </div>
       </button>
 

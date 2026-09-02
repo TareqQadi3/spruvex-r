@@ -51,6 +51,26 @@ export type OrderType = (typeof ORDER_TYPES)[number];
 export const ORDER_SOURCES = ["pos", "qr", "external_link", "delivery"] as const;
 export type OrderSource = (typeof ORDER_SOURCES)[number];
 
+/**
+ * The 3 customer self-service ordering channels — a subset of OrderType
+ * (excludes `walkin`, which is POS-only and never subject to business-hours
+ * gating, manual pausing, or channel-specific pricing/visibility).
+ */
+export const ORDERING_CHANNELS = ["dine_in", "takeaway", "delivery"] as const;
+export type OrderingChannel = (typeof ORDERING_CHANNELS)[number];
+
+/** Fixed merchandising tag set for products — validated server-side, rendered as chips. */
+export const PRODUCT_BADGE_KEYS = [
+  "bestseller",
+  "new",
+  "spicy",
+  "vegetarian",
+  "contains_nuts",
+  "contains_dairy",
+  "gluten_free",
+] as const;
+export type ProductBadgeKey = (typeof PRODUCT_BADGE_KEYS)[number];
+
 export const TENANT_STATUSES = ["active", "suspended"] as const;
 export type TenantStatus = (typeof TENANT_STATUSES)[number];
 

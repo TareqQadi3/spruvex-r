@@ -159,6 +159,16 @@ export function ProductEditorPage() {
     onError: (e) => alert(e instanceof ApiError ? e.message : t("common.error")),
   });
 
+  const availabilityAction = useMutation({
+    mutationFn: (input: { branchId: string; action: "available" | "unavailable" | "sold_out_today" }) => {
+      if (input.action === "available") return catalogApi.markAvailable(id!, input.branchId);
+      if (input.action === "unavailable") return catalogApi.markUnavailable(id!, input.branchId);
+      return catalogApi.markSoldOutToday(id!, input.branchId);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["catalog", "product", id] }),
+    onError: (e) => alert(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
   // Local state for branch price override inputs (committed on blur/save click).
   const [overrideDrafts, setOverrideDrafts] = useState<Record<string, string>>({});
 
@@ -423,19 +433,41 @@ export function ProductEditorPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Switch
-                          checked={isAvailable}
-                          disabled={setBranchSetting.isPending}
-                          aria-label={t("catalog.products.availableInBranch")}
-                          onCheckedChange={(next) =>
-                            setBranchSetting.mutate({
-                              branchId: branch.id,
-                              isAvailable: next,
-                              priceOverride: setting?.priceOverride ?? null,
-                            })
+                        {!isAvailable && (
+                          <Badge variant={setting?.unavailableReason === "stock" ? "muted" : "destructive"}>
+                            {setting?.unavailableReason === "stock"
+                              ? t("catalog.products.reasonStock")
+                              : setting?.unavailableReason === "sold_out_today"
+                                ? t("catalog.products.reasonSoldOutToday")
+                                : t("catalog.products.reasonManual")}
+                          </Badge>
+                        )}
+                        <Button
+                          size="sm"
+                          variant={isAvailable ? "default" : "outline"}
+                          disabled={availabilityAction.isPending}
+                          onClick={() => availabilityAction.mutate({ branchId: branch.id, action: "available" })}
+                        >
+                          {t("catalog.products.available")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={setting?.unavailableReason === "sold_out_today" ? "destructive" : "outline"}
+                          disabled={availabilityAction.isPending}
+                          onClick={() =>
+                            availabilityAction.mutate({ branchId: branch.id, action: "sold_out_today" })
                           }
-                        />
-                        <span className="text-sm">{t("catalog.products.availableInBranch")}</span>
+                        >
+                          {t("catalog.products.soldOutToday")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={setting?.unavailableReason === "manual" ? "destructive" : "outline"}
+                          disabled={availabilityAction.isPending}
+                          onClick={() => availabilityAction.mutate({ branchId: branch.id, action: "unavailable" })}
+                        >
+                          {t("catalog.products.markUnavailable")}
+                        </Button>
                       </div>
                     </div>
                   </div>

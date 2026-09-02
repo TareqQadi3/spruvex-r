@@ -51,8 +51,12 @@ export default async function TableMenuPage({
             nameEn={info.restaurant.nameEn}
             subtitle={`${info.branch.name} · ${info.table.number}`}
           />
-          <MenuView menu={menu} currency={info.restaurant.currency} />
-          <CartBar href={`/menu/${slug}/table/${token}/cart`} currency={info.restaurant.currency} />
+          <MenuView menu={menu} currency={info.restaurant.currency} channelStatus={info.channelStatus} />
+          <CartBar
+            href={`/menu/${slug}/table/${token}/cart`}
+            currency={info.restaurant.currency}
+            disabled={!info.channelStatus.open}
+          />
         </div>
       </CartProvider>
     </LocaleProvider>

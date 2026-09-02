@@ -17,11 +17,13 @@ import { CreateCategoryDto, UpdateCategoryDto } from "./dto/category.dto";
 import {
   CreateModifierDto,
   CreateModifierGroupDto,
+  ModifierBranchAvailabilityDto,
   UpdateModifierDto,
   UpdateModifierGroupDto,
 } from "./dto/modifier.dto";
 import {
   BranchSettingDto,
+  ChannelOverrideDto,
   CreateProductDto,
   SetProductModifierGroupsDto,
   UpdateProductDto,
@@ -114,6 +116,55 @@ export class CatalogController {
     return this.products.setBranchSetting(id, branchId, dto);
   }
 
+  // --- Availability quick actions (item 2) — a lighter permission than
+  // full menu.manage, so a waiter/cashier can flag "we're out" without
+  // getting full catalog-edit rights. ---
+
+  @RequirePermission("menu.toggle_availability")
+  @Post("products/:id/branch-settings/:branchId/sold-out-today")
+  markSoldOutToday(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+  ) {
+    return this.products.markSoldOutToday(id, branchId);
+  }
+
+  @RequirePermission("menu.toggle_availability")
+  @Post("products/:id/branch-settings/:branchId/unavailable")
+  markUnavailable(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+  ) {
+    return this.products.markUnavailable(id, branchId);
+  }
+
+  @RequirePermission("menu.toggle_availability")
+  @Post("products/:id/branch-settings/:branchId/available")
+  markAvailable(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+  ) {
+    return this.products.markAvailable(id, branchId);
+  }
+
+  // --- Per-channel visibility/pricing (item 3) ---
+
+  @RequirePermission("menu.view")
+  @Get("products/:id/channel-overrides")
+  listChannelOverrides(@Param("id", ParseUUIDPipe) id: string) {
+    return this.products.listChannelOverrides(id);
+  }
+
+  @RequirePermission("menu.manage")
+  @Put("products/:id/branch-settings/:branchId/channel")
+  setChannelOverride(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+    @Body() dto: ChannelOverrideDto,
+  ) {
+    return this.products.setChannelOverride(id, branchId, dto);
+  }
+
   // --- Modifier groups & modifiers ---
 
   @RequirePermission("menu.view")
@@ -159,5 +210,15 @@ export class CatalogController {
   @Delete("modifiers/:id")
   deleteModifier(@Param("id", ParseUUIDPipe) id: string) {
     return this.modifiers.deleteModifier(id);
+  }
+
+  @RequirePermission("menu.toggle_availability")
+  @Put("modifiers/:id/branch-settings/:branchId")
+  setModifierBranchAvailability(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("branchId", ParseUUIDPipe) branchId: string,
+    @Body() dto: ModifierBranchAvailabilityDto,
+  ) {
+    return this.modifiers.setBranchAvailability(id, branchId, dto.isAvailable);
   }
 }

@@ -24,6 +24,8 @@ export interface MenuProduct {
   descriptionEn: string | null;
   imageUrl: string | null;
   price: string;
+  badges: string[];
+  prepTimeMinutes: number | null;
   modifierGroups: MenuModifierGroup[];
 }
 
@@ -40,6 +42,13 @@ export interface Menu {
   products: MenuProduct[];
 }
 
+export interface ChannelStatus {
+  channel: "dine_in" | "takeaway" | "delivery";
+  open: boolean;
+  reason: string;
+  label?: string;
+}
+
 export interface TableInfo {
   restaurant: {
     name: string;
@@ -53,6 +62,7 @@ export interface TableInfo {
   };
   branch: { name: string; nameEn: string | null };
   table: { number: string; status: string };
+  channelStatus: ChannelStatus;
 }
 
 export interface RestaurantInfo {
@@ -74,6 +84,13 @@ export interface RestaurantInfo {
     address: string | null;
     phone: string | null;
   }>;
+}
+
+export interface BranchMenu extends Menu {
+  branch: { name: string; nameEn: string | null; slug: string };
+  channelStatuses: { takeaway: ChannelStatus; delivery: ChannelStatus };
+  delivery: { feeAmount: string; minOrderAmount: string; estimatedMinutes: number; paymentMethods: ("cash" | "online")[] };
+  pickup: { estimatedMinutes: number; paymentMethods: ("cash" | "online")[] };
 }
 
 export interface CartLineInput {

@@ -13,8 +13,16 @@ import {
   Post,
 } from "@nestjs/common";
 
+import { ORDERING_CHANNELS, type OrderingChannel } from "@spruvex-r/types";
+
 import { AuditService } from "../../shared/audit/audit.service";
 import { LimitsService } from "../../shared/billing/limits.service";
+import { BusinessHoursService } from "../../shared/business-hours/business-hours.service";
+import {
+  PauseChannelDto,
+  UpdateDeliverySettingsDto,
+  UpdateWorkingHoursDto,
+} from "../../shared/business-hours/dto/business-hours.dto";
 import { ResendService } from "../../shared/email/resend.service";
 import { staffCredentialsEmail } from "../../shared/email/templates";
 import { RequireAuthenticated } from "../../shared/rbac/require-authenticated.decorator";
@@ -42,6 +50,7 @@ export class TenancyController {
     private readonly audit: AuditService,
     private readonly limits: LimitsService,
     private readonly resend: ResendService,
+    private readonly businessHours: BusinessHoursService,
   ) {}
 
   @RequirePermission("tenant.settings.manage")
@@ -166,6 +175,15 @@ export class TenancyController {
         email: true,
         isActive: true,
         orderingSettings: true,
+        workingHours: true,
+        deliveryFeeAmount: true,
+        deliveryMinOrderAmount: true,
+        deliveryRadiusKm: true,
+        deliveryEstimatedMinutes: true,
+        pickupEstimatedMinutes: true,
+        selfServicePaymentMethods: true,
+        autoSlowdownThreshold: true,
+        autoPauseThreshold: true,
         createdAt: true,
       },
     });
@@ -208,6 +226,58 @@ export class TenancyController {
       meta: { changes: { ...dto } },
     });
     return branch;
+  }
+
+  // --- Business hours, manual channel pause, delivery settings (item 1/3) ---
+
+  /** Raw weekly schedule/exceptions + each channel's live open/paused status. */
+  @RequirePermission("branches.manage")
+  @Get("branches/:id/hours")
+  async getBranchHours(@Param("id", ParseUUIDPipe) id: string) {
+    const branch = await this.prisma.scoped.branch.findFirst({
+      where: { id, deletedAt: null },
+      select: { workingHours: true },
+    });
+    if (!branch) {
+      throw new NotFoundException("Branch not found");
+    }
+    const statuses = await this.businessHours.listChannelStatuses(id);
+    return { workingHours: branch.workingHours, statuses };
+  }
+
+  @RequirePermission("branches.manage")
+  @Patch("branches/:id/hours")
+  updateBranchHours(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateWorkingHoursDto) {
+    return this.businessHours.updateWorkingHours(id, dto.workingHours);
+  }
+
+  /**
+   * Immediate emergency pause of one channel — a lighter permission than
+   * branches.manage so a shift lead/cashier can hit it without full branch
+   * settings access.
+   */
+  @RequirePermission("menu.toggle_availability")
+  @Post("branches/:id/pause")
+  pauseBranchChannel(@Param("id", ParseUUIDPipe) id: string, @Body() dto: PauseChannelDto) {
+    return this.businessHours.pauseChannel(id, dto);
+  }
+
+  @RequirePermission("menu.toggle_availability")
+  @Post("branches/:id/resume/:channel")
+  resumeBranchChannel(@Param("id", ParseUUIDPipe) id: string, @Param("channel") channel: string) {
+    if (!ORDERING_CHANNELS.includes(channel as OrderingChannel)) {
+      throw new BadRequestException("Invalid channel");
+    }
+    return this.businessHours.resumeChannel(id, channel as OrderingChannel);
+  }
+
+  @RequirePermission("branches.manage")
+  @Patch("branches/:id/delivery-settings")
+  updateDeliverySettings(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: UpdateDeliverySettingsDto,
+  ) {
+    return this.businessHours.updateDeliverySettings(id, dto);
   }
 
   /**

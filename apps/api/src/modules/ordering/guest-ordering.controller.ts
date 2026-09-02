@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,12 +7,13 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 
 import { Public } from "../../shared/rbac/public.decorator";
-import { GuestTableOrderDto, GuestTakeawayOrderDto } from "./dto/order.dto";
+import { GuestDeliveryOrderDto, GuestTableOrderDto, GuestTakeawayOrderDto } from "./dto/order.dto";
 import { GuestOrderingService } from "./guest-ordering.service";
 
 /**
@@ -65,8 +67,15 @@ export class GuestOrderingController {
 
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get("restaurants/:slug/branches/:branchSlug/menu")
-  branchMenu(@Param("slug") slug: string, @Param("branchSlug") branchSlug: string) {
-    return this.guest.branchMenu(slug, branchSlug);
+  branchMenu(
+    @Param("slug") slug: string,
+    @Param("branchSlug") branchSlug: string,
+    @Query("channel") channel?: string,
+  ) {
+    if (channel !== undefined && channel !== "takeaway" && channel !== "delivery") {
+      throw new BadRequestException('channel must be "takeaway" or "delivery"');
+    }
+    return this.guest.branchMenu(slug, branchSlug, channel);
   }
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -78,6 +87,19 @@ export class GuestOrderingController {
     @Headers("idempotency-key") idempotencyKey: string,
   ) {
     return this.guest.createTakeawayOrder(slug, branchSlug, dto, idempotencyKey);
+  }
+
+  // --- External ordering link: /restaurant/{slug} (delivery) ---
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post("restaurants/:slug/branches/:branchSlug/delivery-orders")
+  createDeliveryOrder(
+    @Param("slug") slug: string,
+    @Param("branchSlug") branchSlug: string,
+    @Body() dto: GuestDeliveryOrderDto,
+    @Headers("idempotency-key") idempotencyKey: string,
+  ) {
+    return this.guest.createDeliveryOrder(slug, branchSlug, dto, idempotencyKey);
   }
 
   // --- Guest order tracking (order UUID = capability) ---

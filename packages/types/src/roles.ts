@@ -13,6 +13,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly PermissionKey
   manager: ALL_PERMISSION_KEYS.filter((p) => p !== "roles.manage"),
   cashier: [
     "menu.view",
+    "menu.toggle_availability",
     "tables.view",
     "orders.create",
     "orders.view",
@@ -27,6 +28,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly PermissionKey
   ],
   waiter: [
     "menu.view",
+    "menu.toggle_availability",
     "tables.view",
     "orders.create",
     "orders.view",

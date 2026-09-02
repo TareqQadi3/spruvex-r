@@ -40,6 +40,16 @@ export interface BranchSetting {
   branchId: string;
   priceOverride: string | null;
   isAvailable: boolean;
+  unavailableReason?: "manual" | "sold_out_today" | "stock" | null;
+  soldOutDate?: string | null;
+  branch: { name: string; nameEn: string | null };
+}
+
+export interface ChannelOverride {
+  branchId: string;
+  channel: "dine_in" | "takeaway" | "delivery";
+  isVisible: boolean;
+  priceOverride: string | null;
   branch: { name: string; nameEn: string | null };
 }
 
@@ -57,6 +67,8 @@ export interface Product {
   isActive: boolean;
   categoryId: string;
   category: { id: string; name: string; nameEn: string | null };
+  badges: string[];
+  prepTimeMinutes: number | null;
   branchSettings: BranchSetting[];
   modifierGroups: Array<{
     modifierGroupId: string;
@@ -90,6 +102,22 @@ export const catalogApi = {
     body: { isAvailable: boolean; priceOverride?: string | null },
   ) =>
     api<BranchSetting>(`/catalog/products/${id}/branch-settings/${branchId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  markSoldOutToday: (id: string, branchId: string) =>
+    post<BranchSetting>(`/catalog/products/${id}/branch-settings/${branchId}/sold-out-today`, {}),
+  markUnavailable: (id: string, branchId: string) =>
+    post<BranchSetting>(`/catalog/products/${id}/branch-settings/${branchId}/unavailable`, {}),
+  markAvailable: (id: string, branchId: string) =>
+    post<BranchSetting>(`/catalog/products/${id}/branch-settings/${branchId}/available`, {}),
+  listChannelOverrides: (id: string) => api<ChannelOverride[]>(`/catalog/products/${id}/channel-overrides`),
+  setChannelOverride: (
+    id: string,
+    branchId: string,
+    body: { channel: "dine_in" | "takeaway" | "delivery"; isVisible: boolean; priceOverride?: string | null },
+  ) =>
+    api<ChannelOverride>(`/catalog/products/${id}/branch-settings/${branchId}/channel`, {
       method: "PUT",
       body: JSON.stringify(body),
     }),

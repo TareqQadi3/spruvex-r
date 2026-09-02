@@ -12,12 +12,14 @@ import {
   canTransition,
   DOMAIN_EVENTS,
   ORDER_STATUS_TRANSITIONS,
+  type OrderingChannel,
   type OrderSource,
   type OrderStatus,
 } from "@spruvex-r/types";
 
 import { AuditService } from "../../shared/audit/audit.service";
 import { LimitsService } from "../../shared/billing/limits.service";
+import { BusinessHoursService } from "../../shared/business-hours/business-hours.service";
 import { calculateRecipeCostUnits } from "../../shared/common/food-cost";
 import { costUnitsToSar, halalasToSar, sarToHalalas, vatFromGross } from "../../shared/common/money";
 import { PrismaService } from "../../shared/prisma/prisma.service";
@@ -36,6 +38,13 @@ export const ORDER_INCLUDE = {
 
 /** Default cap for discounts; overridable per tenant via settings.maxDiscountPercent. */
 const DEFAULT_MAX_DISCOUNT_PERCENT = 20;
+
+/** "walkin" has no self-service channel dimension (no hours/pricing overrides apply to it). */
+function orderChannelOf(type: string): OrderingChannel | undefined {
+  return type === "dine_in" || type === "takeaway" || type === "delivery"
+    ? (type as OrderingChannel)
+    : undefined;
+}
 
 interface CreateOrderContext {
   source: OrderSource;
@@ -59,6 +68,7 @@ export class OrderingService {
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
     private readonly limits: LimitsService,
+    private readonly businessHours: BusinessHoursService,
   ) {}
 
   list(filter: { branchId?: string; statuses?: OrderStatus[]; limit?: number }) {
@@ -110,6 +120,13 @@ export class OrderingService {
     }
 
     await this.limits.assertCanCreateOrder(tenantId);
+
+    // Self-service guest channels only — a cashier can always ring up a
+    // walk-in/phone order (source "pos") regardless of hours/pause state.
+    const guestChannel = orderChannelOf(dto.type);
+    if (opts.source === "external_link" && dto.branchId && guestChannel) {
+      await this.businessHours.assertChannelOpen(dto.branchId, guestChannel);
+    }
 
     for (let attempt = 1; ; attempt++) {
       try {
@@ -414,7 +431,12 @@ export class OrderingService {
         throw new ConflictException("Order already has payments — cannot add a complimentary item");
       }
 
-      const [priced] = await this.priceItems(tx, [{ productId, quantity: 1 } as OrderItemInputDto], current.branchId);
+      const [priced] = await this.priceItems(
+        tx,
+        [{ productId, quantity: 1 } as OrderItemInputDto],
+        current.branchId,
+        orderChannelOf(current.type),
+      );
 
       await tx.orderItem.create({
         data: {
@@ -475,7 +497,7 @@ export class OrderingService {
         );
       }
 
-      const priced = await this.priceItems(tx, items, current.branchId);
+      const priced = await this.priceItems(tx, items, current.branchId, orderChannelOf(current.type));
       const subtotalHalalas = priced.reduce((sum, item) => sum + item.lineTotalHalalas, 0);
 
       let discountHalalas = 0;
@@ -665,7 +687,8 @@ export class OrderingService {
       );
     }
 
-    const priced = await this.priceItems(tx, items, current.branchId);
+    // Only ever called for a table-session's dine-in order (see orderForTable).
+    const priced = await this.priceItems(tx, items, current.branchId, "dine_in");
     const deltaSubtotalHalalas = priced.reduce((sum, item) => sum + item.lineTotalHalalas, 0);
     const newSubtotalHalalas = sarToHalalas(current.subtotal.toString()) + deltaSubtotalHalalas;
     const newTotalHalalas = newSubtotalHalalas; // no discount possible here (blocked above)
@@ -761,6 +784,17 @@ export class OrderingService {
     }
 
     await this.limits.assertCanCreateOrder(tenantId);
+
+    // Checked once, outside the retry loop, for BOTH the first order in this
+    // session and any later round appended to it — dine-in hours/pause
+    // gates the whole session, not just its first order.
+    const tableForHoursCheck = await this.prisma.scoped.table.findFirst({
+      where: { id: tableId, deletedAt: null },
+      select: { branchId: true },
+    });
+    if (tableForHoursCheck) {
+      await this.businessHours.assertChannelOpen(tableForHoursCheck.branchId, "dine_in");
+    }
 
     for (let attempt = 1; ; attempt++) {
       try {
@@ -1093,11 +1127,58 @@ export class OrderingService {
       branchId = branch.id;
     }
 
-    const priced = await this.priceItems(tx, dto.items, branchId);
+    const priced = await this.priceItems(tx, dto.items, branchId, orderChannelOf(dto.type));
+    const itemsSubtotalHalalas = priced.reduce((sum, item) => sum + item.lineTotalHalalas, 0);
+
+    // First-party delivery (guest-initiated, never a delivery-platform
+    // webhook — those carry opts.delivery instead and skip all of this):
+    // validate minimum order, delivery radius, and payment method against
+    // the branch's own delivery config, and fold the fee into the total.
+    let deliveryFeeHalalas = 0;
+    if (dto.type === "delivery" && !opts.delivery) {
+      const branch = await tx.branch.findFirstOrThrow({ where: { id: branchId } });
+      const minOrderHalalas = sarToHalalas(branch.deliveryMinOrderAmount.toString());
+      if (itemsSubtotalHalalas < minOrderHalalas) {
+        throw new ConflictException(
+          `Order subtotal is below this branch's minimum delivery order (${branch.deliveryMinOrderAmount} SAR)`,
+        );
+      }
+      if (
+        branch.deliveryRadiusKm != null &&
+        branch.lat != null &&
+        branch.lng != null &&
+        dto.deliveryLat != null &&
+        dto.deliveryLng != null
+      ) {
+        const distanceKm = BusinessHoursService.distanceKm(
+          Number(branch.lat),
+          Number(branch.lng),
+          dto.deliveryLat,
+          dto.deliveryLng,
+        );
+        if (distanceKm > Number(branch.deliveryRadiusKm)) {
+          throw new ConflictException("This address is outside the branch's delivery coverage area");
+        }
+      }
+      const allowedMethods = (branch.selfServicePaymentMethods as string[] | null) ?? ["cash"];
+      const method = dto.intendedPaymentMethod ?? "cash";
+      if (!allowedMethods.includes(method)) {
+        throw new BadRequestException(`Payment method "${method}" is not accepted for delivery at this branch`);
+      }
+      deliveryFeeHalalas = sarToHalalas(branch.deliveryFeeAmount.toString());
+    } else if (dto.type === "takeaway" && !opts.delivery && dto.intendedPaymentMethod) {
+      const branch = await tx.branch.findFirstOrThrow({ where: { id: branchId } });
+      const allowedMethods = (branch.selfServicePaymentMethods as string[] | null) ?? ["cash"];
+      if (!allowedMethods.includes(dto.intendedPaymentMethod)) {
+        throw new BadRequestException(
+          `Payment method "${dto.intendedPaymentMethod}" is not accepted for pickup at this branch`,
+        );
+      }
+    }
 
     const tenant = await tx.tenant.findFirst({ where: { id: tenantId } });
     const vatRate = Number(tenant?.vatRate ?? 15);
-    const subtotalHalalas = priced.reduce((sum, item) => sum + item.lineTotalHalalas, 0);
+    const subtotalHalalas = itemsSubtotalHalalas + deliveryFeeHalalas;
     const vatHalalas = vatFromGross(subtotalHalalas, vatRate);
 
     // Daily sequential number per branch. Two concurrent order-creation
@@ -1146,6 +1227,18 @@ export class OrderingService {
               deliveryCommission: opts.delivery.commission,
             }
           : {}),
+        ...(dto.type === "delivery" && !opts.delivery
+          ? {
+              deliveryAddress: dto.deliveryAddress,
+              deliveryLat: dto.deliveryLat,
+              deliveryLng: dto.deliveryLng,
+              deliveryFeeAmount: halalasToSar(deliveryFeeHalalas),
+              intendedPaymentMethod: dto.intendedPaymentMethod ?? "cash",
+            }
+          : {}),
+        ...(dto.type === "takeaway" && !opts.delivery
+          ? { intendedPaymentMethod: dto.intendedPaymentMethod ?? "cash" }
+          : {}),
         items: {
           create: priced.map((item) => ({
             tenantId,
@@ -1176,21 +1269,32 @@ export class OrderingService {
     return order;
   }
 
-  /** Validates items against the catalog and freezes snapshots + prices. */
+  /**
+   * Validates items against the catalog and freezes snapshots + prices.
+   * `channel` is omitted for POS/staff orders (no per-channel gate/price
+   * applies there — only the branch-level ProductBranchSetting does).
+   */
   private async priceItems(
     tx: Prisma.TransactionClient,
     items: OrderItemInputDto[],
     branchId: string,
+    channel?: OrderingChannel,
   ) {
     const productIds = [...new Set(items.map((item) => item.productId))];
     const products = await tx.product.findMany({
       where: { id: { in: productIds }, deletedAt: null, isActive: true },
       include: {
         branchSettings: { where: { branchId } },
+        channelOverrides: channel ? { where: { branchId, channel } } : false,
         modifierGroups: {
           include: {
             group: {
-              include: { modifiers: { where: { deletedAt: null, isActive: true } } },
+              include: {
+                modifiers: {
+                  where: { deletedAt: null, isActive: true },
+                  include: { branchSettings: { where: { branchId } } },
+                },
+              },
             },
           },
         },
@@ -1210,9 +1314,13 @@ export class OrderingService {
       if (branchSetting && !branchSetting.isAvailable) {
         throw new ConflictException(`Product "${product.name}" is not available in this branch`);
       }
+      const channelOverride = channel ? product.channelOverrides?.[0] : undefined;
+      if (channelOverride && !channelOverride.isVisible) {
+        throw new ConflictException(`Product "${product.name}" is not available for this ordering channel`);
+      }
 
       const unitPriceHalalas = sarToHalalas(
-        (branchSetting?.priceOverride ?? product.basePrice).toString(),
+        (channelOverride?.priceOverride ?? branchSetting?.priceOverride ?? product.basePrice).toString(),
       );
 
       // Validate selected modifiers against the product's attached groups.
@@ -1235,6 +1343,9 @@ export class OrderingService {
           throw new BadRequestException(
             `Modifier ${modifierId} is not available for product "${product.name}"`,
           );
+        }
+        if (entry.modifier.branchSettings[0]?.isAvailable === false) {
+          throw new ConflictException(`Option "${entry.modifier.name}" is not available in this branch`);
         }
         return entry;
       });

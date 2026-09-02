@@ -6,7 +6,10 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsLatitude,
+  IsLongitude,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -84,6 +87,24 @@ export class CreateOrderDto {
   @IsOptional()
   @IsBoolean()
   confirm?: boolean;
+
+  /** First-party delivery only — set internally by GuestOrderingService.createDeliveryOrder, never bound directly from an untrusted body on this DTO. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  deliveryAddress?: string;
+
+  @IsOptional()
+  @IsNumber()
+  deliveryLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  deliveryLng?: number;
+
+  @IsOptional()
+  @IsIn(["cash", "online"])
+  intendedPaymentMethod?: "cash" | "online";
 }
 
 /** Attaches/updates a customer on an already-created, still-open order (POS: "add customer at checkout"). */
@@ -159,6 +180,29 @@ export class GuestTakeawayOrderDto extends GuestCreateOrderDto {
   @IsString()
   @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
   customerPhone!: string;
+
+  /** How the customer intends to pay — must be one of the branch's accepted self-service methods. Omit = cash (pay on pickup). */
+  @IsOptional()
+  @IsIn(["cash", "online"])
+  paymentMethod?: "cash" | "online";
+}
+
+/** First-party delivery order — address is mandatory; lat/lng ("Pin") is optional and only used for the delivery-radius check when the branch has one configured. */
+export class GuestDeliveryOrderDto extends GuestTakeawayOrderDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  deliveryAddress!: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsLatitude()
+  deliveryLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @IsLongitude()
+  deliveryLng?: number;
 }
 
 /**

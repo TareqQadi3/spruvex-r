@@ -218,7 +218,52 @@
     "active": "Active",
     "inactive": "Inactive",
     "qrOrdering": "QR ordering",
-    "copyLink": "Copy link"
+    "copyLink": "Copy link",
+    "manageHours": "Hours & channels",
+    "hoursDialog": {
+      "title": "Business hours & ordering channels",
+      "channels": "Channel status now",
+      "channel": {
+        "dine_in": "Dine-in",
+        "takeaway": "Pickup",
+        "delivery": "Delivery"
+      },
+      "open": "Open",
+      "closed": "Closed",
+      "busy": "Busy",
+      "pause": "Pause",
+      "resume": "Resume",
+      "reason": "Reason (optional)",
+      "minutes": "Minutes (blank = indefinite)",
+      "weeklySchedule": "Weekly schedule",
+      "weeklyHint": "With no hours added, the branch stays open 24/7 (today's default). Add one or more shifts per day to turn on hours-based gating.",
+      "day": {
+        "sun": "Sunday",
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday"
+      },
+      "addShift": "Add shift",
+      "saveHours": "Save schedule",
+      "emptyMeansAlwaysOpen": "No shifts set yet — the branch is open around the clock.",
+      "deliverySettings": "Delivery & pickup settings",
+      "feeAmount": "Delivery fee (SAR)",
+      "minOrder": "Minimum order (SAR)",
+      "radiusKm": "Coverage radius (km)",
+      "noLimit": "No limit",
+      "deliveryEta": "Estimated delivery time (min)",
+      "pickupEta": "Estimated pickup time (min)",
+      "autoSlowdown": "Auto-slowdown threshold (orders)",
+      "off": "Off",
+      "paymentMethod": {
+        "cash": "Cash on delivery",
+        "online": "Online payment"
+      },
+      "saveDelivery": "Save delivery settings"
+    }
   },
   "team": {
     "title": "Team",
@@ -278,6 +323,12 @@
       "availableInBranch": "Available",
       "priceOverride": "Branch price override",
       "basePriceApplies": "Base price",
+      "available": "Available",
+      "soldOutToday": "Sold out today",
+      "markUnavailable": "Unavailable",
+      "reasonManual": "Manually disabled",
+      "reasonSoldOutToday": "Sold out today",
+      "reasonStock": "Out of stock (auto)",
       "saveFirst": "Save the product first to manage modifiers and branches",
       "noGroups": "No modifier groups yet — create them in the Modifiers tab"
     },

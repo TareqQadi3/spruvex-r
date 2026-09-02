@@ -165,6 +165,9 @@ model Tenant {
   stockTransfers               StockTransfer[]
   stockTransferItems           StockTransferItem[]
   importJobs                   ImportJob[]
+  branchChannelPauses          BranchChannelPause[]
+  productChannelOverrides      ProductChannelOverride[]
+  modifierBranchSettings       ModifierBranchSetting[]
 
   @@map("tenants")
 }
@@ -180,11 +183,49 @@ model Branch {
   email            String?
   lat              Decimal? @db.Decimal(9, 6)
   lng              Decimal? @db.Decimal(9, 6)
-  /// Weekly working hours, e.g. {"sun": [{"from": "08:00", "to": "23:00"}], ...}
+  /// Weekly recurring hours + per-channel overrides + one-off date
+  /// exceptions (holidays, Ramadan, full closures). Shape:
+  /// {
+  ///   "schedule": { "sun": [{"from":"08:00","to":"23:00"}], ... },       // baseline, all channels
+  ///   "channelSchedule": { "delivery": { "sun": [...], ... }, ... },     // optional per-channel override
+  ///   "exceptions": [
+  ///     {"date":"2026-09-23","closed":true,"label":"اليوم الوطني"},
+  ///     {"date":"2026-03-10","channel":"delivery","hours":[{"from":"18:00","to":"23:00"}],"label":"رمضان"}
+  ///   ]
+  /// }
+  /// A branch with an empty "schedule" (the default) is treated as always
+  /// open — hours-based gating only activates once a merchant configures at
+  /// least one weekly slot, so existing tenants who never touch this screen
+  /// see no behavior change. See BusinessHoursService.
   workingHours     Json     @default("{}") @map("working_hours")
   /// Self-ordering settings, e.g. {"qrOrderingEnabled": true, "requireCashierConfirmation": false}
   orderingSettings Json     @default("{}") @map("ordering_settings")
   isActive         Boolean  @default(true) @map("is_active")
+
+  /// Self-service delivery/pickup channel configuration — SAR amounts are
+  /// NUMERIC, never float. Frozen onto each Order at creation time so later
+  /// edits never change historical orders.
+  deliveryFeeAmount         Decimal  @default(0) @map("delivery_fee_amount") @db.Decimal(12, 2)
+  deliveryMinOrderAmount    Decimal  @default(0) @map("delivery_min_order_amount") @db.Decimal(12, 2)
+  /// Straight-line (haversine) delivery radius from this branch's lat/lng,
+  /// in km. Null = no radius restriction — either not configured, or the
+  /// merchant accepts delivery anywhere. Simplification: a circle, not a
+  /// hand-drawn polygon zone (a possible future enhancement).
+  deliveryRadiusKm          Decimal? @map("delivery_radius_km") @db.Decimal(6, 2)
+  deliveryEstimatedMinutes  Int      @default(45) @map("delivery_estimated_minutes")
+  pickupEstimatedMinutes    Int      @default(20) @map("pickup_estimated_minutes")
+  /// Accepted PaymentMethod values for self-service delivery/pickup orders,
+  /// e.g. ["cash","online"]. Dine-in/POS payment is unaffected.
+  selfServicePaymentMethods Json     @default("[\"cash\"]") @map("self_service_payment_methods")
+  /// Auto-slowdown (item 4): once this many orders are simultaneously in a
+  /// non-terminal status for the branch, displayed prep/delivery estimates
+  /// are padded and staff see a "busy" banner. Null = feature off.
+  autoSlowdownThreshold     Int?     @map("auto_slowdown_threshold")
+  /// A second, higher threshold at which self-service channels are
+  /// auto-paused (a BranchChannelPause row is created by the system, same
+  /// as a manual pause) instead of just padding the estimate. Null = never
+  /// auto-pause.
+  autoPauseThreshold        Int?     @map("auto_pause_threshold")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -196,6 +237,9 @@ model Branch {
   userRoles               UserRole[]
   posPins                 PosPin[]
   productBranchSettings   ProductBranchSetting[]
+  modifierBranchSettings  ModifierBranchSetting[]
+  productChannelOverrides ProductChannelOverride[]
+  channelPauses           BranchChannelPause[]
   floors                  Floor[]
   tables                  Table[]
   orders                  Order[]
@@ -214,6 +258,47 @@ model Branch {
   @@unique([tenantId, slug])
   @@index([tenantId])
   @@map("branches")
+}
+
+/// The 3 customer self-service ordering channels — distinct from `OrderType`
+/// (which also includes POS-only `walkin`). Business hours, manual pauses,
+/// and per-channel product visibility/pricing all key off this. Staff-taken
+/// POS orders never check any of this — a closed electronic channel never
+/// blocks a cashier ringing up a walk-in or phone order.
+enum OrderingChannel {
+  dine_in
+  takeaway
+  delivery
+
+  @@map("ordering_channel")
+}
+
+/// An immediate manual "pause" of one self-service channel at one branch —
+/// separate from the weekly schedule, for emergencies (kitchen slammed, no
+/// drivers). The row's mere existence means "paused"; resuming deletes it.
+/// `pausedUntil = null` means indefinite (until a human resumes it);
+/// otherwise a periodic sweep (BusinessHoursService) deletes the row once
+/// `pausedUntil` has passed. System-initiated auto-slowdown pauses
+/// (Branch.autoPauseThreshold) use this exact same table with
+/// `pausedBy = null`.
+model BranchChannelPause {
+  id       String          @id @default(uuid()) @db.Uuid
+  tenantId String          @map("tenant_id") @db.Uuid
+  branchId String          @map("branch_id") @db.Uuid
+  channel  OrderingChannel
+
+  reason      String?
+  pausedUntil DateTime? @map("paused_until")
+  /// null = system-initiated (auto-slowdown), not a human action.
+  pausedBy    String?   @map("paused_by") @db.Uuid
+  pausedAt    DateTime  @default(now()) @map("paused_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, channel])
+  @@index([tenantId, branchId])
+  @@map("branch_channel_pauses")
 }
 
 /// Users are a global identity (email/phone unique across the platform);
@@ -465,6 +550,13 @@ model Product {
   isActive             Boolean @default(true) @map("is_active")
   /// Availability windows (e.g. breakfast-only) — schema readiness, enforced in a later phase.
   availabilitySchedule Json    @default("{}") @map("availability_schedule")
+  /// Fixed merchandising tag set, e.g. ["bestseller","new","spicy",
+  /// "vegetarian","contains_nuts","contains_dairy","gluten_free"] —
+  /// validated server-side against PRODUCT_BADGE_KEYS, rendered client-side
+  /// as chips on both the digital menu and dashboard catalog.
+  badges               Json    @default("[]")
+  /// Shown to customers as an estimate; also feeds auto-slowdown padding.
+  prepTimeMinutes      Int?    @map("prep_time_minutes")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -475,6 +567,7 @@ model Product {
   tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
   category                Category                 @relation(fields: [categoryId], references: [id])
   branchSettings          ProductBranchSetting[]
+  channelOverrides        ProductChannelOverride[]
   modifierGroups          ProductModifierGroup[]
   orderItems              OrderItem[]
   recipeItems             RecipeItem[]
@@ -487,7 +580,19 @@ model Product {
   @@map("products")
 }
 
-/// Per-branch availability and price override for a product.
+/// Per-branch availability and price override for a product — the hard
+/// gate every order-creation/menu-rendering path checks (`isAvailable`).
+/// `unavailableReason`/`soldOutDate` are metadata for UI/reporting only,
+/// never re-derived into a second source of truth:
+///   - "manual"          — merchant marked it unavailable indefinitely.
+///   - "sold_out_today"  — merchant marked it sold out for today only;
+///                         a daily cron (BusinessHoursService) flips
+///                         isAvailable back to true once soldOutDate has
+///                         passed.
+///   - "stock"           — the auto-hide-on-stockout engine did this (see
+///                         ProductStockHide, which remains the actual
+///                         source of truth for that mechanism — this field
+///                         is set alongside it purely for a consistent UI).
 model ProductBranchSetting {
   id        String @id @default(uuid()) @db.Uuid
   tenantId  String @map("tenant_id") @db.Uuid
@@ -495,8 +600,10 @@ model ProductBranchSetting {
   branchId  String @map("branch_id") @db.Uuid
 
   /// null = product base price applies
-  priceOverride Decimal? @map("price_override") @db.Decimal(12, 2)
-  isAvailable   Boolean  @default(true) @map("is_available")
+  priceOverride     Decimal?  @map("price_override") @db.Decimal(12, 2)
+  isAvailable       Boolean   @default(true) @map("is_available")
+  unavailableReason String?   @map("unavailable_reason")
+  soldOutDate       DateTime? @map("sold_out_date") @db.Date
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -510,6 +617,36 @@ model ProductBranchSetting {
   @@unique([productId, branchId])
   @@index([tenantId, branchId])
   @@map("product_branch_settings")
+}
+
+/// Per-branch, per-channel visibility + price override layered ON TOP of
+/// ProductBranchSetting — e.g. a dine-in-only special hidden from delivery,
+/// or a higher delivery price to cover packaging/commission. Resolution
+/// order (see MenuChannelService): ProductBranchSetting.isAvailable=false
+/// always wins (a real stockout blocks every channel); otherwise this
+/// row's isVisible/priceOverride apply for that one channel only.
+model ProductChannelOverride {
+  id        String          @id @default(uuid()) @db.Uuid
+  tenantId  String          @map("tenant_id") @db.Uuid
+  productId String          @map("product_id") @db.Uuid
+  branchId  String          @map("branch_id") @db.Uuid
+  channel   OrderingChannel
+
+  isVisible     Boolean  @default(true) @map("is_visible")
+  priceOverride Decimal? @map("price_override") @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+
+  @@unique([productId, branchId, channel])
+  @@index([tenantId, branchId, channel])
+  @@map("product_channel_overrides")
 }
 
 /// e.g. "الحجم / Size", "إضافات / Extras", "الصوصات / Sauces"
@@ -566,12 +703,39 @@ model Modifier {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant             Tenant              @relation(fields: [tenantId], references: [id])
-  group              ModifierGroup       @relation(fields: [modifierGroupId], references: [id])
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id])
+  group              ModifierGroup           @relation(fields: [modifierGroupId], references: [id])
   orderItemModifiers OrderItemModifier[]
+  branchSettings     ModifierBranchSetting[]
 
   @@index([tenantId, modifierGroupId])
   @@map("modifiers")
+}
+
+/// Per-branch availability for a single modifier/option (e.g. product is
+/// available but its "Beef" option ran out while "Chicken" is still fine).
+/// No price-override dimension here — only the branch/product settings
+/// above override price; a modifier's priceAdjustment is tenant-wide.
+model ModifierBranchSetting {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  modifierId String @map("modifier_id") @db.Uuid
+  branchId   String @map("branch_id") @db.Uuid
+
+  isAvailable Boolean @default(true) @map("is_available")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  modifier Modifier @relation(fields: [modifierId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  @@unique([modifierId, branchId])
+  @@index([tenantId, branchId])
+  @@map("modifier_branch_settings")
 }
 
 /// Attaches modifier groups to products (ordered).
@@ -840,6 +1004,20 @@ model Order {
   externalOrderId    String?  @map("external_order_id")
   deliveryProvider   String?  @map("delivery_provider")
   deliveryCommission Decimal? @map("delivery_commission") @db.Decimal(12, 2)
+
+  /// First-party self-service delivery (type=delivery, source=external_link
+  /// or qr) — the address/pin the customer entered and the fee actually
+  /// charged, frozen at order time (never recomputed from current branch
+  /// settings later). Included in `subtotal`/`total`/`vatAmount` above.
+  deliveryAddress       String?        @map("delivery_address")
+  deliveryLat           Decimal?       @map("delivery_lat") @db.Decimal(9, 6)
+  deliveryLng           Decimal?       @map("delivery_lng") @db.Decimal(9, 6)
+  deliveryFeeAmount     Decimal?       @map("delivery_fee_amount") @db.Decimal(12, 2)
+  /// Self-service delivery/pickup only: how the customer said they'll pay
+  /// at order time, before any Payment row exists. "online" is expected to
+  /// be followed by a POST to the existing public payment-gateway checkout
+  /// endpoint; "cash" means pay on delivery/pickup like a normal tab.
+  intendedPaymentMethod PaymentMethod? @map("intended_payment_method")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

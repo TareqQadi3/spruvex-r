@@ -16,6 +16,7 @@
     "table": "Table {{number}}",
     "walkin": "Counter",
     "takeaway": "Pickup",
+    "delivery": "Delivery",
     "qr": "QR order",
     "notes": "Notes",
     "connected": "Connected",

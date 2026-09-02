@@ -64,3 +64,17 @@ export type {
 export { LOYALTY_PROGRAM_TYPES, LOYALTY_PROGRAMS } from "./loyalty";
 export type { ImportDataType, ImportFieldDef } from "./import";
 export { IMPORT_DATA_TYPES, IMPORT_FIELD_CATALOG, suggestColumnMapping } from "./import";
+export type {
+  WeekdayKey,
+  TimeRange,
+  WeekSchedule,
+  ScheduleException,
+  BranchWorkingHours,
+  ChannelOpenReason,
+  ChannelOpenState,
+} from "./business-hours";
+export {
+  WEEKDAY_KEYS,
+  resolveChannelOpenState,
+  todaysEffectiveRanges,
+} from "./business-hours";

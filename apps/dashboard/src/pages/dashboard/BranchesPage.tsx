@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Spinner, Switch } from "@spruvex-r/ui";
 
 import { api } from "../../lib/api";
+import { BranchHoursDialog } from "./BranchHoursDialog";
 
 interface OrderingSettings {
   qrOrderingEnabled?: boolean;
@@ -30,6 +32,7 @@ interface TenantInfo {
 export function BranchesPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [hoursBranchId, setHoursBranchId] = useState<string | null>(null);
 
   const branches = useQuery({
     queryKey: ["branches"],
@@ -95,6 +98,10 @@ export function BranchesPage() {
                   />
                 </div>
 
+                <Button variant="outline" size="sm" onClick={() => setHoursBranchId(branch.id)}>
+                  {t("branches.manageHours")}
+                </Button>
+
                 {link && (
                   <div className="flex items-center gap-2 rounded-md bg-muted p-2">
                     <span className="flex-1 truncate text-xs text-muted-foreground" dir="ltr">
@@ -116,6 +123,13 @@ export function BranchesPage() {
           );
         })}
       </div>
+      {hoursBranchId && (
+        <BranchHoursDialog
+          branchId={hoursBranchId}
+          open={hoursBranchId !== null}
+          onClose={() => setHoursBranchId(null)}
+        />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -15,6 +16,7 @@ import {
   Min,
   ValidateNested,
 } from "class-validator";
+import { ORDERING_CHANNELS, PRODUCT_BADGE_KEYS, type OrderingChannel, type ProductBadgeKey } from "@spruvex-r/types";
 
 /** Money as a decimal string with up to 2 fraction digits — floats are forbidden. */
 export const PRICE_RULE = /^\d{1,10}(\.\d{1,2})?$/;
@@ -74,6 +76,19 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** Fixed merchandising tags, e.g. ["bestseller","spicy"]. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(PRODUCT_BADGE_KEYS.length)
+  @IsIn(PRODUCT_BADGE_KEYS, { each: true })
+  badges?: ProductBadgeKey[];
+
+  /** Shown to customers as an estimate; feeds auto-slowdown padding. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  prepTimeMinutes?: number;
 }
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {}
@@ -87,6 +102,20 @@ export class BranchSettingDto {
 
   @IsBoolean()
   isAvailable!: boolean;
+}
+
+/** Per-branch, per-channel visibility + price override (item 3). */
+export class ChannelOverrideDto {
+  @IsIn(ORDERING_CHANNELS)
+  channel!: OrderingChannel;
+
+  @IsBoolean()
+  isVisible!: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Matches(PRICE_RULE, { message: PRICE_MESSAGE })
+  priceOverride?: string | null;
 }
 
 export class ProductModifierGroupLinkDto {

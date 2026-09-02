@@ -17,6 +17,7 @@ export const PERMISSIONS = {
   // Catalog (menu)
   "menu.view": "View menu categories, products and modifiers",
   "menu.manage": "Create and edit categories, products, modifiers and availability",
+  "menu.toggle_availability": "Quickly mark an item/option sold-out-today or unavailable, and pause an ordering channel — without full menu-edit rights",
 
   // Tables & floors
   "tables.view": "View floors, tables and their statuses",
