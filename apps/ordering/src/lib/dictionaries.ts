@@ -56,6 +56,9 @@ const rawDictionaries: Record<Locale, Dict> = {
       couponRemove: "إزالة",
       subtotal: "المجموع الفرعي",
       discount: "الخصم",
+      repeatLastOrder: "عندك طلب سابق هنا",
+      repeatAdd: "أضفه للسلة",
+      repeatAdded: "تمت الإضافة",
     },
     track: {
       title: "طلب رقم #{{number}}",
@@ -146,6 +149,9 @@ const rawDictionaries: Record<Locale, Dict> = {
       couponRemove: "Remove",
       subtotal: "Subtotal",
       discount: "Discount",
+      repeatLastOrder: "You've ordered here before",
+      repeatAdd: "Add to cart",
+      repeatAdded: "Added",
     },
     track: {
       title: "Order #{{number}}",

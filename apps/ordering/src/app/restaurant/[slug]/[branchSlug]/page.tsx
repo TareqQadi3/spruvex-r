@@ -6,6 +6,7 @@ import { LocaleProvider } from "@/components/LocaleProvider";
 import { MenuHeader } from "@/components/MenuHeader";
 import { MenuThemeStyle } from "@/components/MenuThemeStyle";
 import { MenuView } from "@/components/MenuView";
+import { RepeatLastOrderBanner } from "@/components/RepeatLastOrderBanner";
 import { apiGet, ApiError } from "@/lib/api";
 import type { Locale } from "@/lib/dictionaries";
 import type { Menu, RestaurantInfo } from "@/lib/types";
@@ -52,6 +53,7 @@ export default async function BranchMenuPage({
             nameEn={restaurant.restaurant.nameEn}
             subtitle={menu.branch.name}
           />
+          <RepeatLastOrderBanner scope={`pickup:${slug}:${branchSlug}`} menu={menu} />
           <MenuView menu={menu} currency={restaurant.restaurant.currency} />
           <CartBar
             href={`/restaurant/${slug}/${branchSlug}/cart`}

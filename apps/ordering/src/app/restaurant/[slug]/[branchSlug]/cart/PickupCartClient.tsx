@@ -3,6 +3,7 @@
 import { CartPageContent } from "@/components/CartPageContent";
 import { useLocale } from "@/components/LocaleProvider";
 import { clientPost } from "@/lib/client-api";
+import { saveLastOrder } from "@/lib/reorder";
 import type { GuestOrderResult } from "@/lib/types";
 
 export function PickupCartClient({
@@ -27,8 +28,8 @@ export function PickupCartClient({
           { code, channel: "takeaway", subtotal },
         )
       }
-      onSubmit={(ctx) =>
-        clientPost<GuestOrderResult>(
+      onSubmit={async (ctx) => {
+        const result = await clientPost<GuestOrderResult>(
           `/public/restaurants/${slug}/branches/${branchSlug}/orders`,
           {
             items: ctx.items,
@@ -38,8 +39,10 @@ export function PickupCartClient({
             ...(ctx.couponCode ? { couponCode: ctx.couponCode } : {}),
           },
           { "Idempotency-Key": crypto.randomUUID() },
-        )
-      }
+        );
+        saveLastOrder(`pickup:${slug}:${branchSlug}`, ctx.items);
+        return result;
+      }}
     />
   );
 }
