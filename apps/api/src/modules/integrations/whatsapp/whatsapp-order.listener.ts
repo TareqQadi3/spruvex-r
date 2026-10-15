@@ -73,6 +73,22 @@ export class WhatsappOrderListener {
     );
   }
 
+  @OnEvent(DOMAIN_EVENTS.ORDER_CANCELLED)
+  async onCancelled(payload: OrderEventPayload): Promise<void> {
+    const order = payload.order as unknown as OrderLike & { cancelledReason: string | null };
+
+    const tenant = await this.prisma.scoped.tenant.findUnique({
+      where: { id: payload.tenantId },
+      select: { name: true },
+    });
+    const recipients = await this.recipientPhones(order.id, order.customerPhone);
+    await this.whatsapp.sendTemplateToMany("order_cancelled", recipients, {
+      orderNumber: String(order.orderNumber),
+      restaurantName: tenant?.name ?? "",
+      reason: order.cancelledReason ?? "",
+    });
+  }
+
   /**
    * Shared table-session orders carry one phone per line
    * (`OrderItem.participantPhone`) instead of the single `Order.customerPhone`
