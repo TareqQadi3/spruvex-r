@@ -45,6 +45,7 @@ interface ProductForm {
   taxRate: string;
   sortOrder: number;
   isActive: boolean;
+  isCombo: boolean;
 }
 
 const emptyForm: ProductForm = {
@@ -59,6 +60,7 @@ const emptyForm: ProductForm = {
   taxRate: "",
   sortOrder: 0,
   isActive: true,
+  isCombo: false,
 };
 
 export function ProductEditorPage() {
@@ -104,6 +106,7 @@ export function ProductEditorPage() {
         taxRate: p.taxRate ?? "",
         sortOrder: p.sortOrder,
         isActive: p.isActive,
+        isCombo: p.isCombo,
       });
     }
   }, [product.data]);
@@ -125,6 +128,7 @@ export function ProductEditorPage() {
         ...(form.taxRate ? { taxRate: form.taxRate } : {}),
         sortOrder: form.sortOrder,
         isActive: form.isActive,
+        isCombo: form.isCombo,
       };
       return isNew ? catalogApi.createProduct(body) : catalogApi.updateProduct(id!, body);
     },
@@ -316,6 +320,15 @@ export function ProductEditorPage() {
               />
               <span className="text-sm">{t("catalog.active")}</span>
             </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={form.isCombo}
+                aria-label={t("catalog.products.isCombo")}
+                onCheckedChange={(isCombo) => setForm({ ...form, isCombo })}
+              />
+              <span className="text-sm">{t("catalog.products.isCombo")}</span>
+              <span className="text-xs text-muted-foreground">{t("catalog.products.isComboHint")}</span>
+            </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => navigate("/menu/products")}>
                 {t("common.back")}
@@ -476,10 +489,139 @@ export function ProductEditorPage() {
             </CardContent>
           </Card>
 
-          <RecipeEditor productId={id!} />
+          {form.isCombo ? (
+            <ComboComponentsEditor productId={id!} currentProduct={product.data} />
+          ) : (
+            <RecipeEditor productId={id!} />
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/** Fixed-bundle combo builder — pick real existing products + how many of
+ * each one combo unit includes. Pricing/food-cost split is computed
+ * entirely server-side at order time (see OrderingService.priceCombo). */
+function ComboComponentsEditor({
+  productId,
+  currentProduct,
+}: {
+  productId: string;
+  currentProduct: Product | undefined;
+}) {
+  const { t, i18n } = useTranslation();
+  const queryClient = useQueryClient();
+
+  const allProducts = useQuery({
+    queryKey: ["catalog", "products"],
+    queryFn: () => catalogApi.listProducts(),
+  });
+
+  const [rows, setRows] = useState<Array<{ componentProductId: string; quantity: number }>>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (currentProduct) {
+      setRows(
+        currentProduct.comboComponents.map((c) => ({
+          componentProductId: c.componentProductId,
+          quantity: c.quantity,
+        })),
+      );
+    }
+  }, [currentProduct]);
+
+  const candidates = (allProducts.data ?? []).filter((p) => p.id !== productId && !p.isCombo);
+
+  const save = useMutation({
+    mutationFn: () =>
+      catalogApi.setComboComponents(
+        productId,
+        rows
+          .filter((r) => r.componentProductId)
+          .map((r, index) => ({ componentProductId: r.componentProductId, quantity: r.quantity, sortOrder: index })),
+      ),
+    onSuccess: async () => {
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: ["catalog", "product", productId] });
+    },
+    onError: (e) => setError(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
+  function addRow() {
+    const first = candidates.find((p) => !rows.some((r) => r.componentProductId === p.id));
+    setRows([...rows, { componentProductId: first?.id ?? "", quantity: 1 }]);
+  }
+
+  function updateRow(index: number, patch: Partial<{ componentProductId: string; quantity: number }>) {
+    setRows(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function removeRow(index: number) {
+    setRows(rows.filter((_, i) => i !== index));
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("catalog.products.comboComponents")}</CardTitle>
+        <CardDescription>{t("catalog.products.comboComponentsHint")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error && <Alert variant="destructive">{error}</Alert>}
+
+        <div className="space-y-2">
+          {rows.map((row, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2 rounded-md border p-2">
+              <Select
+                className="w-56"
+                value={row.componentProductId}
+                onChange={(e) => updateRow(index, { componentProductId: e.target.value })}
+              >
+                <option value="" disabled>
+                  —
+                </option>
+                {candidates.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {localizedName(p, i18n.language)} ({p.basePrice})
+                  </option>
+                ))}
+              </Select>
+              <Input
+                className="w-24"
+                dir="ltr"
+                type="number"
+                min={1}
+                value={row.quantity}
+                onChange={(e) => updateRow(index, { quantity: Math.max(1, Number(e.target.value)) })}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                title={t("catalog.delete")}
+                aria-label={t("catalog.delete")}
+                onClick={() => removeRow(index)}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          ))}
+          {rows.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t("catalog.products.comboComponentsEmpty")}</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between">
+          <Button type="button" variant="outline" size="sm" onClick={addRow}>
+            <Plus className="h-4 w-4" /> {t("catalog.products.addComponent")}
+          </Button>
+          <Button type="button" size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? <Spinner className="border-primary-foreground" /> : t("common.save")}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

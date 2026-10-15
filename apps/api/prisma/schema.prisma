@@ -169,6 +169,7 @@ model Tenant {
   productChannelOverrides      ProductChannelOverride[]
   modifierBranchSettings       ModifierBranchSetting[]
   coupons                      Coupon[]
+  comboComponents              ComboComponent[]
 
   @@map("tenants")
 }
@@ -559,6 +560,16 @@ model Product {
   /// Shown to customers as an estimate; also feeds auto-slowdown padding.
   prepTimeMinutes      Int?    @map("prep_time_minutes")
 
+  /// Combo/bundle offer (e.g. "lunch meal" = burger + fries + drink at a
+  /// special combined price). `basePrice` above IS the combo's special
+  /// price for one unit — components keep their own real prices only to
+  /// compute how the combo price is split between them for revenue
+  /// reporting (see OrderingService's combo expansion); their true food
+  /// cost is never touched by that split. A combo cannot itself be used as
+  /// a component (no nesting) and carries no modifier groups of its own in
+  /// this first version — just a fixed bundle, not a build-your-own.
+  isCombo Boolean @default(false) @map("is_combo")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   createdBy String?   @map("created_by") @db.Uuid
@@ -575,10 +586,34 @@ model Product {
   deliveryProductMappings DeliveryProductMapping[]
   stockHides              ProductStockHide[]
   feedbackRequests        OrderFeedbackRequest[]
+  /// This product's own components, when it IS a combo.
+  comboComponents         ComboComponent[]         @relation("ComboParent")
+  /// Combos that include this product as one of their components.
+  partOfCombos            ComboComponent[]         @relation("ComboMember")
 
   @@unique([tenantId, sku])
   @@index([tenantId, categoryId])
   @@map("products")
+}
+
+/// One real menu item inside a combo product, with how many units of it one
+/// combo unit includes. `componentProduct` must not itself be a combo (no
+/// nesting) — enforced in ProductsService, not here.
+model ComboComponent {
+  id                 String @id @default(uuid()) @db.Uuid
+  tenantId           String @map("tenant_id") @db.Uuid
+  comboProductId     String @map("combo_product_id") @db.Uuid
+  componentProductId String @map("component_product_id") @db.Uuid
+  quantity           Int    @default(1)
+  sortOrder          Int    @default(0) @map("sort_order")
+
+  tenant           Tenant  @relation(fields: [tenantId], references: [id])
+  comboProduct     Product @relation("ComboParent", fields: [comboProductId], references: [id])
+  componentProduct Product @relation("ComboMember", fields: [componentProductId], references: [id])
+
+  @@unique([comboProductId, componentProductId])
+  @@index([tenantId, comboProductId])
+  @@map("combo_components")
 }
 
 /// Per-branch availability and price override for a product — the hard
@@ -1065,8 +1100,8 @@ model Coupon {
   /// Stored upper-case; matched case-insensitively at redemption time.
   code String
 
-  discountType  String  @map("discount_type") /// "percentage" | "fixed"
-  discountValue Decimal @map("discount_value") @db.Decimal(12, 2)
+  discountType      String   @map("discount_type") /// "percentage" | "fixed"
+  discountValue     Decimal  @map("discount_value") @db.Decimal(12, 2)
   /// Caps the computed amount for a percentage coupon (e.g. "up to 20 SAR off"). Ignored for "fixed".
   maxDiscountAmount Decimal? @map("max_discount_amount") @db.Decimal(12, 2)
   minOrderAmount    Decimal  @default(0) @map("min_order_amount") @db.Decimal(12, 2)

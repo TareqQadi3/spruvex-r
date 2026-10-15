@@ -75,6 +75,13 @@ export interface Product {
     sortOrder: number;
     group: Pick<ModifierGroup, "id" | "name" | "nameEn" | "isRequired" | "minSelect" | "maxSelect" | "modifiers">;
   }>;
+  isCombo: boolean;
+  comboComponents: Array<{
+    componentProductId: string;
+    quantity: number;
+    sortOrder: number;
+    componentProduct: { id: string; name: string; nameEn: string | null; basePrice: string };
+  }>;
 }
 
 export const catalogApi = {
@@ -95,6 +102,14 @@ export const catalogApi = {
     api<Product>(`/catalog/products/${id}/modifier-groups`, {
       method: "PUT",
       body: JSON.stringify({ groups }),
+    }),
+  setComboComponents: (
+    id: string,
+    components: Array<{ componentProductId: string; quantity?: number; sortOrder?: number }>,
+  ) =>
+    api<Product>(`/catalog/products/${id}/combo-components`, {
+      method: "PUT",
+      body: JSON.stringify({ components }),
     }),
   setBranchSetting: (
     id: string,

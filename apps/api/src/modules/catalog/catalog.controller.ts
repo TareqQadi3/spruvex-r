@@ -25,6 +25,7 @@ import {
   BranchSettingDto,
   ChannelOverrideDto,
   CreateProductDto,
+  SetComboComponentsDto,
   SetProductModifierGroupsDto,
   UpdateProductDto,
 } from "./dto/product.dto";
@@ -104,6 +105,12 @@ export class CatalogController {
     @Body() dto: SetProductModifierGroupsDto,
   ) {
     return this.products.setModifierGroups(id, dto);
+  }
+
+  @RequirePermission("menu.manage")
+  @Put("products/:id/combo-components")
+  setComboComponents(@Param("id", ParseUUIDPipe) id: string, @Body() dto: SetComboComponentsDto) {
+    return this.products.setComboComponents(id, dto);
   }
 
   @RequirePermission("menu.manage")

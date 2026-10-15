@@ -335,7 +335,13 @@
       "reasonSoldOutToday": "Sold out today",
       "reasonStock": "Out of stock (auto)",
       "saveFirst": "Save the product first to manage modifiers and branches",
-      "noGroups": "No modifier groups yet — create them in the Modifiers tab"
+      "noGroups": "No modifier groups yet — create them in the Modifiers tab",
+      "isCombo": "This item is a combo/bundle offer",
+      "isComboHint": "A fixed bundle of real items at a special price",
+      "comboComponents": "Combo components",
+      "comboComponentsHint": "Pick the real items inside this bundle and how many of each — price and cost are split automatically at order time",
+      "comboComponentsEmpty": "Add at least one item",
+      "addComponent": "Add item"
     },
     "modifiers": {
       "title": "Modifier groups",

@@ -18,6 +18,7 @@
     "takeaway": "استلام",
     "delivery": "توصيل",
     "qr": "طلب QR",
+    "partOfCombo": "ضمن: {{name}}",
     "notes": "ملاحظات",
     "connected": "متصل",
     "disconnected": "غير متصل",

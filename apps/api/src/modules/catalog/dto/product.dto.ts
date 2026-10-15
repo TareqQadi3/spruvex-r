@@ -89,6 +89,12 @@ export class CreateProductDto {
   @IsInt()
   @Min(0)
   prepTimeMinutes?: number;
+
+  /** Combo/bundle offer — `basePrice` above is the combo's own special
+   * price; its components are set separately via setComboComponents. */
+  @IsOptional()
+  @IsBoolean()
+  isCombo?: boolean;
 }
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {}
@@ -134,4 +140,27 @@ export class SetProductModifierGroupsDto {
   @ValidateNested({ each: true })
   @Type(() => ProductModifierGroupLinkDto)
   groups!: ProductModifierGroupLinkDto[];
+}
+
+export class ComboComponentLinkDto {
+  @IsUUID()
+  componentProductId!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  quantity?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+}
+
+export class SetComboComponentsDto {
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => ComboComponentLinkDto)
+  components!: ComboComponentLinkDto[];
 }

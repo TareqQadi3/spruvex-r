@@ -210,6 +210,11 @@ export function BoardScreen({
                                       : item.productSnapshot.name}
                                   </span>
                                 </div>
+                                {item.productSnapshot.comboParentName && (
+                                  <p className="ms-7 text-xs text-muted-foreground">
+                                    {t("board.partOfCombo", { name: item.productSnapshot.comboParentName })}
+                                  </p>
+                                )}
                                 {item.modifiers.length > 0 && (
                                   <p className="ms-7 text-sm text-accent">
                                     {item.modifiers

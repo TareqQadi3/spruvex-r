@@ -18,6 +18,7 @@
     "takeaway": "Pickup",
     "delivery": "Delivery",
     "qr": "QR order",
+    "partOfCombo": "Part of: {{name}}",
     "notes": "Notes",
     "connected": "Connected",
     "disconnected": "Disconnected",

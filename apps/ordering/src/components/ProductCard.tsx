@@ -115,6 +115,13 @@ export function ProductCard({
               {description}
             </p>
           )}
+          {product.isCombo && product.comboItems && product.comboItems.length > 0 && (
+            <p data-menu-part="combo-items" className="mt-0.5 text-xs text-muted-foreground">
+              {product.comboItems
+                .map((ci) => `${locale === "en" && ci.nameEn ? ci.nameEn : ci.name}${ci.quantity > 1 ? ` ×${ci.quantity}` : ""}`)
+                .join("، ")}
+            </p>
+          )}
           <div className="mt-1.5 flex items-center justify-between">
             <p
               data-menu-part="product-price"

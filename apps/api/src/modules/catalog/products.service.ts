@@ -17,6 +17,7 @@ import {
   BranchSettingDto,
   ChannelOverrideDto,
   CreateProductDto,
+  SetComboComponentsDto,
   SetProductModifierGroupsDto,
   UpdateProductDto,
 } from "./dto/product.dto";
@@ -53,6 +54,15 @@ const PRODUCT_INCLUDE = {
           },
         },
       },
+    },
+  },
+  comboComponents: {
+    orderBy: { sortOrder: "asc" },
+    select: {
+      componentProductId: true,
+      quantity: true,
+      sortOrder: true,
+      componentProduct: { select: { id: true, name: true, nameEn: true, basePrice: true } },
     },
   },
 } satisfies Prisma.ProductInclude;
@@ -115,6 +125,16 @@ export class ProductsService {
     }
     if (dto.sku !== undefined) {
       await this.assertSkuAvailable(dto.sku, id);
+    }
+    if (dto.isCombo) {
+      const usedAsComponent = await this.prisma.scoped.comboComponent.count({
+        where: { componentProductId: id },
+      });
+      if (usedAsComponent > 0) {
+        throw new ConflictException(
+          "This product is already used as a component of another combo — it cannot become a combo itself",
+        );
+      }
     }
 
     const product = await this.prisma.scoped.product.update({
@@ -183,6 +203,62 @@ export class ProductsService {
       entityType: "product",
       entityId: id,
       meta: { groupIds },
+    });
+    return this.get(id);
+  }
+
+  /**
+   * Replaces the fixed bundle of real products inside a combo. The combo
+   * itself must already be marked isCombo (update it first); components
+   * must be real, active, non-combo products from the same tenant — no
+   * nesting, and no bundling a product that isn't orderable on its own.
+   */
+  async setComboComponents(id: string, dto: SetComboComponentsDto) {
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const combo = await this.get(id);
+    if (!combo.isCombo) {
+      throw new ConflictException('Mark the product as a combo (isCombo: true) before setting its components');
+    }
+    if (dto.components.length === 0) {
+      throw new BadRequestException("A combo needs at least one component");
+    }
+
+    const componentIds = dto.components.map((c) => c.componentProductId);
+    if (new Set(componentIds).size !== componentIds.length) {
+      throw new BadRequestException("Duplicate component in list");
+    }
+    if (componentIds.includes(id)) {
+      throw new BadRequestException("A combo cannot include itself");
+    }
+
+    const found = await this.prisma.scoped.product.findMany({
+      where: { id: { in: componentIds }, deletedAt: null },
+      select: { id: true, isCombo: true },
+    });
+    if (found.length !== componentIds.length) {
+      throw new NotFoundException("One or more component products not found");
+    }
+    if (found.some((p) => p.isCombo)) {
+      throw new BadRequestException("A combo cannot include another combo as a component");
+    }
+
+    const scoped = this.prisma.scoped;
+    await scoped.comboComponent.deleteMany({ where: { comboProductId: id } });
+    await scoped.comboComponent.createMany({
+      data: dto.components.map((c, index) => ({
+        tenantId,
+        comboProductId: id,
+        componentProductId: c.componentProductId,
+        quantity: c.quantity ?? 1,
+        sortOrder: c.sortOrder ?? index,
+      })),
+    });
+
+    await this.audit.log({
+      action: "product.combo_components_updated",
+      entityType: "product",
+      entityId: id,
+      meta: { componentIds },
     });
     return this.get(id);
   }

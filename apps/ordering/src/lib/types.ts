@@ -27,6 +27,9 @@ export interface MenuProduct {
   badges: string[];
   prepTimeMinutes: number | null;
   modifierGroups: MenuModifierGroup[];
+  isCombo?: boolean;
+  /** Present only when isCombo — the real items this bundle includes. */
+  comboItems?: Array<{ name: string; nameEn: string | null; quantity: number }>;
 }
 
 export interface MenuCategory {

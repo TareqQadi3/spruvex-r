@@ -380,6 +380,10 @@ export class GuestOrderingService {
       include: {
         branchSettings: { where: { branchId } },
         channelOverrides: channel ? { where: { branchId, channel } } : false,
+        comboComponents: {
+          orderBy: { sortOrder: "asc" },
+          select: { quantity: true, componentProduct: { select: { name: true, nameEn: true } } },
+        },
         modifierGroups: {
           orderBy: { sortOrder: "asc" },
           include: {
@@ -419,6 +423,14 @@ export class GuestOrderingService {
             ).toString(),
             badges: product.badges,
             prepTimeMinutes: product.prepTimeMinutes,
+            isCombo: product.isCombo,
+            comboItems: product.isCombo
+              ? product.comboComponents.map((c) => ({
+                  name: c.componentProduct.name,
+                  nameEn: c.componentProduct.nameEn,
+                  quantity: c.quantity,
+                }))
+              : undefined,
             modifierGroups: product.modifierGroups
               .filter((link) => link.group.deletedAt === null && link.group.isActive)
               .map((link) => ({
