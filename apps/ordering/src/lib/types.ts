@@ -108,6 +108,8 @@ export interface GuestOrderResult {
   orderNumber: number;
   status: string;
   total: string;
+  /** Present for takeaway/delivery orders only (never dine-in). */
+  discount?: string;
 }
 
 export interface TrackedOrder {

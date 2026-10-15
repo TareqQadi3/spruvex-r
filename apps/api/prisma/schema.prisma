@@ -168,6 +168,7 @@ model Tenant {
   branchChannelPauses          BranchChannelPause[]
   productChannelOverrides      ProductChannelOverride[]
   modifierBranchSettings       ModifierBranchSetting[]
+  coupons                      Coupon[]
 
   @@map("tenants")
 }
@@ -1019,6 +1020,13 @@ model Order {
   /// endpoint; "cash" means pay on delivery/pickup like a normal tab.
   intendedPaymentMethod PaymentMethod? @map("intended_payment_method")
 
+  /// Coupon redeemed at order-creation time (first-party takeaway/delivery
+  /// checkout only — never dine-in). The discount it produced is folded
+  /// into `discount`/`discountType`("coupon")/`discountValue`/`discountReason`
+  /// above like any other discount; this column exists only so redemption
+  /// counts (total + per-customer) can be queried without parsing text.
+  couponId String? @map("coupon_id") @db.Uuid
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   createdBy String?   @map("created_by") @db.Uuid
@@ -1029,6 +1037,7 @@ model Order {
   branch               Branch                @relation(fields: [branchId], references: [id])
   table                Table?                @relation(fields: [tableId], references: [id])
   tableSession         TableSession?         @relation(fields: [tableSessionId], references: [id])
+  coupon               Coupon?               @relation(fields: [couponId], references: [id])
   items                OrderItem[]
   statusHistory        OrderStatusHistory[]
   payments             Payment[]
@@ -1042,6 +1051,47 @@ model Order {
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, branchId, createdAt])
   @@map("orders")
+}
+
+/// Discount coupon code for the first-party digital ordering checkout
+/// (takeaway/delivery only — never dine-in, never POS). Tenant-wide (no
+/// per-branch scoping; not asked for). Redemption counts are derived by
+/// querying `orders.couponId`, not a running counter, so a cancelled order
+/// never permanently burns a redemption slot.
+model Coupon {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// Stored upper-case; matched case-insensitively at redemption time.
+  code String
+
+  discountType  String  @map("discount_type") /// "percentage" | "fixed"
+  discountValue Decimal @map("discount_value") @db.Decimal(12, 2)
+  /// Caps the computed amount for a percentage coupon (e.g. "up to 20 SAR off"). Ignored for "fixed".
+  maxDiscountAmount Decimal? @map("max_discount_amount") @db.Decimal(12, 2)
+  minOrderAmount    Decimal  @default(0) @map("min_order_amount") @db.Decimal(12, 2)
+
+  /// OrderingChannel[]; empty = valid on both takeaway and delivery.
+  channels String[] @default([])
+
+  startAt DateTime? @map("start_at")
+  endAt   DateTime? @map("end_at")
+
+  maxRedemptions            Int? @map("max_redemptions")
+  maxRedemptionsPerCustomer Int? @map("max_redemptions_per_customer")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  orders Order[]
+
+  @@unique([tenantId, code])
+  @@map("coupons")
 }
 
 model OrderItem {

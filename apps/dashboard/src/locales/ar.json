@@ -20,7 +20,11 @@
     "removeImage": "إزالة",
     "uploadError": "فشل الرفع",
     "imageConstraints": "PNG أو JPEG أو WEBP، حتى 5 ميجابايت",
-    "status": "الحالة"
+    "status": "الحالة",
+    "sar": "ريال",
+    "optional": "اختياري",
+    "unlimited": "بلا حد",
+    "delete": "حذف"
   },
   "auth": {
     "login": "تسجيل الدخول",
@@ -193,6 +197,7 @@
     "billing": "الاشتراك والفوترة",
     "integrations": "الإضافات",
     "loyalty": "برنامج الولاء",
+    "coupons": "كوبونات الخصم",
     "import": "استيراد البيانات"
   },
   "home": {
@@ -887,6 +892,41 @@
       "minSpend": "الحد الأدنى للإنفاق التراكمي (ريال)",
       "discountPercent": "نسبة الخصم الدائم (%)",
       "addTier": "إضافة مستوى"
+    }
+  },
+  "marketing": {
+    "coupons": {
+      "title": "كوبونات الخصم",
+      "hint": "تُستخدم عند الدفع في طلبات الاستلام والتوصيل الرقمية فقط.",
+      "add": "إضافة كوبون",
+      "editTitle": "تعديل الكوبون",
+      "empty": "لا توجد كوبونات بعد.",
+      "code": "رمز الكوبون",
+      "discountType": "نوع الخصم",
+      "percentage": "نسبة مئوية",
+      "fixed": "مبلغ ثابت",
+      "discountValue": "قيمة الخصم",
+      "maxDiscountAmount": "الحد الأقصى لمبلغ الخصم (ريال)",
+      "minOrderAmount": "الحد الأدنى لقيمة الطلب (ريال)",
+      "channels": "القنوات المسموحة",
+      "channelsHint": "اتركها فارغة للسماح بالاستلام والتوصيل معًا.",
+      "channel": {
+        "dine_in": "الطاولة",
+        "takeaway": "الاستلام",
+        "delivery": "التوصيل"
+      },
+      "endAt": "تاريخ الانتهاء",
+      "maxRedemptionsLabel": "الحد الأقصى لعدد مرات الاستخدام إجمالاً",
+      "maxPerCustomerLabel": "الحد الأقصى لكل عميل",
+      "discountSummary": "خصم {{value}}",
+      "minOrder": "بحد أدنى {{amount}} ريال",
+      "allChannels": "الاستلام والتوصيل",
+      "maxRedemptions": "{{n}} استخدام كحد أقصى",
+      "maxPerCustomer": "{{n}} لكل عميل",
+      "inactive": "موقوف",
+      "activate": "تفعيل",
+      "deactivate": "إيقاف",
+      "confirmDelete": "حذف هذا الكوبون نهائيًا؟"
     }
   },
   "import": {

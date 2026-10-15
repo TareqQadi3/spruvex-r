@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ThrottlerModule } from "@nestjs/throttler";
 
 import { BusinessHoursModule } from "../../shared/business-hours/business-hours.module";
+import { MarketingModule } from "../marketing/marketing.module";
 import { GuestOrderingController } from "./guest-ordering.controller";
 import { GuestOrderingService } from "./guest-ordering.service";
 import { OrderingService } from "./ordering.service";
@@ -16,6 +17,7 @@ import { OrdersController } from "./orders.controller";
   imports: [
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     BusinessHoursModule,
+    MarketingModule,
   ],
   controllers: [OrdersController, GuestOrderingController],
   providers: [OrderingService, GuestOrderingService],

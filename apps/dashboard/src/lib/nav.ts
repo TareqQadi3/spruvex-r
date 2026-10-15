@@ -25,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { labelKey: "settings", path: "/settings", icon: "settings", permission: "tenant.settings.manage" },
   { labelKey: "integrations", path: "/integrations", icon: "puzzle", permission: "tenant.settings.manage" },
   { labelKey: "loyalty", path: "/loyalty", icon: "gift", permission: "loyalty.manage" },
+  { labelKey: "coupons", path: "/coupons", icon: "tag", permission: "marketing.manage_coupons" },
   { labelKey: "billing", path: "/billing", icon: "credit-card", permission: "billing.view" },
   { labelKey: "menu", path: "/menu", icon: "book-open", permission: "menu.manage" },
   { labelKey: "tables", path: "/tables", icon: "layout-grid", permission: "tables.manage" },

@@ -9,6 +9,7 @@ import {
   GUEST_ACTOR,
   TenantContextService,
 } from "../../shared/tenancy/tenant-context.service";
+import { CouponsService } from "../marketing/coupons.service";
 import { GuestCreateOrderDto, GuestDeliveryOrderDto, GuestTableOrderDto } from "./dto/order.dto";
 import { OrderingService } from "./ordering.service";
 
@@ -26,6 +27,7 @@ export class GuestOrderingService {
     private readonly tenantContext: TenantContextService,
     private readonly ordering: OrderingService,
     private readonly businessHours: BusinessHoursService,
+    private readonly coupons: CouponsService,
   ) {}
 
   private async resolveToken(qrToken: string) {
@@ -211,7 +213,11 @@ export class GuestOrderingService {
   async createTakeawayOrder(
     slug: string,
     branchSlug: string,
-    dto: GuestCreateOrderDto & { customerPhone: string; paymentMethod?: "cash" | "online" },
+    dto: GuestCreateOrderDto & {
+      customerPhone: string;
+      paymentMethod?: "cash" | "online";
+      couponCode?: string;
+    },
     idempotencyKey: string,
   ) {
     const { tenant, branch } = await this.resolveBranch(slug, branchSlug);
@@ -228,6 +234,7 @@ export class GuestOrderingService {
             customerName: dto.customerName,
             customerPhone: dto.customerPhone,
             intendedPaymentMethod: dto.paymentMethod,
+            couponCode: dto.couponCode,
           },
           { source: "external_link", tenantId: tenant.id },
           idempotencyKey,
@@ -238,8 +245,22 @@ export class GuestOrderingService {
       orderNumber: order.orderNumber,
       status: order.status,
       total: order.total.toString(),
+      discount: order.discount.toString(),
       estimatedMinutes: branch.pickupEstimatedMinutes,
     };
+  }
+
+  /** Guest-facing coupon preview before order submission — see CouponsService.preview. */
+  async validateCoupon(
+    slug: string,
+    branchSlug: string,
+    dto: { code: string; channel: "takeaway" | "delivery"; subtotal: string },
+  ) {
+    const { tenant } = await this.resolveBranch(slug, branchSlug);
+    return this.tenantContext.run(
+      { userId: GUEST_ACTOR, tenantId: tenant.id, permissions: new Set() },
+      () => this.coupons.preview(tenant.id, dto.code, dto.channel, dto.subtotal),
+    );
   }
 
   /**
@@ -273,6 +294,7 @@ export class GuestOrderingService {
             deliveryLat: dto.deliveryLat,
             deliveryLng: dto.deliveryLng,
             intendedPaymentMethod: dto.paymentMethod,
+            couponCode: dto.couponCode,
           },
           { source: "external_link", tenantId: tenant.id },
           idempotencyKey,
@@ -283,6 +305,7 @@ export class GuestOrderingService {
       orderNumber: order.orderNumber,
       status: order.status,
       total: order.total.toString(),
+      discount: order.discount.toString(),
       deliveryFeeAmount: order.deliveryFeeAmount?.toString() ?? "0",
       estimatedMinutes: branch.deliveryEstimatedMinutes,
     };

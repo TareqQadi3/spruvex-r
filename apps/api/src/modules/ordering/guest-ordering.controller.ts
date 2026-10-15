@@ -13,6 +13,7 @@ import {
 import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 
 import { Public } from "../../shared/rbac/public.decorator";
+import { ValidateCouponDto } from "../marketing/dto/coupon.dto";
 import { GuestDeliveryOrderDto, GuestTableOrderDto, GuestTakeawayOrderDto } from "./dto/order.dto";
 import { GuestOrderingService } from "./guest-ordering.service";
 
@@ -87,6 +88,16 @@ export class GuestOrderingController {
     @Headers("idempotency-key") idempotencyKey: string,
   ) {
     return this.guest.createTakeawayOrder(slug, branchSlug, dto, idempotencyKey);
+  }
+
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("restaurants/:slug/branches/:branchSlug/coupons/validate")
+  validateCoupon(
+    @Param("slug") slug: string,
+    @Param("branchSlug") branchSlug: string,
+    @Body() dto: ValidateCouponDto,
+  ) {
+    return this.guest.validateCoupon(slug, branchSlug, dto);
   }
 
   // --- External ordering link: /restaurant/{slug} (delivery) ---

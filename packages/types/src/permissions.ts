@@ -74,6 +74,9 @@ export const PERMISSIONS = {
   // Inter-branch stock transfers
   "inventory.transfer.create": "Create, send and cancel stock transfers from a branch",
   "inventory.transfer.receive": "Receive or reject an incoming stock transfer",
+
+  // Marketing
+  "marketing.manage_coupons": "Create and manage discount coupon codes",
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

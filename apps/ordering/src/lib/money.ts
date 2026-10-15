@@ -26,3 +26,9 @@ export function multiplyMoney(a: string, factor: number): string {
   const abs = Math.abs(halalas);
   return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
 }
+
+/** Floored at zero — display-only (the server never lets a discount exceed the subtotal either). */
+export function subtractMoney(a: string, b: string): string {
+  const halalas = Math.max(0, toHalalas(a) - toHalalas(b));
+  return `${Math.floor(halalas / 100)}.${String(halalas % 100).padStart(2, "0")}`;
+}

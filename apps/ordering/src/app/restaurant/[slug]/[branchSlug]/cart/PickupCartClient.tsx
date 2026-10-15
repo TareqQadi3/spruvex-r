@@ -21,6 +21,12 @@ export function PickupCartClient({
       currency={currency}
       requirePhone
       notice={t("cart.pickupNotice")}
+      onValidateCoupon={(code, subtotal) =>
+        clientPost<{ discountAmount: string }>(
+          `/public/restaurants/${slug}/branches/${branchSlug}/coupons/validate`,
+          { code, channel: "takeaway", subtotal },
+        )
+      }
       onSubmit={(ctx) =>
         clientPost<GuestOrderResult>(
           `/public/restaurants/${slug}/branches/${branchSlug}/orders`,
@@ -29,6 +35,7 @@ export function PickupCartClient({
             customerPhone: ctx.customerPhone,
             ...(ctx.customerName ? { customerName: ctx.customerName } : {}),
             ...(ctx.notes ? { notes: ctx.notes } : {}),
+            ...(ctx.couponCode ? { couponCode: ctx.couponCode } : {}),
           },
           { "Idempotency-Key": crypto.randomUUID() },
         )

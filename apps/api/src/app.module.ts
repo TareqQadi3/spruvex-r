@@ -13,6 +13,7 @@ import { ImportsModule } from "./modules/imports/imports.module";
 import { IntegrationsModule } from "./modules/integrations/integrations.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
 import { LoyaltyModule } from "./modules/loyalty/loyalty.module";
+import { MarketingModule } from "./modules/marketing/marketing.module";
 import { OrderingModule } from "./modules/ordering/ordering.module";
 import { PaymentsModule } from "./modules/payments/payments.module";
 import { PlatformModule } from "./modules/platform/platform.module";
@@ -63,6 +64,7 @@ import { TenantContextModule } from "./shared/tenancy/tenant-context.module";
     IntegrationsModule,
     FeedbackModule,
     LoyaltyModule,
+    MarketingModule,
     ImportsModule,
     SiteIntegrationModule,
   ],

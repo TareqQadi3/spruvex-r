@@ -105,6 +105,12 @@ export class CreateOrderDto {
   @IsOptional()
   @IsIn(["cash", "online"])
   intendedPaymentMethod?: "cash" | "online";
+
+  /** First-party takeaway/delivery only — set internally by GuestOrderingService from GuestTakeawayOrderDto.couponCode, never bound directly from an untrusted body on this DTO. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  couponCode?: string;
 }
 
 /** Attaches/updates a customer on an already-created, still-open order (POS: "add customer at checkout"). */
@@ -185,6 +191,11 @@ export class GuestTakeawayOrderDto extends GuestCreateOrderDto {
   @IsOptional()
   @IsIn(["cash", "online"])
   paymentMethod?: "cash" | "online";
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  couponCode?: string;
 }
 
 /** First-party delivery order — address is mandatory; lat/lng ("Pin") is optional and only used for the delivery-radius check when the branch has one configured. */

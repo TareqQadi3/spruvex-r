@@ -27,6 +27,7 @@ import {
   actorOrNull,
   TenantContextService,
 } from "../../shared/tenancy/tenant-context.service";
+import { CouponsService } from "../marketing/coupons.service";
 import { CreateOrderDto, OrderItemInputDto } from "./dto/order.dto";
 
 export const ORDER_INCLUDE = {
@@ -69,6 +70,7 @@ export class OrderingService {
     private readonly events: EventEmitter2,
     private readonly limits: LimitsService,
     private readonly businessHours: BusinessHoursService,
+    private readonly coupons: CouponsService,
   ) {}
 
   list(filter: { branchId?: string; statuses?: OrderStatus[]; limit?: number }) {
@@ -1176,10 +1178,30 @@ export class OrderingService {
       }
     }
 
+    // Coupon code (first-party takeaway/delivery checkout only — a cashier
+    // never sends one, and the guest table/QR flow has no couponCode field
+    // on its DTO at all). Validated and redeemed atomically here, under a
+    // row lock on the coupon, so two concurrent orders can never both claim
+    // the last redemption slot; computed off the item subtotal (not the
+    // delivery fee) but subtracted from the full charged total below, same
+    // as a staff-applied discount.
+    let couponId: string | null = null;
+    let couponDiscountHalalas = 0;
+    if (dto.couponCode && !opts.delivery && (dto.type === "takeaway" || dto.type === "delivery")) {
+      const redemption = await this.coupons.redeemInTransaction(tx, tenantId, dto.couponCode, {
+        channel: dto.type,
+        subtotalHalalas: itemsSubtotalHalalas,
+        customerPhone: dto.customerPhone,
+      });
+      couponId = redemption.couponId;
+      couponDiscountHalalas = redemption.discountHalalas;
+    }
+
     const tenant = await tx.tenant.findFirst({ where: { id: tenantId } });
     const vatRate = Number(tenant?.vatRate ?? 15);
     const subtotalHalalas = itemsSubtotalHalalas + deliveryFeeHalalas;
-    const vatHalalas = vatFromGross(subtotalHalalas, vatRate);
+    const totalHalalas = subtotalHalalas - couponDiscountHalalas;
+    const vatHalalas = vatFromGross(totalHalalas, vatRate);
 
     // Daily sequential number per branch. Two concurrent order-creation
     // transactions for the SAME branch (two POS terminals, or a walk-in and
@@ -1213,13 +1235,16 @@ export class OrderingService {
         customerPhone: dto.customerPhone,
         notes: dto.notes,
         subtotal: halalasToSar(subtotalHalalas),
-        discount: "0",
+        discount: halalasToSar(couponDiscountHalalas),
         vatRate: vatRate.toFixed(2),
         vatAmount: halalasToSar(vatHalalas),
-        total: halalasToSar(subtotalHalalas),
+        total: halalasToSar(totalHalalas),
         idempotencyKey,
         placedBy: actor,
         createdBy: actor,
+        ...(couponId
+          ? { couponId, discountType: "coupon", discountReason: `Coupon: ${dto.couponCode}` }
+          : {}),
         ...(opts.delivery
           ? {
               externalOrderId: opts.delivery.externalOrderId,

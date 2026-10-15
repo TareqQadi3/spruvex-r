@@ -15,6 +15,7 @@ import {
   Receipt,
   Settings,
   Store,
+  Tag,
   Truck,
   Upload,
   Users,
@@ -45,6 +46,7 @@ const ICONS: Record<string, LucideIcon> = {
   "credit-card": CreditCard,
   puzzle: Puzzle,
   gift: Gift,
+  tag: Tag,
   truck: Truck,
   upload: Upload,
 };

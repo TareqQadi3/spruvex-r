@@ -15,6 +15,7 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { BillingPage } from "./pages/dashboard/BillingPage";
 import { BranchesPage } from "./pages/dashboard/BranchesPage";
+import { CouponsPage } from "./pages/dashboard/CouponsPage";
 import { HomePage } from "./pages/dashboard/HomePage";
 import { IntegrationsPage } from "./pages/dashboard/IntegrationsPage";
 import { LoyaltyPage } from "./pages/dashboard/LoyaltyPage";
@@ -126,6 +127,7 @@ const router = createBrowserRouter([
       { path: "settings", element: <SettingsPage /> },
       { path: "integrations", element: <IntegrationsPage /> },
       { path: "loyalty", element: <LoyaltyPage /> },
+      { path: "coupons", element: <CouponsPage /> },
       { path: "import", element: <ImportPage /> },
       { path: "billing", element: <BillingPage /> },
       {

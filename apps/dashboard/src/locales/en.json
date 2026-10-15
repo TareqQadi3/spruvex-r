@@ -20,7 +20,11 @@
     "removeImage": "Remove",
     "uploadError": "Upload failed",
     "imageConstraints": "PNG, JPEG or WEBP, up to 5MB",
-    "status": "Status"
+    "status": "Status",
+    "sar": "SAR",
+    "optional": "Optional",
+    "unlimited": "Unlimited",
+    "delete": "Delete"
   },
   "auth": {
     "login": "Sign in",
@@ -193,6 +197,7 @@
     "billing": "Billing & subscription",
     "integrations": "Integrations",
     "loyalty": "Loyalty program",
+    "coupons": "Discount coupons",
     "import": "Data import"
   },
   "home": {
@@ -887,6 +892,41 @@
       "minSpend": "Minimum lifetime spend (SAR)",
       "discountPercent": "Standing discount (%)",
       "addTier": "Add tier"
+    }
+  },
+  "marketing": {
+    "coupons": {
+      "title": "Discount coupons",
+      "hint": "Used at checkout for digital takeaway/delivery orders only.",
+      "add": "Add coupon",
+      "editTitle": "Edit coupon",
+      "empty": "No coupons yet.",
+      "code": "Coupon code",
+      "discountType": "Discount type",
+      "percentage": "Percentage",
+      "fixed": "Fixed amount",
+      "discountValue": "Discount value",
+      "maxDiscountAmount": "Max discount amount (SAR)",
+      "minOrderAmount": "Minimum order amount (SAR)",
+      "channels": "Allowed channels",
+      "channelsHint": "Leave empty to allow both takeaway and delivery.",
+      "channel": {
+        "dine_in": "Dine-in",
+        "takeaway": "Takeaway",
+        "delivery": "Delivery"
+      },
+      "endAt": "End date",
+      "maxRedemptionsLabel": "Max total redemptions",
+      "maxPerCustomerLabel": "Max per customer",
+      "discountSummary": "{{value}} off",
+      "minOrder": "min. order {{amount}} SAR",
+      "allChannels": "Takeaway & delivery",
+      "maxRedemptions": "{{n}} use(s) max",
+      "maxPerCustomer": "{{n}} per customer",
+      "inactive": "Inactive",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "confirmDelete": "Permanently delete this coupon?"
     }
   },
   "import": {
