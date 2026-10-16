@@ -82,8 +82,12 @@ describe("public trial signup (e2e)", () => {
       restaurantName: "مطعم التجربة المجانية",
       phone: "+966522222222",
       email: "trial-owner@e2e.test",
+      // Exactly what spruvex-site's trial form sends.
+      password: "Trial-Pass1",
+      businessType: "dessert_cafe",
     };
     let devOtp = "";
+    let handoffToken = "";
     let tenantId = "";
 
     it("provisions a real tenant on a 14-day trial and returns an OTP", async () => {
@@ -96,8 +100,10 @@ describe("public trial signup (e2e)", () => {
       expect(res.body.tenantId).toBeDefined();
       expect(res.body.email).toBe(payload.email);
       expect(res.body.devOtp).toMatch(/^\d{6}$/);
+      expect(typeof res.body.handoffToken).toBe("string");
       tenantId = res.body.tenantId;
       devOtp = res.body.devOtp;
+      handoffToken = res.body.handoffToken;
 
       const trialEndsAt = new Date(res.body.trialEndsAt);
       const daysUntilExpiry = (trialEndsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
@@ -122,6 +128,13 @@ describe("public trial signup (e2e)", () => {
 
       const branch = await admin.branch.findFirst({ where: { tenantId } });
       expect(branch).toBeTruthy();
+
+      const tenant = await admin.tenant.findUnique({ where: { id: tenantId } });
+      expect(tenant?.type).toBe("cafe");
+    });
+
+    it("refuses the handoff token until the email OTP is verified", async () => {
+      await request(http).post("/auth/handoff").send({ token: handoffToken }).expect(401);
     });
 
     it("logs the merchant in through the SAME endpoint every self-registered owner uses", async () => {
@@ -137,6 +150,20 @@ describe("public trial signup (e2e)", () => {
 
       const owner = await admin.user.findUnique({ where: { email: payload.email } });
       expect(owner?.emailVerifiedAt).toBeTruthy();
+    });
+
+    it("signs the verified merchant in with the handoff token exactly once", async () => {
+      const res = await request(http).post("/auth/handoff").send({ token: handoffToken }).expect(200);
+      expect(res.body.tokens.accessToken).toBeDefined();
+      await request(http).post("/auth/handoff").send({ token: handoffToken }).expect(401);
+    });
+
+    it("keeps the password the merchant chose on the site", async () => {
+      const res = await request(http)
+        .post("/auth/login")
+        .send({ email: payload.email, password: payload.password });
+      expect(res.status).toBeLessThan(300);
+      expect(res.body.tokens?.accessToken ?? res.body.accessToken).toBeDefined();
     });
 
     it("rejects a second trial for the same phone number (hit 5/5)", async () => {

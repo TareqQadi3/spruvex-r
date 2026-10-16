@@ -14,6 +14,7 @@ import { dashboardUrl } from "../../shared/config/dashboard-url";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
 import { hashPassword } from "../identity/password";
+import { HandoffService } from "../identity/handoff.service";
 import { OtpService } from "../identity/otp/otp.service";
 import { findAvailableSlug, provisionTenant, slugify } from "../tenancy/tenant-provisioning";
 import type { PublicTrialSignupDto } from "./dto/site-public.dto";
@@ -25,6 +26,12 @@ export interface PublicTrialSignupResult {
   trialEndsAt: Date;
   dashboardUrl: string;
   /** Same non-production-only convention as OtpService.issue(). */
+  /**
+   * Single-use sign-in token (POST /auth/handoff). spruvex-site keeps it in an
+   * httpOnly cookie and hands it to the dashboard after OTP verification;
+   * exchanging it is refused until the email is verified.
+   */
+  handoffToken: string;
   devOtp?: string;
 }
 
@@ -44,6 +51,7 @@ export class SitePublicService {
   constructor(
     private readonly platformDb: PlatformPrismaService,
     private readonly otp: OtpService,
+    private readonly handoff: HandoffService,
     private readonly audit: AuditService,
     private readonly tenantContext: TenantContextService,
   ) {}
@@ -67,8 +75,9 @@ export class SitePublicService {
       );
     }
 
-    const randomPassword = crypto.randomBytes(24).toString("base64url");
-    const passwordHash = await hashPassword(randomPassword);
+    const passwordHash = await hashPassword(
+      input.password ?? crypto.randomBytes(24).toString("base64url"),
+    );
 
     let userId: string;
     try {
@@ -104,6 +113,7 @@ export class SitePublicService {
       const provisioned = await provisionTenant(this.platformDb, {
         name: input.restaurantName,
         slug,
+        type: SitePublicService.tenantType(input.businessType),
         ownerUserId: userId,
         branch: {}, // auto-create a default branch — no interactive wizard here to do step 3 later
       });
@@ -149,6 +159,7 @@ export class SitePublicService {
     // endpoint every self-registered owner already uses — to log in for the
     // first time. See report for why this was chosen over a magic link.
     const { devCode } = await this.otp.issue(email, "email_verification", userId);
+    const { token: handoffToken } = await this.handoff.issue(userId);
 
     return {
       tenantId,
@@ -156,7 +167,13 @@ export class SitePublicService {
       email,
       trialEndsAt,
       dashboardUrl: dashboardUrl(),
+      handoffToken,
       devOtp: devCode,
     };
+  }
+
+  /** Maps the site's business type onto a tenant type the dashboard knows. */
+  private static tenantType(businessType: string | undefined): string | undefined {
+    return businessType === "dessert_cafe" ? "cafe" : businessType;
   }
 }
