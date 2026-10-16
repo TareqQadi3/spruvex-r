@@ -63,6 +63,8 @@ export interface RecipeItemRow {
   unitId: string;
   quantity: string;
   notes: string | null;
+  isCritical: boolean;
+  criticalThreshold: string | null;
   ingredient: { id: string; name: string; nameEn: string | null; unitType: UnitType };
   unit: UnitOfMeasure;
 }
@@ -80,6 +82,36 @@ export interface ProductCost {
   grossMargin: string;
   grossMarginPercent: string;
   hasRecipe: boolean;
+}
+
+export interface ReorderAlertSupplier {
+  id: string;
+  name: string;
+  nameEn: string | null;
+  lastUnitPrice: string;
+  lastPurchasedAt: string;
+}
+
+export interface ReorderAlertRow {
+  ingredientId: string;
+  ingredientName: string;
+  ingredientNameEn: string | null;
+  unitType: UnitType;
+  branchId: string;
+  branchName: string;
+  branchNameEn: string | null;
+  locationId: string;
+  locationName: string;
+  locationNameEn: string | null;
+  currentQuantity: string;
+  reorderLevel: string;
+  suggestedQuantity: string;
+  lastSupplier: ReorderAlertSupplier | null;
+}
+
+export interface ReorderAlertWhatsappSettings {
+  whatsappEnabled: boolean;
+  recipientPhone: string | null;
 }
 
 export const inventoryApi = {
@@ -112,9 +144,27 @@ export const inventoryApi = {
   recordWaste: (body: unknown) => post<StockMovement>("/inventory/stock/waste", body),
   recordAdjustment: (body: unknown) => post<StockMovement>("/inventory/stock/adjustment", body),
 
+  listReorderAlerts: (branchId?: string) =>
+    api<ReorderAlertRow[]>(`/inventory/reorder-alerts${branchId ? `?branchId=${branchId}` : ""}`),
+  getReorderAlertSettings: () => api<ReorderAlertWhatsappSettings>("/inventory/reorder-alerts/settings"),
+  updateReorderAlertSettings: (whatsappEnabled: boolean) =>
+    api<ReorderAlertWhatsappSettings>("/inventory/reorder-alerts/settings", {
+      method: "PATCH",
+      body: JSON.stringify({ whatsappEnabled }),
+    }),
+
   getRecipe: (productId: string) => api<Recipe>(`/products/${productId}/recipe`),
-  setRecipe: (productId: string, items: Array<{ ingredientId: string; unitId: string; quantity: string; notes?: string }>) =>
-    api<Recipe>(`/products/${productId}/recipe`, { method: "PUT", body: JSON.stringify({ items }) }),
+  setRecipe: (
+    productId: string,
+    items: Array<{
+      ingredientId: string;
+      unitId: string;
+      quantity: string;
+      notes?: string;
+      isCritical?: boolean;
+      criticalThreshold?: string;
+    }>,
+  ) => api<Recipe>(`/products/${productId}/recipe`, { method: "PUT", body: JSON.stringify({ items }) }),
   getProductCost: (productId: string) => api<ProductCost>(`/products/${productId}/recipe/cost`),
 };
 
@@ -159,6 +209,127 @@ export interface DashboardSummary {
   todaySales: { orderCount: number; total: string; avgOrderValue: string };
   bestSellers: BestSeller[];
   lowStockAlerts: Array<{ ingredientId: string; name: string; nameEn: string | null; quantity: string; reorderLevel: string }>;
+  autoHiddenAlerts: Array<{
+    productId: string;
+    productName: string;
+    productNameEn: string | null;
+    branchName: string;
+    branchNameEn: string | null;
+    ingredientName: string;
+    ingredientNameEn: string | null;
+    hiddenAt: string;
+  }>;
+}
+
+export interface RatingsBranchRow {
+  branchId: string;
+  name: string;
+  nameEn: string | null;
+  count: number;
+  avgRating: number;
+}
+
+export interface LowRatingRow {
+  id: string;
+  orderId: string;
+  orderNumber: number;
+  customerName: string | null;
+  rating: number;
+  comment: string | null;
+  ratedAt: string;
+  branchName: string;
+  branchNameEn: string | null;
+  productName: string | null;
+  productNameEn: string | null;
+}
+
+export interface RatingsSummary {
+  avgRating: number | null;
+  count: number;
+  byBranch: RatingsBranchRow[];
+  lowRatings: LowRatingRow[];
+}
+
+export interface VatReturnLineItem {
+  type: "sale" | "credit_note" | "debit_note" | "purchase";
+  branchName: string;
+  branchNameEn: string | null;
+  /** A ZATCA-style sequential number for sales-side lines; the supplier's own
+   * (string) invoice number for a "purchase" line. */
+  documentNumber: number | string;
+  referenceReceiptNumber: number | null;
+  orderNumber: number | null;
+  supplierName?: string;
+  supplierNameEn?: string | null;
+  issuedAt: string;
+  vatRatePercent: string;
+  netAmount: string;
+  vatAmount: string;
+  total: string;
+}
+
+export interface VatReturnRateBucket {
+  vatRatePercent: string;
+  salesNet: string;
+  salesVat: string;
+  salesCount: number;
+  creditNoteNet: string;
+  creditNoteVat: string;
+  creditNoteCount: number;
+  debitNoteNet: string;
+  debitNoteVat: string;
+  debitNoteCount: number;
+  netTaxableSales: string;
+  netVat: string;
+}
+
+export interface VatReturnResult {
+  tenant: { name: string; nameEn: string | null; legalName: string | null; vatNumber: string | null; crNumber: string | null };
+  branch: { id: string; name: string; nameEn: string | null } | null;
+  period: { from: string; to: string };
+  byRate: VatReturnRateBucket[];
+  totals: { netTaxableSales: string; outputVat: string };
+  inputTax: { supported: boolean; note: string; netAmount: string; vatAmount: string; invoiceCount: number };
+  netVatDue: string;
+  lineItems: VatReturnLineItem[];
+}
+
+export interface BranchComparisonRow {
+  branchId: string;
+  branchName: string;
+  branchNameEn: string | null;
+  orderCount: number;
+  totalSales: string;
+  avgOrderValue: string;
+  topProducts: Array<{ productId: string; name: string; nameEn: string | null; quantitySold: number }>;
+  loyalty: { enabled: boolean; usagePercent: number | null; ordersWithLoyalty: number };
+  ratings: { avgRating: number | null; count: number };
+}
+
+export interface BranchComparisonResult {
+  period: { from: string; to: string };
+  loyaltyAvailable: boolean;
+  ratingsAvailable: boolean;
+  rows: BranchComparisonRow[];
+}
+
+export interface MenuProfitabilityRow {
+  productId: string;
+  productName: string;
+  productNameEn: string | null;
+  hasRecipe: boolean;
+  cost: string;
+  sellingPrice: string;
+  grossMargin: string;
+  grossMarginPercent: string;
+  quantitySold: number;
+  totalContributionMargin: string;
+}
+
+export interface MenuProfitabilityResult {
+  branch: { id: string; name: string; nameEn: string | null } | null;
+  period: { from: string; to: string };
+  rows: MenuProfitabilityRow[];
 }
 
 export const reportsApi = {
@@ -195,4 +366,52 @@ export const reportsApi = {
   },
   dashboardSummary: (branchId?: string) =>
     api<DashboardSummary>(`/reports/dashboard-summary${branchId ? `?branchId=${branchId}` : ""}`),
+  ratings: (branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return api<RatingsSummary>(`/reports/ratings${qs ? `?${qs}` : ""}`);
+  },
+  vatReturn: (branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return api<VatReturnResult>(`/reports/vat-return${qs ? `?${qs}` : ""}`);
+  },
+  vatReturnDownloadPath: (format: "csv" | "pdf", branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return `/reports/vat-return.${format}${qs ? `?${qs}` : ""}`;
+  },
+  branchComparison: (from?: string, to?: string, branchIds?: string[]) => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    if (branchIds && branchIds.length > 0) params.set("branchIds", branchIds.join(","));
+    const qs = params.toString();
+    return api<BranchComparisonResult>(`/reports/branch-comparison${qs ? `?${qs}` : ""}`);
+  },
+  menuProfitability: (branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return api<MenuProfitabilityResult>(`/reports/menu-profitability${qs ? `?${qs}` : ""}`);
+  },
+  menuProfitabilityDownloadPath: (branchId?: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (branchId) params.set("branchId", branchId);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    return `/reports/menu-profitability.csv${qs ? `?${qs}` : ""}`;
+  },
 };

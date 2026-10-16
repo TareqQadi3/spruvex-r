@@ -12,16 +12,11 @@ export function printHtml(title: string, bodyHtml: string, dir: "rtl" | "ltr" = 
 <meta charset="utf-8" />
 <title>${title}</title>
 <style>
+  /* Page-only concerns — the receipt's own visual template (classic/modern/
+     minimal) ships its own scoped <style> block inside bodyHtml itself,
+     shared with the on-screen dialog preview (see ReceiptView.tsx). */
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: "IBM Plex Sans Arabic", system-ui, sans-serif; width: 80mm; padding: 4mm; font-size: 12px; color: #000; }
-  h1 { font-size: 16px; text-align: center; margin-bottom: 2mm; }
-  .center { text-align: center; }
-  .muted { color: #444; font-size: 10px; }
-  .row { display: flex; justify-content: space-between; gap: 4px; }
-  .line { border-top: 1px dashed #000; margin: 2mm 0; }
-  .big { font-size: 14px; font-weight: 700; }
-  .item { margin-bottom: 1.5mm; }
-  .mods { padding-inline-start: 6mm; font-size: 10px; color: #333; }
+  body { width: 80mm; padding: 4mm; }
   @media print { body { width: auto; } }
 </style>
 </head>

@@ -1,4 +1,4 @@
-import { Building2, CreditCard, Languages, LogOut, Server } from "lucide-react";
+import { Building2, CreditCard, Languages, LogOut, Server, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet } from "react-router-dom";
 
@@ -10,6 +10,7 @@ const NAV = [
   { path: "/", labelKey: "nav.tenants", icon: Building2 },
   { path: "/subscriptions", labelKey: "nav.subscriptions", icon: CreditCard },
   { path: "/system", labelKey: "nav.system", icon: Server },
+  { path: "/settings", labelKey: "nav.settings", icon: Settings },
 ];
 
 export function PlatformLayout() {

@@ -42,10 +42,24 @@ export interface ActiveOrder {
 export interface PaymentSummary {
   orderId: string;
   status: string;
+  customerPhone: string | null;
   total: string;
   paid: string;
   remaining: string;
   payments: Array<{ id: string; method: string; amount: string; reference: string | null }>;
+}
+
+export type LoyaltyProgramType = "stamp_card" | "spend_threshold" | "points_per_riyal" | "tier";
+
+export interface LoyaltyBalance {
+  phone: string;
+  exists: boolean;
+  stampCount: number;
+  spendAccumulated: string;
+  pointsBalance: number;
+  lifetimeSpend: string;
+  tierKey: string | null;
+  tierName: string | null;
 }
 
 export interface ReceiptData {
@@ -63,6 +77,13 @@ export interface ReceiptData {
       nameEn: string | null;
       vatNumber: string | null;
       currency: string;
+      logoUrl: string | null;
+      themeColor: string;
+      receiptTemplate: string;
+      receiptLogoPosition: string;
+      receiptLogoSize: string;
+      receiptHeaderNote: string | null;
+      receiptFooterNote: string | null;
     };
     branch: { name: string; address: string | null; phone: string | null };
     order: {
@@ -90,6 +111,23 @@ export interface ReceiptData {
   };
 }
 
+export interface OpenSession {
+  sessionId: string;
+  table: { id: string; number: string };
+  openedAt: string;
+  lastActivityAt: string;
+  staleFlaggedAt: string | null;
+  participants: Array<{ phone: string; name: string | null; joinedAt: string }>;
+  order: { id: string; orderNumber: number; status: string; total: string } | null;
+  unpaidBalance: string;
+}
+
+export interface SplitResult {
+  mode: "equal" | "by_item";
+  total: string;
+  participants: Array<{ phone: string | null; name: string | null; amount: string }>;
+}
+
 export const posApi = {
   currentShift: (branchId: string) => api<Shift | null>(`/shifts/current?branchId=${branchId}`),
   openShift: (branchId: string, openingCash: string) =>
@@ -114,4 +152,36 @@ export const posApi = {
   applyDiscount: (orderId: string, body: { type: "percentage" | "fixed"; value: string; reason: string }) =>
     post<ActiveOrder>(`/orders/${orderId}/discount`, body),
   receipt: (orderId: string) => api<ReceiptData>(`/orders/${orderId}/receipt`),
+  refund: (
+    orderId: string,
+    body: { amount: string; method: "cash" | "card"; reason: string; reference?: string },
+  ) => post<{ creditNote: { id: string; total: string }; refund: { id: string } }>(
+    `/orders/${orderId}/refund`,
+    body,
+  ),
+
+  setCustomer: (orderId: string, customerPhone: string) =>
+    api<ActiveOrder>(`/orders/${orderId}/customer`, {
+      method: "PUT",
+      body: JSON.stringify({ customerPhone }),
+    }),
+  loyaltyBalance: (phone: string) => api<LoyaltyBalance>(`/loyalty/customers/${encodeURIComponent(phone)}`),
+  redeemLoyalty: (orderId: string, type: LoyaltyProgramType) =>
+    post<{ applied: boolean }>(`/loyalty/orders/${orderId}/redeem`, { type }),
+
+  listOpenSessions: (branchId: string) => api<OpenSession[]>(`/tables/sessions/open?branchId=${branchId}`),
+  closeSession: (tableId: string, force?: boolean) =>
+    post<{ id: string }>(`/tables/${tableId}/sessions/close`, force ? { force: true } : {}),
+  appendItemsToOrder: (
+    orderId: string,
+    items: Array<{ productId: string; quantity: number; modifierIds?: string[]; notes?: string }>,
+    participantPhone?: string,
+  ) =>
+    post<ActiveOrder>(
+      `/orders/${orderId}/items`,
+      { items, ...(participantPhone ? { participantPhone } : {}) },
+      { "Idempotency-Key": crypto.randomUUID() },
+    ),
+  computeSplit: (orderId: string, mode: "equal" | "by_item") =>
+    api<SplitResult>(`/orders/${orderId}/split?mode=${mode}`),
 };

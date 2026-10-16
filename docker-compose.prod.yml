@@ -53,6 +53,7 @@ services:
       DATABASE_URL: postgresql://spruvex_app:${SPRUVEX_APP_PASSWORD:?required}@postgres:5432/spruvex_r?schema=public
       ADMIN_DATABASE_URL: postgresql://spruvex_admin:${SPRUVEX_ADMIN_PASSWORD:?required}@postgres:5432/spruvex_r?schema=public
       JWT_SECRET: ${JWT_SECRET:?required}
+      SPRUVEX_SITE_API_KEY: ${SPRUVEX_SITE_API_KEY:?required}
       JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}
       REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
       CORS_ORIGINS: ${CORS_ORIGINS:?required}
@@ -61,10 +62,24 @@ services:
       PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-}
       PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      ZATCA_CREDENTIALS_ENCRYPTION_KEY: ${ZATCA_CREDENTIALS_ENCRYPTION_KEY:-}
+      # Must be the API's real public HTTPS origin — used to build absolute
+      # URLs for uploaded logo/product/category images, loadable from any
+      # app's origin (same reason the ordering service below needs it).
+      PUBLIC_API_ORIGIN: ${PUBLIC_API_ORIGIN:?required}
+      UPLOADS_DIR: /uploads
       NODE_ENV: production
       PORT: 3000
     ports:
       - "3000:3000"
+    volumes:
+      # Uploaded images persist across container restarts, not across a
+      # volume wipe — there's no S3/Cloudinary account to point at instead
+      # yet. On a host with an ephemeral filesystem (Render's free tier)
+      # this volume itself doesn't persist across redeploys either; treat
+      # uploads there as temporary until a real object-storage backend is
+      # wired in (swap uploads.service.ts's local-disk calls for it).
+      - uploads:/uploads
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -126,6 +141,35 @@ services:
     ports:
       - "3002:3002"
 
+  # Automatic periodic database backup — no host crontab needed. Runs one
+  # backup immediately on startup (to fail fast if credentials are wrong),
+  # then on BACKUP_SCHEDULE (default daily at 03:00). Dumps land in the
+  # `backups` volume; still copy them off this host periodically (S3 or
+  # similar) — a backup that only lives on the machine it protects
+  # against isn't one. See infra/scripts/backup-once.sh.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: spruvex_admin
+      PGPASSWORD: ${SPRUVEX_ADMIN_PASSWORD:?required}
+      PGDATABASE: spruvex_r
+      BACKUP_DIR: /backups
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 3 * * *}
+      RETENTION_DAYS: ${RETENTION_DAYS:-14}
+    volumes:
+      - backups:/backups
+      - ./infra/scripts/backup-once.sh:/usr/local/bin/backup-once.sh:ro
+      - ./infra/scripts/backup-cron-entrypoint.sh:/usr/local/bin/backup-cron-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup-cron-entrypoint.sh"]
+
 volumes:
   pgdata:
   redisdata:
+  backups:
+  uploads:

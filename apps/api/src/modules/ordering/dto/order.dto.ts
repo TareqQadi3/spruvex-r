@@ -6,7 +6,10 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsLatitude,
+  IsLongitude,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -18,6 +21,10 @@ import {
 } from "class-validator";
 
 import { ORDER_STATUSES, type OrderStatus } from "@spruvex-r/types";
+
+/** Staff/POS-creatable order types. "delivery" covers both a manually-entered
+ * phone order and a real delivery-platform webhook (see delivery-webhook.service.ts). */
+const CREATABLE_ORDER_TYPES = ["dine_in", "walkin", "takeaway", "delivery"] as const;
 
 export class OrderItemInputDto {
   @IsUUID()
@@ -41,8 +48,8 @@ export class OrderItemInputDto {
 }
 
 export class CreateOrderDto {
-  @IsIn(["dine_in", "walkin", "takeaway"])
-  type!: "dine_in" | "walkin" | "takeaway";
+  @IsIn(CREATABLE_ORDER_TYPES)
+  type!: (typeof CREATABLE_ORDER_TYPES)[number];
 
   /** Required for dine_in. */
   @IsOptional()
@@ -80,6 +87,42 @@ export class CreateOrderDto {
   @IsOptional()
   @IsBoolean()
   confirm?: boolean;
+
+  /** First-party delivery only — set internally by GuestOrderingService.createDeliveryOrder, never bound directly from an untrusted body on this DTO. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  deliveryAddress?: string;
+
+  @IsOptional()
+  @IsNumber()
+  deliveryLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  deliveryLng?: number;
+
+  @IsOptional()
+  @IsIn(["cash", "online"])
+  intendedPaymentMethod?: "cash" | "online";
+
+  /** First-party takeaway/delivery only — set internally by GuestOrderingService from GuestTakeawayOrderDto.couponCode, never bound directly from an untrusted body on this DTO. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  couponCode?: string;
+}
+
+/** Attaches/updates a customer on an already-created, still-open order (POS: "add customer at checkout"). */
+export class SetOrderCustomerDto {
+  @IsString()
+  @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
+  customerPhone!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  customerName?: string;
 }
 
 export class TransitionOrderDto {
@@ -100,6 +143,23 @@ export class EditOrderItemsDto {
   @ValidateNested({ each: true })
   @Type(() => OrderItemInputDto)
   items!: OrderItemInputDto[];
+}
+
+/** Cashier "add to this table's order" — the shared-session append, from the POS. */
+export class AppendOrderItemsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemInputDto)
+  items!: OrderItemInputDto[];
+
+  /** Which diner at the table this round is for — omit to leave it in the
+   * shared/unattributed bucket (split equally at checkout). */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
+  participantPhone?: string;
 }
 
 export class GuestCreateOrderDto {
@@ -123,6 +183,46 @@ export class GuestCreateOrderDto {
 
 /** Pickup order through the external link — the phone number is mandatory. */
 export class GuestTakeawayOrderDto extends GuestCreateOrderDto {
+  @IsString()
+  @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
+  customerPhone!: string;
+
+  /** How the customer intends to pay — must be one of the branch's accepted self-service methods. Omit = cash (pay on pickup). */
+  @IsOptional()
+  @IsIn(["cash", "online"])
+  paymentMethod?: "cash" | "online";
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  couponCode?: string;
+}
+
+/** First-party delivery order — address is mandatory; lat/lng ("Pin") is optional and only used for the delivery-radius check when the branch has one configured. */
+export class GuestDeliveryOrderDto extends GuestTakeawayOrderDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  deliveryAddress!: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsLatitude()
+  deliveryLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @IsLongitude()
+  deliveryLng?: number;
+}
+
+/**
+ * Shared table-session QR order — phone is mandatory here too: it is the
+ * identity that ties this scan to a specific person at the table (joins an
+ * existing session, attributes their items for bill-splitting, and is who
+ * order-status WhatsApp updates go to), not just a delivery contact detail.
+ */
+export class GuestTableOrderDto extends GuestCreateOrderDto {
   @IsString()
   @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
   customerPhone!: string;

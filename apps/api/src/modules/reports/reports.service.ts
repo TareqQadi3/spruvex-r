@@ -2,31 +2,13 @@ import { Injectable } from "@nestjs/common";
 
 import { halalasToSar, sarToCostUnits, sarToHalalas } from "../../shared/common/money";
 import { PrismaService } from "../../shared/prisma/prisma.service";
+import { resolveRange, sumHalalas } from "./report-utils";
 
 function dayRange(dateStr?: string): { start: Date; end: Date } {
   const date = dateStr ? new Date(dateStr) : new Date();
   const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   return { start, end };
-}
-
-function resolveRange(from?: string, to?: string): { start: Date; end: Date } {
-  // `to` is a calendar date (e.g. "2026-07-13"); treat it as inclusive through
-  // the end of that day rather than its literal midnight instant, otherwise
-  // every order placed "today" is silently excluded from an end=today range.
-  const end = to
-    ? (() => {
-        const d = new Date(to);
-        return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) - 1);
-      })()
-    : new Date();
-  const start = from ? new Date(from) : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-  return { start, end };
-}
-
-/** Sums a nullable Decimal-ish field across rows as halalas (2-decimal SAR fields). */
-function sumHalalas(values: Array<{ toString(): string } | null>): number {
-  return values.reduce((sum: number, v) => sum + (v ? sarToHalalas(v.toString()) : 0), 0);
 }
 
 @Injectable()
@@ -205,12 +187,20 @@ export class ReportsService {
 
   /** Dashboard summary card: today's headline numbers in one call. */
   async dashboardSummary(branchId: string | undefined) {
-    const [sales, bestSellers, lowStock] = await Promise.all([
+    const [sales, bestSellers, lowStock, autoHidden] = await Promise.all([
       this.dailySales(branchId, undefined),
       this.bestSellers(branchId, undefined, undefined, 5),
       this.prisma.scoped.stockLevel.findMany({
         where: { ...(branchId ? { branchId } : {}), ingredient: { reorderLevel: { not: null } } },
         include: { ingredient: { select: { id: true, name: true, nameEn: true, reorderLevel: true } } },
+      }),
+      this.prisma.scoped.productStockHide.findMany({
+        where: { ...(branchId ? { branchId } : {}) },
+        include: {
+          product: { select: { id: true, name: true, nameEn: true } },
+          branch: { select: { id: true, name: true, nameEn: true } },
+          ingredient: { select: { id: true, name: true, nameEn: true } },
+        },
       }),
     ]);
 
@@ -224,6 +214,17 @@ export class ReportsService {
         reorderLevel: level.ingredient.reorderLevel!.toString(),
       }));
 
+    const autoHiddenAlerts = autoHidden.map((hide) => ({
+      productId: hide.product.id,
+      productName: hide.product.name,
+      productNameEn: hide.product.nameEn,
+      branchName: hide.branch.name,
+      branchNameEn: hide.branch.nameEn,
+      ingredientName: hide.ingredient.name,
+      ingredientNameEn: hide.ingredient.nameEn,
+      hiddenAt: hide.hiddenAt,
+    }));
+
     return {
       todaySales: {
         orderCount: sales.orderCount,
@@ -232,6 +233,77 @@ export class ReportsService {
       },
       bestSellers,
       lowStockAlerts,
+      autoHiddenAlerts,
     };
+  }
+
+  /** Ratings: overall average, per-branch breakdown, and low-rating (<=3) follow-up list. */
+  async ratingsSummary(branchId: string | undefined, from: string | undefined, to: string | undefined) {
+    const { start, end } = resolveRange(from, to);
+    const rated = await this.prisma.scoped.orderFeedbackRequest.findMany({
+      where: {
+        rating: { not: null },
+        ratedAt: { gte: start, lte: end },
+        ...(branchId ? { branchId } : {}),
+      },
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        ratedAt: true,
+        branchId: true,
+        orderId: true,
+        order: { select: { orderNumber: true, customerName: true } },
+        branch: { select: { id: true, name: true, nameEn: true } },
+        primaryProduct: { select: { name: true, nameEn: true } },
+      },
+      orderBy: { ratedAt: "desc" },
+    });
+
+    const count = rated.length;
+    const avgRating =
+      count > 0 ? Number((rated.reduce((sum, r) => sum + (r.rating ?? 0), 0) / count).toFixed(2)) : null;
+
+    const byBranchMap = new Map<
+      string,
+      { branchId: string; name: string; nameEn: string | null; count: number; sum: number }
+    >();
+    for (const r of rated) {
+      const entry = byBranchMap.get(r.branchId) ?? {
+        branchId: r.branchId,
+        name: r.branch.name,
+        nameEn: r.branch.nameEn,
+        count: 0,
+        sum: 0,
+      };
+      entry.count += 1;
+      entry.sum += r.rating ?? 0;
+      byBranchMap.set(r.branchId, entry);
+    }
+    const byBranch = [...byBranchMap.values()].map((entry) => ({
+      branchId: entry.branchId,
+      name: entry.name,
+      nameEn: entry.nameEn,
+      count: entry.count,
+      avgRating: Number((entry.sum / entry.count).toFixed(2)),
+    }));
+
+    const lowRatings = rated
+      .filter((r) => (r.rating ?? 0) <= 3)
+      .map((r) => ({
+        id: r.id,
+        orderId: r.orderId,
+        orderNumber: r.order.orderNumber,
+        customerName: r.order.customerName,
+        rating: r.rating!,
+        comment: r.comment,
+        ratedAt: r.ratedAt,
+        branchName: r.branch.name,
+        branchNameEn: r.branch.nameEn,
+        productName: r.primaryProduct?.name ?? null,
+        productNameEn: r.primaryProduct?.nameEn ?? null,
+      }));
+
+    return { avgRating, count, byBranch, lowRatings };
   }
 }

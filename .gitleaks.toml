@@ -1,0 +1,16 @@
+# gitleaks configuration (picked up automatically from the repo root by
+# `gitleaks detect --source .`, see .github/workflows/ci.yml).
+title = "SpruVex R gitleaks config"
+
+[extend]
+useDefault = true
+
+# .claude/skills/** are third-party documentation files for Claude Code. They
+# contain made-up example tokens (sample JWTs, `Authorization: Bearer <token>`
+# curl snippets) that the generic rules flag. They hold no real credentials, and
+# nothing in them is ever loaded by the app. Real source code is still scanned.
+[allowlist]
+description = "Example tokens in Claude Code skill documentation"
+paths = [
+  '''^\.claude/skills/''',
+]

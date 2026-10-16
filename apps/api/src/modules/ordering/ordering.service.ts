@@ -12,19 +12,27 @@ import {
   canTransition,
   DOMAIN_EVENTS,
   ORDER_STATUS_TRANSITIONS,
+  type OrderingChannel,
   type OrderSource,
   type OrderStatus,
 } from "@spruvex-r/types";
 
 import { AuditService } from "../../shared/audit/audit.service";
 import { LimitsService } from "../../shared/billing/limits.service";
+import { BusinessHoursService } from "../../shared/business-hours/business-hours.service";
 import { calculateRecipeCostUnits } from "../../shared/common/food-cost";
-import { costUnitsToSar, halalasToSar, sarToHalalas, vatFromGross } from "../../shared/common/money";
+import {
+  costUnitsToSar,
+  halalasToSar,
+  sarToHalalas,
+  vatFromGross,
+} from "../../shared/common/money";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import {
   actorOrNull,
   TenantContextService,
 } from "../../shared/tenancy/tenant-context.service";
+import { CouponsService } from "../marketing/coupons.service";
 import { CreateOrderDto, OrderItemInputDto } from "./dto/order.dto";
 
 export const ORDER_INCLUDE = {
@@ -37,10 +45,23 @@ export const ORDER_INCLUDE = {
 /** Default cap for discounts; overridable per tenant via settings.maxDiscountPercent. */
 const DEFAULT_MAX_DISCOUNT_PERCENT = 20;
 
+/** "walkin" has no self-service channel dimension (no hours/pricing overrides apply to it). */
+function orderChannelOf(type: string): OrderingChannel | undefined {
+  return type === "dine_in" || type === "takeaway" || type === "delivery"
+    ? (type as OrderingChannel)
+    : undefined;
+}
+
 interface CreateOrderContext {
   source: OrderSource;
   /** Overrides for the guest flow (no authenticated user). */
   tenantId?: string;
+  /** Set only when a delivery-platform webhook is the caller (never public HTTP input). */
+  delivery?: {
+    externalOrderId: string;
+    provider: string;
+    commission: string | null;
+  };
 }
 
 const NUMBER_CONFLICT_RETRIES = 3;
@@ -53,9 +74,15 @@ export class OrderingService {
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
     private readonly limits: LimitsService,
+    private readonly businessHours: BusinessHoursService,
+    private readonly coupons: CouponsService,
   ) {}
 
-  list(filter: { branchId?: string; statuses?: OrderStatus[]; limit?: number }) {
+  list(filter: {
+    branchId?: string;
+    statuses?: OrderStatus[];
+    limit?: number;
+  }) {
     return this.prisma.scoped.order.findMany({
       where: {
         deletedAt: null,
@@ -85,13 +112,23 @@ export class OrderingService {
    * assigns the daily sequential number, and (for dine-in) attaches the
    * order to the table's open session — opening one when none exists.
    */
-  async create(dto: CreateOrderDto, opts: CreateOrderContext, idempotencyKey: string) {
+  async create(
+    dto: CreateOrderDto,
+    opts: CreateOrderContext,
+    idempotencyKey: string,
+  ) {
     const ctx = this.tenantContext.contextOrThrow;
     const tenantId = opts.tenantId ?? this.tenantContext.tenantIdOrThrow;
     const actor = actorOrNull(ctx.userId);
 
-    if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128) {
-      throw new BadRequestException("Idempotency-Key header is required (8-128 chars)");
+    if (
+      !idempotencyKey ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 128
+    ) {
+      throw new BadRequestException(
+        "Idempotency-Key header is required (8-128 chars)",
+      );
     }
 
     // Idempotent replay: return the original order.
@@ -105,10 +142,24 @@ export class OrderingService {
 
     await this.limits.assertCanCreateOrder(tenantId);
 
+    // Self-service guest channels only — a cashier can always ring up a
+    // walk-in/phone order (source "pos") regardless of hours/pause state.
+    const guestChannel = orderChannelOf(dto.type);
+    if (opts.source === "external_link" && dto.branchId && guestChannel) {
+      await this.businessHours.assertChannelOpen(dto.branchId, guestChannel);
+    }
+
     for (let attempt = 1; ; attempt++) {
       try {
         const order = await this.prisma.scopedTransaction(async (tx) => {
-          return this.createInTransaction(tx, dto, opts, tenantId, actor, idempotencyKey);
+          return this.createInTransaction(
+            tx,
+            dto,
+            opts,
+            tenantId,
+            actor,
+            idempotencyKey,
+          );
         }, tenantId);
 
         await this.audit.log({
@@ -117,7 +168,11 @@ export class OrderingService {
           entityType: "order",
           entityId: order.id,
           branchId: order.branchId,
-          meta: { orderNumber: order.orderNumber, source: opts.source, total: order.total.toString() },
+          meta: {
+            orderNumber: order.orderNumber,
+            source: opts.source,
+            total: order.total.toString(),
+          },
         });
         this.events.emit(DOMAIN_EVENTS.ORDER_CREATED, {
           tenantId,
@@ -158,11 +213,20 @@ export class OrderingService {
     const actor = actorOrNull(ctx.userId);
 
     if (to === "cancelled" && !ctx.permissions.has("orders.void")) {
-      throw new ForbiddenException("Cancelling an order requires the orders.void permission");
+      throw new ForbiddenException(
+        "Cancelling an order requires the orders.void permission",
+      );
+    }
+    if (to === "refunded" && !ctx.permissions.has("payments.refund")) {
+      throw new ForbiddenException(
+        "Refunding an order requires the payments.refund permission",
+      );
     }
 
     const order = await this.prisma.scopedTransaction(async (tx) => {
-      const current = await tx.order.findFirst({ where: { id, deletedAt: null } });
+      const current = await tx.order.findFirst({
+        where: { id, deletedAt: null },
+      });
       if (!current) {
         throw new NotFoundException("Order not found");
       }
@@ -181,8 +245,13 @@ export class OrderingService {
         _sum: { amount: true },
       });
       const paidHalalas = sarToHalalas((paid._sum.amount ?? 0).toString());
-      if (to === "completed" && paidHalalas < sarToHalalas(current.total.toString())) {
-        throw new ConflictException("Cannot complete an order without full payment");
+      if (
+        to === "completed" &&
+        paidHalalas < sarToHalalas(current.total.toString())
+      ) {
+        throw new ConflictException(
+          "Cannot complete an order without full payment",
+        );
       }
       if (to === "cancelled" && paidHalalas > 0) {
         throw new ConflictException(
@@ -221,7 +290,9 @@ export class OrderingService {
       meta: { to, reason: opts.reason ?? null, orderNumber: order.orderNumber },
     });
     this.events.emit(
-      to === "cancelled" ? DOMAIN_EVENTS.ORDER_CANCELLED : DOMAIN_EVENTS.ORDER_STATUS_CHANGED,
+      to === "cancelled"
+        ? DOMAIN_EVENTS.ORDER_CANCELLED
+        : DOMAIN_EVENTS.ORDER_STATUS_CHANGED,
       { tenantId, branchId: order.branchId, order },
     );
     return order;
@@ -231,19 +302,26 @@ export class OrderingService {
    * Applies (or replaces) a discount. Requires orders.discount (guard) and:
    * - the order is open and has NO recorded payments,
    * - the discount does not exceed the tenant's configurable cap
-   *   (settings.maxDiscountPercent, default 20%).
+   *   (settings.maxDiscountPercent, default 20%) — unless `opts.bypassCap` is
+   *   set, used exclusively by LoyaltyService for a merchant-configured
+   *   reward (never reachable from the HTTP DTO, which has no such field):
+   *   the cap exists to bound a cashier's discretionary discount, not the
+   *   tenant's own loyalty program economics.
    * Totals + VAT are recomputed; who/why is stored and audited.
    */
   async applyDiscount(
     id: string,
     dto: { type: "percentage" | "fixed"; value: string; reason: string },
+    opts: { bypassCap?: boolean } = {},
   ) {
     const ctx = this.tenantContext.contextOrThrow;
     const tenantId = this.tenantContext.tenantIdOrThrow;
     const actor = actorOrNull(ctx.userId);
 
     const order = await this.prisma.scopedTransaction(async (tx) => {
-      const current = await tx.order.findFirst({ where: { id, deletedAt: null } });
+      const current = await tx.order.findFirst({
+        where: { id, deletedAt: null },
+      });
       if (!current) {
         throw new NotFoundException("Order not found");
       }
@@ -254,19 +332,24 @@ export class OrderingService {
         where: { orderId: id, status: "completed" },
       });
       if (paid > 0) {
-        throw new ConflictException("Order already has payments — discount not possible");
+        throw new ConflictException(
+          "Order already has payments — discount not possible",
+        );
       }
 
       const tenant = await tx.tenant.findFirst({ where: { id: tenantId } });
-      const settings = (tenant?.settings ?? {}) as { maxDiscountPercent?: number };
-      const maxPercent = settings.maxDiscountPercent ?? DEFAULT_MAX_DISCOUNT_PERCENT;
+      const settings = (tenant?.settings ?? {}) as {
+        maxDiscountPercent?: number;
+      };
+      const maxPercent =
+        settings.maxDiscountPercent ?? DEFAULT_MAX_DISCOUNT_PERCENT;
 
       const subtotalHalalas = sarToHalalas(current.subtotal.toString());
       const valueHalalas = sarToHalalas(dto.value);
       let discountHalalas: number;
       if (dto.type === "percentage") {
         const pct = Number(dto.value);
-        if (pct <= 0 || pct > maxPercent) {
+        if (pct <= 0 || (!opts.bypassCap && pct > maxPercent)) {
           throw new BadRequestException(
             `Discount must be between 0 and ${maxPercent}% (restaurant limit)`,
           );
@@ -274,10 +357,12 @@ export class OrderingService {
         discountHalalas = Math.floor((subtotalHalalas * pct) / 100 + 0.5);
       } else {
         if (valueHalalas <= 0 || valueHalalas > subtotalHalalas) {
-          throw new BadRequestException("Fixed discount must be positive and below the subtotal");
+          throw new BadRequestException(
+            "Fixed discount must be positive and below the subtotal",
+          );
         }
         const pctEquivalent = (valueHalalas / subtotalHalalas) * 100;
-        if (pctEquivalent > maxPercent) {
+        if (!opts.bypassCap && pctEquivalent > maxPercent) {
           throw new BadRequestException(
             `Discount exceeds the restaurant limit (${maxPercent}%)`,
           );
@@ -330,14 +415,18 @@ export class OrderingService {
     const actor = actorOrNull(ctx.userId);
 
     const order = await this.prisma.scopedTransaction(async (tx) => {
-      const current = await tx.order.findFirst({ where: { id, deletedAt: null } });
+      const current = await tx.order.findFirst({
+        where: { id, deletedAt: null },
+      });
       if (!current) {
         throw new NotFoundException("Order not found");
       }
       if (["completed", "cancelled"].includes(current.status)) {
         throw new ConflictException("Order is closed");
       }
-      const paid = await tx.payment.count({ where: { orderId: id, status: "completed" } });
+      const paid = await tx.payment.count({
+        where: { orderId: id, status: "completed" },
+      });
       if (paid > 0) {
         throw new ConflictException("Order already has payments");
       }
@@ -351,7 +440,9 @@ export class OrderingService {
           discountValue: null,
           discountReason: null,
           discountBy: null,
-          vatAmount: halalasToSar(vatFromGross(subtotalHalalas, Number(current.vatRate))),
+          vatAmount: halalasToSar(
+            vatFromGross(subtotalHalalas, Number(current.vatRate)),
+          ),
           total: halalasToSar(subtotalHalalas),
           updatedBy: actor,
         },
@@ -374,6 +465,96 @@ export class OrderingService {
   }
 
   /**
+   * Appends a genuinely free line to an open, unpaid order — used for
+   * loyalty stamp-card rewards. The product's real recipe cost is still
+   * snapshotted (a free item still costs the restaurant real money, and
+   * food-cost/margin reports must show that), but unitPrice/lineTotal are
+   * forced to zero: a real $0 invoice line, not a hidden discount, so VAT
+   * on it is correctly zero (zero consideration) and stock deduction still
+   * fires normally on completion via the usual productId+quantity path.
+   */
+  async addComplimentaryItem(id: string, productId: string, reason: string) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const actor = actorOrNull(ctx.userId);
+
+    const order = await this.prisma.scopedTransaction(async (tx) => {
+      const current = await tx.order.findFirst({
+        where: { id, deletedAt: null },
+      });
+      if (!current) {
+        throw new NotFoundException("Order not found");
+      }
+      if (["completed", "cancelled"].includes(current.status)) {
+        throw new ConflictException(
+          "Order is closed — cannot add a complimentary item",
+        );
+      }
+      const paid = await tx.payment.count({
+        where: { orderId: id, status: "completed" },
+      });
+      if (paid > 0) {
+        throw new ConflictException(
+          "Order already has payments — cannot add a complimentary item",
+        );
+      }
+
+      const [priced] = await this.priceItems(
+        tx,
+        [{ productId, quantity: 1 } as OrderItemInputDto],
+        current.branchId,
+        orderChannelOf(current.type),
+      );
+
+      await tx.orderItem.create({
+        data: {
+          tenantId,
+          orderId: id,
+          productId: priced.productId,
+          productSnapshot: {
+            ...priced.productSnapshot,
+            price: "0.00",
+            complimentary: true,
+          },
+          quantity: 1,
+          unitPrice: "0",
+          lineTotal: "0",
+          unitCost:
+            priced.unitCostUnits !== null
+              ? costUnitsToSar(priced.unitCostUnits)
+              : null,
+          lineCost:
+            priced.lineCostUnits !== null
+              ? costUnitsToSar(priced.lineCostUnits)
+              : null,
+          notes: reason,
+        },
+      });
+
+      // The free line contributes 0 to subtotal/VAT/total — nothing else to recompute.
+      return tx.order.update({
+        where: { id },
+        data: { updatedBy: actor },
+        include: ORDER_INCLUDE,
+      });
+    });
+
+    await this.audit.log({
+      action: "order.complimentary_item_added",
+      entityType: "order",
+      entityId: id,
+      branchId: order.branchId,
+      meta: { productId, reason },
+    });
+    this.events.emit(DOMAIN_EVENTS.ORDER_STATUS_CHANGED, {
+      tenantId,
+      branchId: order.branchId,
+      order,
+    });
+    return order;
+  }
+
+  /**
    * Replaces the item list of a NOT-YET-CONFIRMED order (status = new).
    * Items are re-validated and re-priced against the catalog; totals and
    * any existing percentage discount are recomputed.
@@ -384,7 +565,9 @@ export class OrderingService {
     const actor = actorOrNull(ctx.userId);
 
     const order = await this.prisma.scopedTransaction(async (tx) => {
-      const current = await tx.order.findFirst({ where: { id, deletedAt: null } });
+      const current = await tx.order.findFirst({
+        where: { id, deletedAt: null },
+      });
       if (!current) {
         throw new NotFoundException("Order not found");
       }
@@ -394,8 +577,16 @@ export class OrderingService {
         );
       }
 
-      const priced = await this.priceItems(tx, items, current.branchId);
-      const subtotalHalalas = priced.reduce((sum, item) => sum + item.lineTotalHalalas, 0);
+      const priced = await this.priceItems(
+        tx,
+        items,
+        current.branchId,
+        orderChannelOf(current.type),
+      );
+      const subtotalHalalas = priced.reduce(
+        (sum, item) => sum + item.lineTotalHalalas,
+        0,
+      );
 
       let discountHalalas = 0;
       if (current.discountType === "percentage" && current.discountValue) {
@@ -405,19 +596,25 @@ export class OrderingService {
       } else if (current.discountType === "fixed" && current.discountValue) {
         discountHalalas = sarToHalalas(current.discountValue.toString());
         if (discountHalalas > subtotalHalalas) {
-          throw new ConflictException("Existing fixed discount exceeds the new subtotal — remove it first");
+          throw new ConflictException(
+            "Existing fixed discount exceeds the new subtotal — remove it first",
+          );
         }
       }
       const totalHalalas = subtotalHalalas - discountHalalas;
 
-      await tx.orderItemModifier.deleteMany({ where: { orderItem: { orderId: id } } });
+      await tx.orderItemModifier.deleteMany({
+        where: { orderItem: { orderId: id } },
+      });
       await tx.orderItem.deleteMany({ where: { orderId: id } });
       return tx.order.update({
         where: { id },
         data: {
           subtotal: halalasToSar(subtotalHalalas),
           discount: halalasToSar(discountHalalas),
-          vatAmount: halalasToSar(vatFromGross(totalHalalas, Number(current.vatRate))),
+          vatAmount: halalasToSar(
+            vatFromGross(totalHalalas, Number(current.vatRate)),
+          ),
           total: halalasToSar(totalHalalas),
           updatedBy: actor,
           items: {
@@ -428,8 +625,14 @@ export class OrderingService {
               quantity: item.quantity,
               unitPrice: halalasToSar(item.unitPriceHalalas),
               lineTotal: halalasToSar(item.lineTotalHalalas),
-              unitCost: item.unitCostUnits !== null ? costUnitsToSar(item.unitCostUnits) : null,
-              lineCost: item.lineCostUnits !== null ? costUnitsToSar(item.lineCostUnits) : null,
+              unitCost:
+                item.unitCostUnits !== null
+                  ? costUnitsToSar(item.unitCostUnits)
+                  : null,
+              lineCost:
+                item.lineCostUnits !== null
+                  ? costUnitsToSar(item.lineCostUnits)
+                  : null,
               notes: item.notes,
               modifiers: {
                 create: item.modifiers.map((modifier) => ({
@@ -452,6 +655,683 @@ export class OrderingService {
       entityId: id,
       branchId: order.branchId,
       meta: { itemCount: items.length, total: order.total.toString() },
+    });
+    this.events.emit(DOMAIN_EVENTS.ORDER_STATUS_CHANGED, {
+      tenantId,
+      branchId: order.branchId,
+      order,
+    });
+    return order;
+  }
+
+  /**
+   * Appends a new round of items to an ALREADY-EXISTING order — the shared
+   * table-session case: several phones, each scanning the same table's QR,
+   * keep adding to the SAME real order over the course of one meal, rather
+   * than each opening its own separate order/receipt.
+   *
+   * Concurrency: two phones submitting at the same instant is the expected
+   * case here, not an edge case, so this takes a real row lock
+   * (`SELECT ... FOR UPDATE`) on the order for the duration of the
+   * transaction instead of the optimistic read-then-write every other
+   * mutation in this file uses — with two participants racing, optimistic
+   * writes would let the second call silently clobber the first's items
+   * (a lost update). The lock serializes the two calls; the second one
+   * proceeds against the first's already-committed totals, so both rounds
+   * always land. Idempotency (`OrderAppendLog`) is checked AFTER acquiring
+   * the lock, so a retried request for a round already applied is a no-op
+   * rather than a second lock/append.
+   *
+   * Deliberately rejects if a discount is already on the order: a
+   * percentage discount would need re-deriving against a growing subtotal
+   * on every single append, which either drifts under rounding or requires
+   * yet another moving part — simpler and safer to require discounts be
+   * applied once, at checkout, after the table stops ordering (removeDiscount
+   * un-blocks this if it must be re-opened).
+   *
+   * If the kitchen/floor had already marked the ticket `ready`/`served`,
+   * new items reopen it to `confirmed` — the same physical ticket picks up
+   * a new line rather than silently sitting in a "done" column.
+   */
+  async appendItems(
+    orderId: string,
+    items: OrderItemInputDto[],
+    participantPhone: string | null,
+    idempotencyKey: string,
+  ) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const actor = actorOrNull(ctx.userId);
+
+    if (
+      !idempotencyKey ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 128
+    ) {
+      throw new BadRequestException(
+        "Idempotency-Key header is required (8-128 chars)",
+      );
+    }
+
+    const order = await this.prisma.scopedTransaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM orders WHERE id = ${orderId}::uuid FOR UPDATE
+      `;
+      if (locked.length === 0) {
+        throw new NotFoundException("Order not found");
+      }
+
+      // Idempotent replay: a round already applied under this key is a no-op.
+      try {
+        await tx.orderAppendLog.create({
+          data: { tenantId, orderId, idempotencyKey },
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          return tx.order.findFirstOrThrow({
+            where: { id: orderId },
+            include: ORDER_INCLUDE,
+          });
+        }
+        throw error;
+      }
+
+      const current = await tx.order.findFirst({
+        where: { id: orderId, deletedAt: null },
+      });
+      if (!current) {
+        throw new NotFoundException("Order not found");
+      }
+      // A cashier appending on behalf of a specific diner (not just the
+      // guest QR flow, which already does this itself) still needs that
+      // phone registered as a participant — otherwise an equal split or
+      // the open-sessions view would silently miss them.
+      if (participantPhone && current.tableSessionId) {
+        await tx.tableSessionParticipant.upsert({
+          where: {
+            tableSessionId_phone: {
+              tableSessionId: current.tableSessionId,
+              phone: participantPhone,
+            },
+          },
+          update: { lastActivityAt: new Date() },
+          create: {
+            tenantId,
+            branchId: current.branchId,
+            tableSessionId: current.tableSessionId,
+            phone: participantPhone,
+          },
+        });
+      }
+      return this.appendItemsCore(
+        tx,
+        tenantId,
+        actor,
+        current,
+        items,
+        participantPhone,
+      );
+    });
+
+    await this.audit.log({
+      action: "order.items_appended",
+      entityType: "order",
+      entityId: orderId,
+      branchId: order.branchId,
+      meta: {
+        itemCount: items.length,
+        participantPhone,
+        total: order.total.toString(),
+      },
+    });
+    this.events.emit(DOMAIN_EVENTS.ORDER_STATUS_CHANGED, {
+      tenantId,
+      branchId: order.branchId,
+      order,
+    });
+    return order;
+  }
+
+  /**
+   * Core append math, shared by `appendItems` (its own row-lock + idempotency
+   * check above) and `orderForTable` (whose table-row-lock already serializes
+   * everything for that table, so no separate order lock is needed there).
+   */
+  private async appendItemsCore(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    actor: string | null,
+    current: {
+      id: string;
+      branchId: string;
+      status: OrderStatus;
+      discountType: string | null;
+      subtotal: Prisma.Decimal;
+      vatRate: Prisma.Decimal;
+    },
+    items: OrderItemInputDto[],
+    participantPhone: string | null,
+  ) {
+    if (["completed", "cancelled", "refunded"].includes(current.status)) {
+      throw new ConflictException(
+        "Order is closed — this table's bill was already settled, start a new session",
+      );
+    }
+    if (current.discountType) {
+      throw new ConflictException(
+        "Remove the order's discount before adding more items, then reapply it at checkout",
+      );
+    }
+
+    // Only ever called for a table-session's dine-in order (see orderForTable).
+    const priced = await this.priceItems(
+      tx,
+      items,
+      current.branchId,
+      "dine_in",
+    );
+    const deltaSubtotalHalalas = priced.reduce(
+      (sum, item) => sum + item.lineTotalHalalas,
+      0,
+    );
+    const newSubtotalHalalas =
+      sarToHalalas(current.subtotal.toString()) + deltaSubtotalHalalas;
+    const newTotalHalalas = newSubtotalHalalas; // no discount possible here (blocked above)
+    const newVatHalalas = vatFromGross(
+      newTotalHalalas,
+      Number(current.vatRate),
+    );
+
+    const reopen = current.status === "ready" || current.status === "served";
+
+    return tx.order.update({
+      where: { id: current.id },
+      data: {
+        subtotal: halalasToSar(newSubtotalHalalas),
+        vatAmount: halalasToSar(newVatHalalas),
+        total: halalasToSar(newTotalHalalas),
+        updatedBy: actor,
+        ...(reopen ? { status: "confirmed" } : {}),
+        items: {
+          create: priced.map((item) => ({
+            tenantId,
+            productId: item.productId,
+            productSnapshot: item.productSnapshot,
+            quantity: item.quantity,
+            unitPrice: halalasToSar(item.unitPriceHalalas),
+            lineTotal: halalasToSar(item.lineTotalHalalas),
+            unitCost:
+              item.unitCostUnits !== null
+                ? costUnitsToSar(item.unitCostUnits)
+                : null,
+            lineCost:
+              item.lineCostUnits !== null
+                ? costUnitsToSar(item.lineCostUnits)
+                : null,
+            notes: item.notes,
+            participantPhone,
+            modifiers: {
+              create: item.modifiers.map((modifier) => ({
+                tenantId,
+                modifierId: modifier.modifierId,
+                modifierSnapshot: modifier.snapshot,
+                priceAdjustment: halalasToSar(modifier.adjustmentHalalas),
+              })),
+            },
+          })),
+        },
+        ...(reopen
+          ? {
+              statusHistory: {
+                create: {
+                  tenantId,
+                  fromStatus: current.status,
+                  toStatus: "confirmed",
+                  changedBy: actor,
+                  reason: "New items added to the order",
+                },
+              },
+            }
+          : {}),
+      },
+      include: ORDER_INCLUDE,
+    });
+  }
+
+  /**
+   * The single entry point for shared table-session ordering — used by both
+   * the guest QR flow and a cashier's "add to this table" action from the
+   * POS. Locks the TABLE row for the duration of the transaction (not just
+   * the order): two phones scanning the same table's QR at the same instant
+   * must never both conclude "no session/order exists yet" and each create
+   * their own — the loser has to see the winner's session and order and
+   * append to it instead. `Order.idempotencyKey` is checked BEFORE deciding
+   * create-vs-append (not just inside the create branch), which is what
+   * makes a network retry safe even though the retry might now see a
+   * different state (an order that didn't exist on the first attempt) than
+   * the original call did.
+   */
+  async orderForTable(
+    tableId: string,
+    items: OrderItemInputDto[],
+    participantPhone: string,
+    opts: { source: OrderSource; customerName?: string; notes?: string },
+    idempotencyKey: string,
+  ) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const actor = actorOrNull(ctx.userId);
+
+    if (
+      !idempotencyKey ||
+      idempotencyKey.length < 8 ||
+      idempotencyKey.length > 128
+    ) {
+      throw new BadRequestException(
+        "Idempotency-Key header is required (8-128 chars)",
+      );
+    }
+
+    // Retried create: this exact key already produced an order (any table/session).
+    const existingByKey = await this.prisma
+      .forTenant(tenantId)
+      .order.findFirst({
+        where: { idempotencyKey },
+      });
+    if (existingByKey) {
+      const session = existingByKey.tableSessionId
+        ? await this.prisma.forTenant(tenantId).tableSession.findUnique({
+            where: { id: existingByKey.tableSessionId },
+          })
+        : null;
+      return {
+        order: await this.get(existingByKey.id),
+        session,
+        created: true,
+      };
+    }
+
+    await this.limits.assertCanCreateOrder(tenantId);
+
+    // Checked once, outside the retry loop, for BOTH the first order in this
+    // session and any later round appended to it — dine-in hours/pause
+    // gates the whole session, not just its first order.
+    const tableForHoursCheck = await this.prisma.scoped.table.findFirst({
+      where: { id: tableId, deletedAt: null },
+      select: { branchId: true },
+    });
+    if (tableForHoursCheck) {
+      await this.businessHours.assertChannelOpen(
+        tableForHoursCheck.branchId,
+        "dine_in",
+      );
+    }
+
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const result = await this.prisma.scopedTransaction(async (tx) => {
+          const lockedTable = await tx.$queryRaw<
+            { id: string; branch_id: string; status: string }[]
+          >`
+            SELECT id, branch_id, status FROM tables WHERE id = ${tableId}::uuid FOR UPDATE
+          `;
+          if (lockedTable.length === 0) {
+            throw new NotFoundException("Table not found");
+          }
+          if (lockedTable[0].status === "disabled") {
+            throw new ConflictException("Table is disabled");
+          }
+          const branchId = lockedTable[0].branch_id;
+
+          let session = await tx.tableSession.findFirst({
+            where: { tableId, closedAt: null },
+          });
+          if (!session) {
+            try {
+              session = await tx.tableSession.create({
+                data: { tenantId, branchId, tableId, openedBy: actor },
+              });
+            } catch (error) {
+              if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === "P2002"
+              ) {
+                session = await tx.tableSession.findFirstOrThrow({
+                  where: { tableId, closedAt: null },
+                });
+              } else {
+                throw error;
+              }
+            }
+          }
+          if (lockedTable[0].status !== "occupied") {
+            await tx.table.update({
+              where: { id: tableId },
+              data: { status: "occupied" },
+            });
+          }
+
+          await tx.tableSessionParticipant.upsert({
+            where: {
+              tableSessionId_phone: {
+                tableSessionId: session.id,
+                phone: participantPhone,
+              },
+            },
+            update: {
+              lastActivityAt: new Date(),
+              ...(opts.customerName ? { name: opts.customerName } : {}),
+            },
+            create: {
+              tenantId,
+              branchId,
+              tableSessionId: session.id,
+              phone: participantPhone,
+              name: opts.customerName,
+            },
+          });
+          await tx.tableSession.update({
+            where: { id: session.id },
+            data: { lastActivityAt: new Date(), staleFlaggedAt: null },
+          });
+
+          const activeOrder = await tx.order.findFirst({
+            where: {
+              tableSessionId: session.id,
+              status: { notIn: ["completed", "cancelled", "refunded"] },
+            },
+          });
+
+          if (!activeOrder) {
+            const created = await this.createInTransaction(
+              tx,
+              {
+                type: "dine_in",
+                tableId,
+                items,
+                customerName: opts.customerName,
+                customerPhone: participantPhone,
+              },
+              { source: opts.source },
+              tenantId,
+              actor,
+              idempotencyKey,
+            );
+            await tx.orderItem.updateMany({
+              where: { orderId: created.id },
+              data: { participantPhone },
+            });
+            return {
+              orderId: created.id,
+              sessionId: session.id,
+              created: true as const,
+            };
+          }
+
+          try {
+            await tx.orderAppendLog.create({
+              data: { tenantId, orderId: activeOrder.id, idempotencyKey },
+            });
+          } catch (error) {
+            if (
+              error instanceof Prisma.PrismaClientKnownRequestError &&
+              error.code === "P2002"
+            ) {
+              return {
+                orderId: activeOrder.id,
+                sessionId: session.id,
+                created: false as const,
+              };
+            }
+            throw error;
+          }
+          await this.appendItemsCore(
+            tx,
+            tenantId,
+            actor,
+            activeOrder,
+            items,
+            participantPhone,
+          );
+          return {
+            orderId: activeOrder.id,
+            sessionId: session.id,
+            created: false as const,
+          };
+        });
+
+        const order = await this.get(result.orderId);
+        if (result.created) {
+          await this.audit.log({
+            tenantId,
+            action: "order.created",
+            entityType: "order",
+            entityId: order.id,
+            branchId: order.branchId,
+            meta: {
+              orderNumber: order.orderNumber,
+              source: opts.source,
+              total: order.total.toString(),
+            },
+          });
+          this.events.emit(DOMAIN_EVENTS.ORDER_CREATED, {
+            tenantId,
+            branchId: order.branchId,
+            order,
+          });
+        } else {
+          await this.audit.log({
+            tenantId,
+            action: "order.items_appended",
+            entityType: "order",
+            entityId: order.id,
+            branchId: order.branchId,
+            meta: {
+              itemCount: items.length,
+              participantPhone,
+              total: order.total.toString(),
+            },
+          });
+          this.events.emit(DOMAIN_EVENTS.ORDER_STATUS_CHANGED, {
+            tenantId,
+            branchId: order.branchId,
+            order,
+          });
+        }
+        return { order, sessionId: result.sessionId };
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002" &&
+          attempt < NUMBER_CONFLICT_RETRIES
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Read-only bill-split suggestion for a shared table-session order — the
+   * cashier still charges each amount through the existing multi-tender
+   * `POST /orders/:id/payments` (one call per person); this only computes
+   * how much. Items with no `participantPhone` (e.g. a cashier-added round
+   * with nobody picked) are pooled into an implicit "shared" share split
+   * equally among everyone, in both modes.
+   */
+  async computeSplit(orderId: string, mode: "equal" | "by_item") {
+    const order = await this.prisma.scoped.order.findFirst({
+      where: { id: orderId, deletedAt: null },
+      include: {
+        items: {
+          select: {
+            lineTotal: true,
+            participantPhone: true,
+            refundedQuantity: true,
+            quantity: true,
+          },
+        },
+      },
+    });
+    if (!order) {
+      throw new NotFoundException("Order not found");
+    }
+
+    const participants = order.tableSessionId
+      ? await this.prisma.scoped.tableSessionParticipant.findMany({
+          where: { tableSessionId: order.tableSessionId },
+          orderBy: { joinedAt: "asc" },
+          select: { phone: true, name: true },
+        })
+      : [];
+    // A refund never rewrites Order.total (the original issued amount is
+    // immutable, same as any invoice) — it's tracked separately as a credit
+    // note against the order's receipt. The split must reflect what's
+    // actually still owed, so net any credit notes out of the total here.
+    const receipt = await this.prisma.scoped.receipt.findUnique({
+      where: { orderId },
+      select: { id: true },
+    });
+    const creditNotes = receipt
+      ? await this.prisma.scoped.creditNote.aggregate({
+          where: { receiptId: receipt.id },
+          _sum: { total: true },
+        })
+      : null;
+    const refundedHalalas = creditNotes?._sum.total
+      ? sarToHalalas(creditNotes._sum.total.toString())
+      : 0;
+    const totalHalalas = sarToHalalas(order.total.toString()) - refundedHalalas;
+
+    if (participants.length === 0) {
+      // No session (or nobody recorded as a participant) — nothing to split.
+      return {
+        mode,
+        total: halalasToSar(totalHalalas),
+        participants: [
+          {
+            phone: order.customerPhone,
+            name: order.customerName,
+            amount: halalasToSar(totalHalalas),
+          },
+        ],
+      };
+    }
+
+    if (mode === "equal") {
+      const count = participants.length;
+      const base = Math.floor(totalHalalas / count);
+      let remainder = totalHalalas - base * count;
+      const shares = participants.map((p) => {
+        const extra = remainder > 0 ? 1 : 0;
+        if (remainder > 0) remainder -= 1;
+        return { phone: p.phone, name: p.name, amountHalalas: base + extra };
+      });
+      return {
+        mode,
+        total: halalasToSar(totalHalalas),
+        participants: shares.map((s) => ({
+          phone: s.phone,
+          name: s.name,
+          amount: halalasToSar(s.amountHalalas),
+        })),
+      };
+    }
+
+    // by_item: each participant pays for their own (unrefunded) lines, plus
+    // an equal share of anything nobody was tagged for. A discount changes
+    // the order's total relative to the raw item sum, so every share is
+    // scaled by that same ratio to spread the discount fairly.
+    const rawByPhone = new Map<string, number>();
+    let sharedRawHalalas = 0;
+    let rawSubtotalHalalas = 0;
+    for (const item of order.items) {
+      const unitHalalas = Math.round(
+        sarToHalalas(item.lineTotal.toString()) / item.quantity,
+      );
+      const outstandingQuantity = item.quantity - item.refundedQuantity;
+      const outstandingHalalas = unitHalalas * outstandingQuantity;
+      rawSubtotalHalalas += outstandingHalalas;
+      if (item.participantPhone) {
+        rawByPhone.set(
+          item.participantPhone,
+          (rawByPhone.get(item.participantPhone) ?? 0) + outstandingHalalas,
+        );
+      } else {
+        sharedRawHalalas += outstandingHalalas;
+      }
+    }
+    const sharedPerHeadHalalas =
+      participants.length > 0 ? sharedRawHalalas / participants.length : 0;
+    const ratio =
+      rawSubtotalHalalas > 0 ? totalHalalas / rawSubtotalHalalas : 1;
+
+    let allocated = 0;
+    const shares = participants.map((p, index) => {
+      const rawShare = (rawByPhone.get(p.phone) ?? 0) + sharedPerHeadHalalas;
+      const isLast = index === participants.length - 1;
+      const amountHalalas = isLast
+        ? totalHalalas - allocated
+        : Math.round(rawShare * ratio);
+      if (!isLast) allocated += amountHalalas;
+      return { phone: p.phone, name: p.name, amountHalalas };
+    });
+
+    return {
+      mode,
+      total: halalasToSar(totalHalalas),
+      participants: shares.map((s) => ({
+        phone: s.phone,
+        name: s.name,
+        amount: halalasToSar(s.amountHalalas),
+      })),
+    };
+  }
+
+  /**
+   * Attaches/updates a customer on an already-created, still-open order —
+   * the POS "add customer at checkout" action, for a walk-in who wasn't
+   * identified when the order was first created. This is what lets the
+   * loyalty program's manual redemption (which reads the order's own
+   * customerPhone) work for a dine-in/walk-in sale, not just guest/delivery
+   * orders that already collect a phone number up front.
+   */
+  async setCustomer(
+    id: string,
+    customerPhone: string,
+    customerName: string | undefined,
+  ) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const actor = actorOrNull(ctx.userId);
+
+    const order = await this.prisma.scopedTransaction(async (tx) => {
+      const current = await tx.order.findFirst({
+        where: { id, deletedAt: null },
+      });
+      if (!current) {
+        throw new NotFoundException("Order not found");
+      }
+      if (["completed", "cancelled"].includes(current.status)) {
+        throw new ConflictException("Order is closed");
+      }
+      return tx.order.update({
+        where: { id },
+        data: { customerPhone, customerName, updatedBy: actor },
+        include: ORDER_INCLUDE,
+      });
+    });
+
+    await this.audit.log({
+      action: "order.customer_set",
+      entityType: "order",
+      entityId: id,
+      branchId: order.branchId,
+      meta: { customerPhone },
     });
     this.events.emit(DOMAIN_EVENTS.ORDER_STATUS_CHANGED, {
       tenantId,
@@ -502,11 +1382,16 @@ export class OrderingService {
         }));
       tableSessionId = session.id;
       if (table.status !== "occupied") {
-        await tx.table.update({ where: { id: table.id }, data: { status: "occupied" } });
+        await tx.table.update({
+          where: { id: table.id },
+          data: { status: "occupied" },
+        });
       }
     } else {
       if (!dto.branchId) {
-        throw new BadRequestException("branchId is required for non-dine-in orders");
+        throw new BadRequestException(
+          "branchId is required for non-dine-in orders",
+        );
       }
       const branch = await tx.branch.findFirst({
         where: { id: dto.branchId, deletedAt: null },
@@ -517,18 +1402,127 @@ export class OrderingService {
       branchId = branch.id;
     }
 
-    const priced = await this.priceItems(tx, dto.items, branchId);
+    const priced = await this.priceItems(
+      tx,
+      dto.items,
+      branchId,
+      orderChannelOf(dto.type),
+    );
+    const itemsSubtotalHalalas = priced.reduce(
+      (sum, item) => sum + item.lineTotalHalalas,
+      0,
+    );
+
+    // First-party delivery (guest-initiated, never a delivery-platform
+    // webhook — those carry opts.delivery instead and skip all of this):
+    // validate minimum order, delivery radius, and payment method against
+    // the branch's own delivery config, and fold the fee into the total.
+    let deliveryFeeHalalas = 0;
+    if (dto.type === "delivery" && !opts.delivery) {
+      const branch = await tx.branch.findFirstOrThrow({
+        where: { id: branchId },
+      });
+      const minOrderHalalas = sarToHalalas(
+        branch.deliveryMinOrderAmount.toString(),
+      );
+      if (itemsSubtotalHalalas < minOrderHalalas) {
+        throw new ConflictException(
+          `Order subtotal is below this branch's minimum delivery order (${branch.deliveryMinOrderAmount} SAR)`,
+        );
+      }
+      if (
+        branch.deliveryRadiusKm != null &&
+        branch.lat != null &&
+        branch.lng != null &&
+        dto.deliveryLat != null &&
+        dto.deliveryLng != null
+      ) {
+        const distanceKm = BusinessHoursService.distanceKm(
+          Number(branch.lat),
+          Number(branch.lng),
+          dto.deliveryLat,
+          dto.deliveryLng,
+        );
+        if (distanceKm > Number(branch.deliveryRadiusKm)) {
+          throw new ConflictException(
+            "This address is outside the branch's delivery coverage area",
+          );
+        }
+      }
+      const allowedMethods = (branch.selfServicePaymentMethods as
+        | string[]
+        | null) ?? ["cash"];
+      const method = dto.intendedPaymentMethod ?? "cash";
+      if (!allowedMethods.includes(method)) {
+        throw new BadRequestException(
+          `Payment method "${method}" is not accepted for delivery at this branch`,
+        );
+      }
+      deliveryFeeHalalas = sarToHalalas(branch.deliveryFeeAmount.toString());
+    } else if (
+      dto.type === "takeaway" &&
+      !opts.delivery &&
+      dto.intendedPaymentMethod
+    ) {
+      const branch = await tx.branch.findFirstOrThrow({
+        where: { id: branchId },
+      });
+      const allowedMethods = (branch.selfServicePaymentMethods as
+        | string[]
+        | null) ?? ["cash"];
+      if (!allowedMethods.includes(dto.intendedPaymentMethod)) {
+        throw new BadRequestException(
+          `Payment method "${dto.intendedPaymentMethod}" is not accepted for pickup at this branch`,
+        );
+      }
+    }
+
+    // Coupon code (first-party takeaway/delivery checkout only — a cashier
+    // never sends one, and the guest table/QR flow has no couponCode field
+    // on its DTO at all). Validated and redeemed atomically here, under a
+    // row lock on the coupon, so two concurrent orders can never both claim
+    // the last redemption slot; computed off the item subtotal (not the
+    // delivery fee) but subtracted from the full charged total below, same
+    // as a staff-applied discount.
+    let couponId: string | null = null;
+    let couponDiscountHalalas = 0;
+    if (
+      dto.couponCode &&
+      !opts.delivery &&
+      (dto.type === "takeaway" || dto.type === "delivery")
+    ) {
+      const redemption = await this.coupons.redeemInTransaction(
+        tx,
+        tenantId,
+        dto.couponCode,
+        {
+          channel: dto.type,
+          subtotalHalalas: itemsSubtotalHalalas,
+          customerPhone: dto.customerPhone,
+        },
+      );
+      couponId = redemption.couponId;
+      couponDiscountHalalas = redemption.discountHalalas;
+    }
 
     const tenant = await tx.tenant.findFirst({ where: { id: tenantId } });
     const vatRate = Number(tenant?.vatRate ?? 15);
-    const subtotalHalalas = priced.reduce((sum, item) => sum + item.lineTotalHalalas, 0);
-    const vatHalalas = vatFromGross(subtotalHalalas, vatRate);
+    const subtotalHalalas = itemsSubtotalHalalas + deliveryFeeHalalas;
+    const totalHalalas = subtotalHalalas - couponDiscountHalalas;
+    const vatHalalas = vatFromGross(totalHalalas, vatRate);
 
-    // Daily sequential number per branch.
+    // Daily sequential number per branch. Two concurrent order-creation
+    // transactions for the SAME branch (two POS terminals, or a walk-in and
+    // a QR order landing at once) would otherwise both read the same
+    // "last" number and collide on the (branchId, orderDate, orderNumber)
+    // unique constraint — row-locking the branch itself (same FOR UPDATE
+    // idiom PurchasesService/StockTransfersService already use) serializes
+    // the read-then-increment per branch without blocking other branches.
     const today = new Date();
     const orderDate = new Date(
       Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
     );
+    await tx.$queryRaw`SELECT id FROM branches WHERE id = ${branchId}::uuid FOR UPDATE`;
     const last = await tx.order.findFirst({
       where: { branchId, orderDate },
       orderBy: { orderNumber: "desc" },
@@ -549,13 +1543,39 @@ export class OrderingService {
         customerPhone: dto.customerPhone,
         notes: dto.notes,
         subtotal: halalasToSar(subtotalHalalas),
-        discount: "0",
+        discount: halalasToSar(couponDiscountHalalas),
         vatRate: vatRate.toFixed(2),
         vatAmount: halalasToSar(vatHalalas),
-        total: halalasToSar(subtotalHalalas),
+        total: halalasToSar(totalHalalas),
         idempotencyKey,
         placedBy: actor,
         createdBy: actor,
+        ...(couponId
+          ? {
+              couponId,
+              discountType: "coupon",
+              discountReason: `Coupon: ${dto.couponCode}`,
+            }
+          : {}),
+        ...(opts.delivery
+          ? {
+              externalOrderId: opts.delivery.externalOrderId,
+              deliveryProvider: opts.delivery.provider,
+              deliveryCommission: opts.delivery.commission,
+            }
+          : {}),
+        ...(dto.type === "delivery" && !opts.delivery
+          ? {
+              deliveryAddress: dto.deliveryAddress,
+              deliveryLat: dto.deliveryLat,
+              deliveryLng: dto.deliveryLng,
+              deliveryFeeAmount: halalasToSar(deliveryFeeHalalas),
+              intendedPaymentMethod: dto.intendedPaymentMethod ?? "cash",
+            }
+          : {}),
+        ...(dto.type === "takeaway" && !opts.delivery
+          ? { intendedPaymentMethod: dto.intendedPaymentMethod ?? "cash" }
+          : {}),
         items: {
           create: priced.map((item) => ({
             tenantId,
@@ -564,8 +1584,14 @@ export class OrderingService {
             quantity: item.quantity,
             unitPrice: halalasToSar(item.unitPriceHalalas),
             lineTotal: halalasToSar(item.lineTotalHalalas),
-            unitCost: item.unitCostUnits !== null ? costUnitsToSar(item.unitCostUnits) : null,
-            lineCost: item.lineCostUnits !== null ? costUnitsToSar(item.lineCostUnits) : null,
+            unitCost:
+              item.unitCostUnits !== null
+                ? costUnitsToSar(item.unitCostUnits)
+                : null,
+            lineCost:
+              item.lineCostUnits !== null
+                ? costUnitsToSar(item.lineCostUnits)
+                : null,
             notes: item.notes,
             modifiers: {
               create: item.modifiers.map((modifier) => ({
@@ -578,7 +1604,12 @@ export class OrderingService {
           })),
         },
         statusHistory: {
-          create: { tenantId, fromStatus: null, toStatus: "new", changedBy: actor },
+          create: {
+            tenantId,
+            fromStatus: null,
+            toStatus: "new",
+            changedBy: actor,
+          },
         },
       },
       include: ORDER_INCLUDE,
@@ -586,43 +1617,97 @@ export class OrderingService {
     return order;
   }
 
-  /** Validates items against the catalog and freezes snapshots + prices. */
+  /**
+   * Validates items against the catalog and freezes snapshots + prices.
+   * `channel` is omitted for POS/staff orders (no per-channel gate/price
+   * applies there — only the branch-level ProductBranchSetting does).
+   */
   private async priceItems(
     tx: Prisma.TransactionClient,
     items: OrderItemInputDto[],
     branchId: string,
+    channel?: OrderingChannel,
   ) {
-    const productIds = [...new Set(items.map((item) => item.productId))];
-    const products = await tx.product.findMany({
-      where: { id: { in: productIds }, deletedAt: null, isActive: true },
-      include: {
-        branchSettings: { where: { branchId } },
-        modifierGroups: {
-          include: {
-            group: {
-              include: { modifiers: { where: { deletedAt: null, isActive: true } } },
+    const productInclude = {
+      branchSettings: { where: { branchId } },
+      channelOverrides: channel ? { where: { branchId, channel } } : false,
+      modifierGroups: {
+        include: {
+          group: {
+            include: {
+              modifiers: {
+                where: { deletedAt: null, isActive: true },
+                include: { branchSettings: { where: { branchId } } },
+              },
             },
           },
         },
-        // Food-cost snapshot (Phase 7): products without a recipe simply have
-        // an empty array here, and unitCost/lineCost stay null below.
-        recipeItems: { include: { ingredient: true, unit: true } },
       },
-    });
-    const productById = new Map(products.map((product) => [product.id, product]));
+      // Food-cost snapshot (Phase 7): products without a recipe simply have
+      // an empty array here, and unitCost/lineCost stay null below.
+      recipeItems: { include: { ingredient: true, unit: true } },
+      // Empty for a non-combo product, and for a combo's own components (no
+      // nesting — enforced in ProductsService.setComboComponents).
+      comboComponents: { select: { componentProductId: true, quantity: true } },
+    } satisfies Prisma.ProductInclude;
 
-    return items.map((item) => {
-      const product = productById.get(item.productId);
-      if (!product) {
-        throw new NotFoundException(`Product not found or inactive: ${item.productId}`);
+    const productIds = [...new Set(items.map((item) => item.productId))];
+    const products = await tx.product.findMany({
+      where: { id: { in: productIds }, deletedAt: null, isActive: true },
+      include: productInclude,
+    });
+    const productById = new Map<string, (typeof products)[number]>(
+      products.map((product) => [product.id, product]),
+    );
+
+    // Combo components aren't necessarily in the cart themselves — fetch
+    // whichever ones weren't already pulled in above, with the exact same
+    // branch/channel-scoped include so they price identically to being
+    // ordered directly.
+    const missingComponentIds = [
+      ...new Set(
+        products
+          .flatMap((p) => p.comboComponents.map((c) => c.componentProductId))
+          .filter((id) => !productById.has(id)),
+      ),
+    ];
+    if (missingComponentIds.length > 0) {
+      const componentProducts = await tx.product.findMany({
+        where: {
+          id: { in: missingComponentIds },
+          deletedAt: null,
+          isActive: true,
+        },
+        include: productInclude,
+      });
+      for (const cp of componentProducts) {
+        productById.set(cp.id, cp);
       }
+    }
+
+    type ProductRow = (typeof products)[number];
+
+    /** Prices ONE non-combo cart line against a product already loaded with branch/channel-scoped settings. */
+    const priceRealProduct = (product: ProductRow, item: OrderItemInputDto) => {
       const branchSetting = product.branchSettings[0];
       if (branchSetting && !branchSetting.isAvailable) {
-        throw new ConflictException(`Product "${product.name}" is not available in this branch`);
+        throw new ConflictException(
+          `Product "${product.name}" is not available in this branch`,
+        );
+      }
+      const channelOverride = product.channelOverrides?.[0];
+      if (channelOverride && !channelOverride.isVisible) {
+        throw new ConflictException(
+          `Product "${product.name}" is not available for this ordering channel`,
+        );
       }
 
       const unitPriceHalalas = sarToHalalas(
-        (branchSetting?.priceOverride ?? product.basePrice).toString(),
+        (
+          channelOverride?.priceOverride ??
+          branchSetting?.priceOverride ??
+          product.basePrice
+        ).toString(),
       );
 
       // Validate selected modifiers against the product's attached groups.
@@ -635,7 +1720,9 @@ export class OrderingService {
         .filter((group) => group.deletedAt === null && group.isActive);
       const modifierIndex = new Map(
         attachedGroups.flatMap((group) =>
-          group.modifiers.map((modifier) => [modifier.id, { modifier, group }] as const),
+          group.modifiers.map(
+            (modifier) => [modifier.id, { modifier, group }] as const,
+          ),
         ),
       );
 
@@ -646,13 +1733,22 @@ export class OrderingService {
             `Modifier ${modifierId} is not available for product "${product.name}"`,
           );
         }
+        if (entry.modifier.branchSettings[0]?.isAvailable === false) {
+          throw new ConflictException(
+            `Option "${entry.modifier.name}" is not available in this branch`,
+          );
+        }
         return entry;
       });
 
       // Enforce group selection rules (min/max, required).
       for (const group of attachedGroups) {
-        const count = resolved.filter((entry) => entry.group.id === group.id).length;
-        const min = group.isRequired ? Math.max(group.minSelect, 1) : group.minSelect;
+        const count = resolved.filter(
+          (entry) => entry.group.id === group.id,
+        ).length;
+        const min = group.isRequired
+          ? Math.max(group.minSelect, 1)
+          : group.minSelect;
         if (count < min) {
           throw new BadRequestException(
             `Group "${group.name}" requires at least ${min} selection(s) for "${product.name}"`,
@@ -676,21 +1772,15 @@ export class OrderingService {
         },
       }));
 
-      const adjustments = modifiers.reduce((sum, m) => sum + m.adjustmentHalalas, 0);
+      const adjustments = modifiers.reduce(
+        (sum, m) => sum + m.adjustmentHalalas,
+        0,
+      );
       const lineTotalHalalas = (unitPriceHalalas + adjustments) * item.quantity;
 
       // Food-cost snapshot: frozen from the recipe as it stands right now.
       // null when the product has no recipe defined yet.
-      const unitCostUnits =
-        product.recipeItems.length > 0
-          ? calculateRecipeCostUnits(
-              product.recipeItems.map((recipeItem) => ({
-                quantity: recipeItem.quantity.toString(),
-                unitToBaseFactor: recipeItem.unit.toBaseFactor.toString(),
-                ingredientAverageCost: recipeItem.ingredient.averageCost.toString(),
-              })),
-            )
-          : null;
+      const unitCostUnits = this.recipeCostUnits(product.recipeItems);
 
       return {
         productId: product.id,
@@ -699,7 +1789,8 @@ export class OrderingService {
         unitPriceHalalas,
         lineTotalHalalas,
         unitCostUnits,
-        lineCostUnits: unitCostUnits !== null ? unitCostUnits * item.quantity : null,
+        lineCostUnits:
+          unitCostUnits !== null ? unitCostUnits * item.quantity : null,
         productSnapshot: {
           name: product.name,
           nameEn: product.nameEn,
@@ -708,6 +1799,160 @@ export class OrderingService {
         },
         modifiers,
       };
-    });
+    };
+
+    /**
+     * Expands ONE combo cart line into one priced entry per real component —
+     * nothing downstream (stock deduction, recipe cost, KDS, reports) needs to
+     * know combos exist, since each entry becomes an ordinary OrderItem for a
+     * real product. The combo's own fixed price is split across components
+     * proportionally to their own standalone prices (a "largest remainder"
+     * pass on the last component absorbs any rounding so the parts always
+     * sum to exactly the combo's price) — food cost is computed from each
+     * component's real recipe, completely unaffected by that price split.
+     */
+    const priceCombo = (combo: ProductRow, item: OrderItemInputDto) => {
+      if (item.modifierIds && item.modifierIds.length > 0) {
+        throw new BadRequestException(
+          `Combo "${combo.name}" does not support modifier selection`,
+        );
+      }
+      const branchSetting = combo.branchSettings[0];
+      if (branchSetting && !branchSetting.isAvailable) {
+        throw new ConflictException(
+          `Product "${combo.name}" is not available in this branch`,
+        );
+      }
+      const channelOverride = channel ? combo.channelOverrides?.[0] : undefined;
+      if (channelOverride && !channelOverride.isVisible) {
+        throw new ConflictException(
+          `Product "${combo.name}" is not available for this ordering channel`,
+        );
+      }
+      if (combo.comboComponents.length === 0) {
+        throw new ConflictException(
+          `Combo "${combo.name}" has no components configured`,
+        );
+      }
+
+      const comboUnitPriceHalalas = sarToHalalas(
+        (
+          channelOverride?.priceOverride ??
+          branchSetting?.priceOverride ??
+          combo.basePrice
+        ).toString(),
+      );
+      const comboLineTotalHalalas = comboUnitPriceHalalas * item.quantity;
+
+      // A component's own modifier groups (if it has any as a standalone
+      // menu item) are intentionally not applied here — a combo in this
+      // first version is a fixed bundle with no customer choice at the
+      // component level, only at its own base/branch/channel price.
+      const weighted = combo.comboComponents.map((link) => {
+        const cp = productById.get(link.componentProductId);
+        if (!cp) {
+          throw new NotFoundException(
+            `Combo component not found: ${link.componentProductId}`,
+          );
+        }
+        const cpBranchSetting = cp.branchSettings[0];
+        if (cpBranchSetting && !cpBranchSetting.isAvailable) {
+          throw new ConflictException(
+            `"${cp.name}" (part of combo "${combo.name}") is not available in this branch`,
+          );
+        }
+        const cpChannelOverride = channel
+          ? cp.channelOverrides?.[0]
+          : undefined;
+        if (cpChannelOverride && !cpChannelOverride.isVisible) {
+          throw new ConflictException(
+            `"${cp.name}" (part of combo "${combo.name}") is not available for this ordering channel`,
+          );
+        }
+        const standaloneUnitPriceHalalas = sarToHalalas(
+          (
+            cpChannelOverride?.priceOverride ??
+            cpBranchSetting?.priceOverride ??
+            cp.basePrice
+          ).toString(),
+        );
+        const totalQuantity = link.quantity * item.quantity;
+        return {
+          product: cp,
+          totalQuantity,
+          weight: standaloneUnitPriceHalalas * link.quantity,
+          unitCostUnits: this.recipeCostUnits(cp.recipeItems),
+        };
+      });
+      const totalWeight = weighted.reduce((sum, w) => sum + w.weight, 0);
+
+      let allocatedSoFar = 0;
+      return weighted.map((w, index) => {
+        const isLast = index === weighted.length - 1;
+        const share =
+          totalWeight > 0 ? w.weight / totalWeight : 1 / weighted.length;
+        const lineTotalHalalas = isLast
+          ? comboLineTotalHalalas - allocatedSoFar
+          : Math.round(comboLineTotalHalalas * share);
+        allocatedSoFar += lineTotalHalalas;
+        const unitPriceHalalas =
+          w.totalQuantity > 0
+            ? Math.round(lineTotalHalalas / w.totalQuantity)
+            : 0;
+
+        return {
+          productId: w.product.id,
+          quantity: w.totalQuantity,
+          notes: item.notes,
+          unitPriceHalalas,
+          lineTotalHalalas,
+          unitCostUnits: w.unitCostUnits,
+          lineCostUnits:
+            w.unitCostUnits !== null ? w.unitCostUnits * w.totalQuantity : null,
+          productSnapshot: {
+            name: w.product.name,
+            nameEn: w.product.nameEn,
+            sku: w.product.sku,
+            price: halalasToSar(unitPriceHalalas),
+            comboParentName: combo.name,
+          },
+          modifiers: [] as never[],
+        };
+      });
+    };
+
+    const result: Array<ReturnType<typeof priceRealProduct>> = [];
+    for (const item of items) {
+      const product = productById.get(item.productId);
+      if (!product) {
+        throw new NotFoundException(
+          `Product not found or inactive: ${item.productId}`,
+        );
+      }
+      if (product.isCombo) {
+        result.push(...priceCombo(product, item));
+      } else {
+        result.push(priceRealProduct(product, item));
+      }
+    }
+    return result;
+  }
+
+  private recipeCostUnits(
+    recipeItems: Array<{
+      quantity: Prisma.Decimal;
+      unit: { toBaseFactor: Prisma.Decimal };
+      ingredient: { averageCost: Prisma.Decimal };
+    }>,
+  ): number | null {
+    return recipeItems.length > 0
+      ? calculateRecipeCostUnits(
+          recipeItems.map((recipeItem) => ({
+            quantity: recipeItem.quantity.toString(),
+            unitToBaseFactor: recipeItem.unit.toBaseFactor.toString(),
+            ingredientAverageCost: recipeItem.ingredient.averageCost.toString(),
+          })),
+        )
+      : null;
   }
 }

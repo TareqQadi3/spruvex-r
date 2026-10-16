@@ -88,3 +88,10 @@ export class OpenSessionDto {
   @MaxLength(500)
   notes?: string;
 }
+
+export class CloseSessionDto {
+  /** Close even though the session's order has an unpaid balance. */
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
+}

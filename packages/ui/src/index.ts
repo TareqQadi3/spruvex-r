@@ -17,3 +17,5 @@ export { Switch, type SwitchProps } from "./switch";
 export { Textarea, type TextareaProps } from "./textarea";
 export { Select, type SelectProps } from "./select";
 export { Badge, type BadgeProps } from "./badge";
+export { applyThemeColor } from "./apply-theme";
+export { ImageInput, type ImageInputProps } from "./image-input";

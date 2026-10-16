@@ -4,6 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { EventEmitter2 } from "@nestjs/event-emitter";
+
+import { DOMAIN_EVENTS } from "@spruvex-r/types";
 
 import { AuditService } from "../../shared/audit/audit.service";
 import { PrismaService } from "../../shared/prisma/prisma.service";
@@ -37,6 +40,7 @@ export class ModifiersService {
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     private readonly audit: AuditService,
+    private readonly events: EventEmitter2,
   ) {}
 
   listGroups() {
@@ -47,6 +51,11 @@ export class ModifiersService {
         modifiers: {
           where: { deletedAt: null },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          include: {
+            branchSettings: {
+              select: { branchId: true, isAvailable: true, branch: { select: { name: true, nameEn: true } } },
+            },
+          },
         },
         _count: { select: { products: true } },
       },
@@ -176,6 +185,38 @@ export class ModifiersService {
       meta: { name: modifier.name },
     });
     return { deleted: true };
+  }
+
+  /** Sets whether a single option (e.g. "Beef") is available at one branch — item 2. */
+  async setBranchAvailability(id: string, branchId: string, isAvailable: boolean) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    await this.modifierOrThrow(id);
+    const branch = await this.prisma.scoped.branch.findFirst({ where: { id: branchId, deletedAt: null } });
+    if (!branch) {
+      throw new NotFoundException("Branch not found");
+    }
+
+    const setting = await this.prisma.scoped.modifierBranchSetting.upsert({
+      where: { modifierId_branchId: { modifierId: id, branchId } },
+      create: { tenantId, modifierId: id, branchId, isAvailable, createdBy: ctx.userId },
+      update: { isAvailable, updatedBy: ctx.userId },
+    });
+
+    await this.audit.log({
+      action: "modifier.branch_availability_updated",
+      entityType: "modifier",
+      entityId: id,
+      branchId,
+      meta: { isAvailable },
+    });
+    this.events.emit(DOMAIN_EVENTS.PRODUCT_AVAILABILITY_CHANGED, {
+      tenantId,
+      branchId,
+      modifierId: id,
+      isAvailable,
+    });
+    return setting;
   }
 
   private async groupOrThrow(id: string) {

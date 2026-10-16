@@ -8,7 +8,7 @@ import { Alert, Button, Input, Spinner, Textarea } from "@spruvex-r/ui";
 import { useCart } from "./CartProvider";
 import { useLocale, useLocalizedField } from "./LocaleProvider";
 import { cartTotal, lineTotal, lineUnitPrice } from "@/lib/cart";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, subtractMoney } from "@/lib/money";
 import { ApiError } from "@/lib/api";
 import type { CartLineInput, GuestOrderResult } from "@/lib/types";
 
@@ -17,6 +17,7 @@ export interface CartSubmitContext {
   customerName: string;
   customerPhone?: string;
   items: CartLineInput[];
+  couponCode?: string;
 }
 
 export function CartPageContent({
@@ -24,12 +25,25 @@ export function CartPageContent({
   requirePhone,
   notice,
   onSubmit,
+  initialPhone,
+  onPhoneChange,
+  onValidateCoupon,
 }: {
   currency: string;
-  /** Pickup orders require a phone number; dine-in does not. */
+  /** Pickup orders and shared table-session orders both require a phone
+   * number — it's the identity, not just a delivery contact. */
   requirePhone: boolean;
   notice: string;
   onSubmit: (ctx: CartSubmitContext) => Promise<GuestOrderResult>;
+  /** Pre-fills the phone field (e.g. remembered from this device's last
+   * round at this table) so returning to order more doesn't mean retyping it. */
+  initialPhone?: string;
+  onPhoneChange?: (phone: string) => void;
+  /** Coupon codes exist only for first-party takeaway/delivery checkout —
+   * omit this prop (dine-in) to hide the coupon field entirely. Returns the
+   * server-computed discount for display only; the real redemption and
+   * discount happen again, authoritatively, at order creation. */
+  onValidateCoupon?: (code: string, subtotal: string) => Promise<{ discountAmount: string }>;
 }) {
   const { t } = useLocale();
   const name = useLocalizedField();
@@ -37,14 +51,34 @@ export function CartPageContent({
   const { lines, removeLine, setQuantity, clear } = useCart();
 
   const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerPhone, setCustomerPhone] = useState(initialPhone ?? "");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discountAmount: string } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponBusy, setCouponBusy] = useState(false);
   // Set right before clearing the cart post-submit so this component doesn't
   // flash the "cart is empty" fallback while router.push is still navigating
   // away to the order tracking page.
   const [submitted, setSubmitted] = useState(false);
+
+  async function applyCoupon() {
+    if (!onValidateCoupon || !couponInput.trim() || couponBusy) return;
+    setCouponBusy(true);
+    setCouponError(null);
+    try {
+      const code = couponInput.trim();
+      const { discountAmount } = await onValidateCoupon(code, cartTotal(lines));
+      setAppliedCoupon({ code, discountAmount });
+    } catch (e) {
+      setAppliedCoupon(null);
+      setCouponError(e instanceof ApiError ? e.message : t("common.error"));
+    } finally {
+      setCouponBusy(false);
+    }
+  }
 
   async function submit() {
     if (lines.length === 0 || busy) return;
@@ -59,6 +93,7 @@ export function CartPageContent({
         notes,
         customerName,
         ...(requirePhone ? { customerPhone } : {}),
+        ...(appliedCoupon ? { couponCode: appliedCoupon.code } : {}),
         items: lines.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
@@ -156,7 +191,10 @@ export function CartPageContent({
             type="tel"
             placeholder={t("cart.phone")}
             value={customerPhone}
-            onChange={(e) => setCustomerPhone(e.target.value)}
+            onChange={(e) => {
+              setCustomerPhone(e.target.value);
+              onPhoneChange?.(e.target.value);
+            }}
             required
           />
         )}
@@ -167,14 +205,68 @@ export function CartPageContent({
         />
       </div>
 
+      {onValidateCoupon && (
+        <div className="space-y-2 rounded-xl border bg-card p-3">
+          {appliedCoupon ? (
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium text-primary">
+                {t("cart.couponApplied")}: <span dir="ltr">{appliedCoupon.code}</span>
+              </span>
+              <button
+                type="button"
+                className="text-xs text-destructive underline"
+                onClick={() => {
+                  setAppliedCoupon(null);
+                  setCouponInput("");
+                }}
+              >
+                {t("cart.couponRemove")}
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                dir="ltr"
+                placeholder={t("cart.couponPlaceholder")}
+                value={couponInput}
+                onChange={(e) => setCouponInput(e.target.value)}
+              />
+              <Button type="button" variant="outline" disabled={couponBusy} onClick={applyCoupon}>
+                {couponBusy ? <Spinner /> : t("cart.couponApply")}
+              </Button>
+            </div>
+          )}
+          {couponError && <p className="text-xs text-destructive">{couponError}</p>}
+        </div>
+      )}
+
       <p className="text-center text-sm text-muted-foreground">{notice}</p>
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-card p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
         <div className="mx-auto max-w-lg space-y-3">
           {error && <Alert variant="destructive">{error}</Alert>}
+          {appliedCoupon && (
+            <>
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>{t("cart.subtotal")}</span>
+                <span dir="ltr">{formatMoney(cartTotal(lines), currency)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-primary">
+                <span>{t("cart.discount")}</span>
+                <span dir="ltr">-{formatMoney(appliedCoupon.discountAmount, currency)}</span>
+              </div>
+            </>
+          )}
           <div className="flex items-center justify-between text-lg font-bold">
             <span>{t("cart.total")}</span>
-            <span dir="ltr">{formatMoney(cartTotal(lines), currency)}</span>
+            <span dir="ltr">
+              {formatMoney(
+                appliedCoupon
+                  ? subtractMoney(cartTotal(lines), appliedCoupon.discountAmount)
+                  : cartTotal(lines),
+                currency,
+              )}
+            </span>
           </div>
           <Button size="lg" className="w-full text-base" disabled={busy} onClick={submit}>
             {busy ? <Spinner className="border-primary-foreground" /> : t("cart.submit")}

@@ -50,13 +50,16 @@ export class HandoffService {
   ): Promise<{ tokens: TokenPair }> {
     const record = await this.db.handoffToken.findUnique({
       where: { tokenHash: hashToken(token) },
-      include: { user: { select: { id: true, email: true, isActive: true } } },
+      include: { user: { select: { id: true, email: true, isActive: true, emailVerifiedAt: true } } },
     });
     if (
       !record ||
       record.consumedAt ||
       record.expiresAt < new Date() ||
-      !record.user.isActive
+      !record.user.isActive ||
+      // A trial signup issues the token BEFORE the email OTP is entered —
+      // it must not be a way to skip that verification.
+      !record.user.emailVerifiedAt
     ) {
       throw new UnauthorizedException("Invalid or expired sign-in link");
     }

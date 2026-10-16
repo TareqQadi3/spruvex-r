@@ -9,6 +9,7 @@ import { DOMAIN_EVENTS, type SystemRole } from "@spruvex-r/types";
 
 import { AuditService } from "../../shared/audit/audit.service";
 import { LimitsService } from "../../shared/billing/limits.service";
+import { dashboardUrl } from "../../shared/config/dashboard-url";
 import { ResendService } from "../../shared/email/resend.service";
 import { staffCredentialsEmail, welcomeEmail } from "../../shared/email/templates";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
@@ -17,20 +18,8 @@ import { TenantContextService } from "../../shared/tenancy/tenant-context.servic
 import { normalizeEmail } from "../identity/email-normalization";
 import { hashPassword } from "../identity/password";
 import { TokenService, type TokenPair } from "../identity/token.service";
-import { provisionTenant } from "./tenant-provisioning";
-
-function dashboardUrl(): string {
-  return process.env.DASHBOARD_BASE_URL ?? "http://localhost:5173";
-}
-
-function slugify(value: string): string {
-  const base = value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9؀-ۿ]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return base || "restaurant";
-}
+import { OPTIONAL_SETUP_STEPS, type OptionalSetupStep } from "./dto/onboarding.dto";
+import { findAvailableSlug, provisionTenant, slugify } from "./tenant-provisioning";
 
 export interface OnboardingStatus {
   /** 2 = restaurant info, 3 = first branch, 4 = staff, 5 = complete */
@@ -38,6 +27,13 @@ export interface OnboardingStatus {
   tenantId?: string;
   hasBranch: boolean;
   staffCount: number;
+}
+
+export interface SetupStatusItem {
+  step: OptionalSetupStep;
+  /** true once genuinely done (has real data) OR the owner explicitly skipped it. */
+  done: boolean;
+  skipped: boolean;
 }
 
 /**
@@ -68,8 +64,15 @@ export class OnboardingService {
     currency?: string;
     defaultLocale?: string;
     logoUrl?: string;
-    vatNumber?: string;
-    crNumber?: string;
+    vatNumber: string;
+    crNumber: string;
+    address: string;
+    city: string;
+    district: string;
+    buildingNumber: string;
+    postalCode: string;
+    additionalAddress: string;
+    contactPhone: string;
   }): Promise<{ tenantId: string; tokens: TokenPair }> {
     const { userId } = this.tenantContext.contextOrThrow;
 
@@ -78,7 +81,7 @@ export class OnboardingService {
       throw new ConflictException("This account already belongs to a restaurant");
     }
 
-    const slug = await this.availableSlug(slugify(input.nameEn ?? input.name));
+    const slug = await findAvailableSlug(this.platformDb, slugify(input.nameEn ?? input.name));
     const provisioned = await provisionTenant(this.platformDb, {
       ...input,
       slug,
@@ -290,12 +293,46 @@ export class OnboardingService {
     };
   }
 
-  private async availableSlug(base: string): Promise<string> {
-    let candidate = base;
-    for (let i = 2; ; i++) {
-      const taken = await this.platformDb.tenant.findUnique({ where: { slug: candidate } });
-      if (!taken) return candidate;
-      candidate = `${base}-${i}`;
-    }
+  /**
+   * The dashboard "missing setup" reminder banner reads this — every
+   * optional onboarding-hub step the owner hasn't yet either completed or
+   * explicitly skipped. Tracked in tenant.settings (a JSON column that was
+   * otherwise unused) rather than inferred from data presence: a genuinely
+   * blank receipt footer note, for instance, is indistinguishable from
+   * "never visited" by data alone, but the owner explicitly choosing
+   * "skip" vs never having seen the step are different things worth
+   * surfacing differently.
+   */
+  async getSetupStatus(): Promise<SetupStatusItem[]> {
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const tenant = await this.prisma.scoped.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    const recorded = (tenant.settings as { onboardingSteps?: Record<string, "done" | "skipped"> })
+      .onboardingSteps ?? {};
+
+    return OPTIONAL_SETUP_STEPS.map((step) => ({
+      step,
+      done: recorded[step] === "done",
+      skipped: recorded[step] === "skipped",
+    }));
   }
+
+  /** Marks one optional step done (owner saved real data) or skipped (owner deferred it). */
+  async markSetupStep(step: OptionalSetupStep, status: "done" | "skipped"): Promise<void> {
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const tenant = await this.prisma.scoped.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    const settings = (tenant.settings ?? {}) as { onboardingSteps?: Record<string, "done" | "skipped"> };
+    const onboardingSteps = { ...(settings.onboardingSteps ?? {}), [step]: status };
+
+    await this.prisma.scoped.tenant.update({
+      where: { id: tenantId },
+      data: { settings: { ...settings, onboardingSteps } },
+    });
+  }
+
 }

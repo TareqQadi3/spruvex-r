@@ -12,10 +12,21 @@ import {
   CardTitle,
   Input,
   Label,
+  Select,
   Spinner,
+  Switch,
+  Textarea,
+  cn,
 } from "@spruvex-r/ui";
+// Namespace import — see packages/ui/src/apply-theme.ts for why a named
+// import of a const re-exported through @spruvex-r/types' barrel file
+// breaks Vite/Rollup's static CJS-interop analysis.
+import * as SpruvexTypes from "@spruvex-r/types";
 
 import { api, ApiError } from "../../lib/api";
+import { inventoryApi, type ReorderAlertWhatsappSettings } from "../../lib/inventory-api";
+
+const { MENU_PRESET_KEYS, MENU_TEMPLATES } = SpruvexTypes;
 
 interface TenantInfo {
   id: string;
@@ -33,7 +44,21 @@ interface TenantInfo {
   address?: string;
   vatRate: string;
   publicBaseUrl: string;
+  menuTemplate: string;
+  menuCustomCss: string | null;
 }
+
+interface MenuDesignForm {
+  menuTemplate: string;
+  menuCustomCss: string;
+}
+
+interface FeedbackSettings {
+  feedbackDelayMinutes: number;
+}
+
+const FEEDBACK_DELAY_MIN = 1;
+const FEEDBACK_DELAY_MAX = 1440;
 
 interface ZatcaForm {
   legalName: string;
@@ -42,8 +67,36 @@ interface ZatcaForm {
   address: string;
 }
 
+interface ZatcaSettings {
+  enabled: boolean;
+  environment: "sandbox" | "simulation" | "production";
+  hasCertificate: boolean;
+  hasPrivateKey: boolean;
+  hasToken: boolean;
+  hasSecret: boolean;
+  fullyConfigured: boolean;
+}
+
+interface ZatcaSettingsForm {
+  enabled: boolean;
+  environment: "sandbox" | "simulation" | "production";
+  certificatePem: string;
+  privateKeyPem: string;
+  csidToken: string;
+  csidSecret: string;
+}
+
+const EMPTY_ZATCA_FORM: ZatcaSettingsForm = {
+  enabled: false,
+  environment: "sandbox",
+  certificatePem: "",
+  privateKeyPem: "",
+  csidToken: "",
+  csidSecret: "",
+};
+
 export function SettingsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["tenant"],
@@ -95,6 +148,134 @@ export function SettingsPage() {
     save.mutate();
   }
 
+  const { data: feedbackSettings, isLoading: feedbackLoading } = useQuery({
+    queryKey: ["feedback-settings"],
+    queryFn: () => api<FeedbackSettings>("/feedback/settings"),
+  });
+  const [feedbackDelayInput, setFeedbackDelayInput] = useState("");
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
+
+  useEffect(() => {
+    if (feedbackSettings) {
+      setFeedbackDelayInput(String(feedbackSettings.feedbackDelayMinutes));
+    }
+  }, [feedbackSettings]);
+
+  const saveFeedbackSettings = useMutation({
+    mutationFn: (feedbackDelayMinutes: number) =>
+      api("/feedback/settings", { method: "PATCH", body: JSON.stringify({ feedbackDelayMinutes }) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["feedback-settings"] });
+      setFeedbackSaved(true);
+      setFeedbackError(null);
+      setTimeout(() => setFeedbackSaved(false), 3000);
+    },
+    onError: (e) => setFeedbackError(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
+  function submitFeedbackSettings(event: FormEvent) {
+    event.preventDefault();
+    const parsed = Number(feedbackDelayInput);
+    // Client-side pre-check for fast feedback only — the server (1-1440,
+    // same bounds) is still the authority: onError below surfaces whatever
+    // it actually rejects, this never assumes the check above is enough.
+    if (!Number.isInteger(parsed) || parsed < FEEDBACK_DELAY_MIN || parsed > FEEDBACK_DELAY_MAX) {
+      setFeedbackError(
+        t("settings.feedbackDelayRangeError", { min: FEEDBACK_DELAY_MIN, max: FEEDBACK_DELAY_MAX }),
+      );
+      return;
+    }
+    saveFeedbackSettings.mutate(parsed);
+  }
+
+  const { data: reorderAlertSettings, isLoading: reorderAlertLoading } = useQuery({
+    queryKey: ["reorder-alert-settings"],
+    queryFn: () => inventoryApi.getReorderAlertSettings(),
+  });
+  const toggleReorderAlertWhatsapp = useMutation({
+    mutationFn: (whatsappEnabled: boolean) => inventoryApi.updateReorderAlertSettings(whatsappEnabled),
+    onSuccess: (updated: ReorderAlertWhatsappSettings) => {
+      queryClient.setQueryData(["reorder-alert-settings"], updated);
+    },
+    onError: (e) => alert(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
+  const { data: zatca, isLoading: zatcaLoading } = useQuery({
+    queryKey: ["zatca-settings"],
+    queryFn: () => api<ZatcaSettings>("/tenant/zatca-settings"),
+  });
+  const [zatcaForm, setZatcaForm] = useState<ZatcaSettingsForm>(EMPTY_ZATCA_FORM);
+  const [zatcaError, setZatcaError] = useState<string | null>(null);
+  const [zatcaSaved, setZatcaSaved] = useState(false);
+
+  useEffect(() => {
+    if (zatca) {
+      setZatcaForm({ ...EMPTY_ZATCA_FORM, enabled: zatca.enabled, environment: zatca.environment });
+    }
+  }, [zatca]);
+
+  const saveZatca = useMutation({
+    mutationFn: () =>
+      api("/tenant/zatca-settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          enabled: zatcaForm.enabled,
+          environment: zatcaForm.environment,
+          ...(zatcaForm.certificatePem ? { certificatePem: zatcaForm.certificatePem } : {}),
+          ...(zatcaForm.privateKeyPem ? { privateKeyPem: zatcaForm.privateKeyPem } : {}),
+          ...(zatcaForm.csidToken ? { csidToken: zatcaForm.csidToken } : {}),
+          ...(zatcaForm.csidSecret ? { csidSecret: zatcaForm.csidSecret } : {}),
+        }),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["zatca-settings"] });
+      setZatcaForm((f) => ({ ...f, certificatePem: "", privateKeyPem: "", csidToken: "", csidSecret: "" }));
+      setZatcaSaved(true);
+      setZatcaError(null);
+      setTimeout(() => setZatcaSaved(false), 3000);
+    },
+    onError: (e) => setZatcaError(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
+  function submitZatca(event: FormEvent) {
+    event.preventDefault();
+    saveZatca.mutate();
+  }
+
+  const [menuForm, setMenuForm] = useState<MenuDesignForm>({ menuTemplate: "classic", menuCustomCss: "" });
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [menuSaved, setMenuSaved] = useState(false);
+
+  useEffect(() => {
+    if (data) {
+      setMenuForm({ menuTemplate: data.menuTemplate, menuCustomCss: data.menuCustomCss ?? "" });
+    }
+  }, [data]);
+
+  const saveMenuDesign = useMutation({
+    mutationFn: () =>
+      api("/tenant", {
+        method: "PATCH",
+        body: JSON.stringify({
+          menuTemplate: menuForm.menuTemplate,
+          ...(menuForm.menuTemplate === "custom" ? { menuCustomCss: menuForm.menuCustomCss } : {}),
+        }),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["tenant"] });
+      setMenuSaved(true);
+      setMenuError(null);
+      setTimeout(() => setMenuSaved(false), 3000);
+    },
+    onError: (e) => setMenuError(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
+  function submitMenuDesign(event: FormEvent) {
+    event.preventDefault();
+    saveMenuDesign.mutate();
+  }
+
   const rows: Array<[string, string | undefined]> = data
     ? [
         [t("onboarding.restaurantName"), data.name],
@@ -125,6 +306,75 @@ export function SettingsPage() {
                   </div>
                 ))}
               </dl>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("settings.feedbackTitle")}</CardTitle>
+              <CardDescription>{t("settings.feedbackHint")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {feedbackLoading && <Spinner />}
+              {feedbackSettings && (
+                <form onSubmit={submitFeedbackSettings} className="space-y-4">
+                  {feedbackError && <Alert variant="destructive">{feedbackError}</Alert>}
+                  {feedbackSaved && <Alert>{t("settings.saved")}</Alert>}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="feedback-delay">{t("settings.feedbackDelayLabel")}</Label>
+                    <Input
+                      id="feedback-delay"
+                      dir="ltr"
+                      type="number"
+                      min={FEEDBACK_DELAY_MIN}
+                      max={FEEDBACK_DELAY_MAX}
+                      value={feedbackDelayInput}
+                      onChange={(e) => setFeedbackDelayInput(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.feedbackDelayHint", { min: FEEDBACK_DELAY_MIN, max: FEEDBACK_DELAY_MAX })}
+                    </p>
+                  </div>
+
+                  <Button type="submit" disabled={saveFeedbackSettings.isPending}>
+                    {saveFeedbackSettings.isPending ? (
+                      <Spinner className="border-primary-foreground" />
+                    ) : (
+                      t("common.save")
+                    )}
+                  </Button>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("settings.reorderAlertsTitle")}</CardTitle>
+              <CardDescription>{t("settings.reorderAlertsHint")}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {reorderAlertLoading && <Spinner />}
+              {reorderAlertSettings && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={reorderAlertSettings.whatsappEnabled}
+                      aria-label={t("settings.reorderAlertsEnable")}
+                      disabled={toggleReorderAlertWhatsapp.isPending}
+                      onCheckedChange={(enabled) => toggleReorderAlertWhatsapp.mutate(enabled)}
+                    />
+                    <span className="text-sm font-medium">{t("settings.reorderAlertsEnable")}</span>
+                  </div>
+                  <Alert>
+                    {reorderAlertSettings.recipientPhone
+                      ? t("settings.reorderAlertsRecipient", { phone: reorderAlertSettings.recipientPhone })
+                      : t("settings.reorderAlertsNoRecipient")}
+                  </Alert>
+                  <p className="text-xs text-muted-foreground">{t("settings.reorderAlertsTemplateNote")}</p>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -174,6 +424,184 @@ export function SettingsPage() {
                 </div>
                 <Button type="submit" disabled={save.isPending}>
                   {save.isPending ? <Spinner className="border-primary-foreground" /> : t("common.save")}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>{t("settings.zatcaPhase2")}</CardTitle>
+              <CardDescription>{t("settings.zatcaPhase2Hint")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {zatcaLoading && <Spinner />}
+              {zatca && (
+                <form onSubmit={submitZatca} className="space-y-4">
+                  {zatcaError && <Alert variant="destructive">{zatcaError}</Alert>}
+                  {zatcaSaved && <Alert>{t("settings.saved")}</Alert>}
+
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={zatcaForm.enabled}
+                      aria-label={t("settings.zatcaPhase2Enable")}
+                      onCheckedChange={(enabled) => setZatcaForm({ ...zatcaForm, enabled })}
+                    />
+                    <span className="text-sm font-medium">{t("settings.zatcaPhase2Enable")}</span>
+                  </div>
+
+                  <Alert>
+                    {zatca.fullyConfigured ? t("settings.zatcaConfigured") : t("settings.zatcaNotConfigured")}
+                  </Alert>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="zatca-env">{t("settings.zatcaEnvironment")}</Label>
+                      <Select
+                        id="zatca-env"
+                        value={zatcaForm.environment}
+                        onChange={(e) =>
+                          setZatcaForm({
+                            ...zatcaForm,
+                            environment: e.target.value as ZatcaSettingsForm["environment"],
+                          })
+                        }
+                      >
+                        <option value="sandbox">{t("settings.zatcaSandbox")}</option>
+                        <option value="simulation">{t("settings.zatcaSimulation")}</option>
+                        <option value="production">{t("settings.zatcaProduction")}</option>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="zatca-token">{t("settings.zatcaToken")}</Label>
+                      <Input
+                        id="zatca-token"
+                        dir="ltr"
+                        type="password"
+                        placeholder={zatca.hasToken ? "••••••••" : ""}
+                        value={zatcaForm.csidToken}
+                        onChange={(e) => setZatcaForm({ ...zatcaForm, csidToken: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="zatca-secret">{t("settings.zatcaSecret")}</Label>
+                    <Input
+                      id="zatca-secret"
+                      dir="ltr"
+                      type="password"
+                      placeholder={zatca.hasSecret ? "••••••••" : ""}
+                      value={zatcaForm.csidSecret}
+                      onChange={(e) => setZatcaForm({ ...zatcaForm, csidSecret: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="zatca-cert">{t("settings.zatcaCertificate")}</Label>
+                    <Textarea
+                      id="zatca-cert"
+                      dir="ltr"
+                      rows={4}
+                      placeholder={zatca.hasCertificate ? "•••• (configured) ••••" : "-----BEGIN CERTIFICATE-----"}
+                      value={zatcaForm.certificatePem}
+                      onChange={(e) => setZatcaForm({ ...zatcaForm, certificatePem: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="zatca-key">{t("settings.zatcaPrivateKey")}</Label>
+                    <Textarea
+                      id="zatca-key"
+                      dir="ltr"
+                      rows={4}
+                      placeholder={zatca.hasPrivateKey ? "•••• (configured) ••••" : "-----BEGIN EC PRIVATE KEY-----"}
+                      value={zatcaForm.privateKeyPem}
+                      onChange={(e) => setZatcaForm({ ...zatcaForm, privateKeyPem: e.target.value })}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t("settings.zatcaCredentialsHint")}</p>
+
+                  <Button type="submit" disabled={saveZatca.isPending}>
+                    {saveZatca.isPending ? <Spinner className="border-primary-foreground" /> : t("common.save")}
+                  </Button>
+                </form>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>{t("settings.menuDesignTitle")}</CardTitle>
+              <CardDescription>{t("settings.menuDesignHint")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={submitMenuDesign} className="space-y-4">
+                {menuError && <Alert variant="destructive">{menuError}</Alert>}
+                {menuSaved && <Alert>{t("settings.saved")}</Alert>}
+
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {MENU_PRESET_KEYS.map((key) => {
+                    const preset = MENU_TEMPLATES[key];
+                    const name = i18n.language === "en" ? preset.nameEn : preset.nameAr;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-pressed={menuForm.menuTemplate === key}
+                        onClick={() => setMenuForm({ ...menuForm, menuTemplate: key })}
+                        className={cn(
+                          "rounded-lg border p-2 text-center text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          menuForm.menuTemplate === key
+                            ? "border-primary ring-2 ring-primary/40"
+                            : "border-input hover:bg-muted/40",
+                        )}
+                      >
+                        <span
+                          className="mx-auto mb-1 block h-5 w-5 rounded-full border"
+                          style={{ backgroundColor: `hsl(${preset.primary})` }}
+                          aria-hidden="true"
+                        />
+                        {name}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    aria-pressed={menuForm.menuTemplate === "custom"}
+                    onClick={() => setMenuForm({ ...menuForm, menuTemplate: "custom" })}
+                    className={cn(
+                      "rounded-lg border p-2 text-center text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      menuForm.menuTemplate === "custom"
+                        ? "border-primary ring-2 ring-primary/40"
+                        : "border-input hover:bg-muted/40",
+                    )}
+                  >
+                    <span className="mx-auto mb-1 block h-5 w-5 rounded-full border border-dashed" aria-hidden="true" />
+                    {t("settings.menuDesignCustomOption")}
+                  </button>
+                </div>
+
+                {menuForm.menuTemplate === "custom" && (
+                  <div className="space-y-2 rounded-lg border border-dashed p-3">
+                    <p className="text-xs text-muted-foreground">{t("settings.menuDesignCustomDescription")}</p>
+                    <Label htmlFor="menu-css">{t("settings.menuDesignCssLabel")}</Label>
+                    <Textarea
+                      id="menu-css"
+                      dir="ltr"
+                      rows={8}
+                      placeholder={t("settings.menuDesignCssPlaceholder")}
+                      value={menuForm.menuCustomCss}
+                      onChange={(e) => setMenuForm({ ...menuForm, menuCustomCss: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">{t("settings.menuDesignCssHint")}</p>
+                    <p className="text-xs text-muted-foreground" dir="ltr">
+                      {t("settings.menuDesignCssTargetingHint")}
+                    </p>
+                  </div>
+                )}
+
+                <Button type="submit" disabled={saveMenuDesign.isPending}>
+                  {saveMenuDesign.isPending ? <Spinner className="border-primary-foreground" /> : t("common.save")}
                 </Button>
               </form>
             </CardContent>

@@ -1,19 +1,19 @@
 import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 
+import { PlatformSettingsService } from "../../shared/platform-settings/platform-settings.service";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
 import { verifyPassword } from "../identity/password";
 import { PLATFORM_ADMIN_TOKEN_TTL_SECONDS, type PlatformAdminTokenPayload } from "./platform-admin-token";
 
-const MAX_FAILED_LOGINS = 5;
-const LOCKOUT_MINUTES = 15;
-
-/** Same brute-force lockout policy as the tenant AuthService — same threat, same defense. */
+/** Same brute-force lockout policy as the tenant AuthService — literally the
+ * same PlatformSettingsService.getSettings() call, one shared policy. */
 @Injectable()
 export class PlatformAuthService {
   constructor(
     private readonly jwt: JwtService,
     private readonly db: PlatformPrismaService,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   async login(email: string, password: string): Promise<{ accessToken: string; expiresInSeconds: number }> {
@@ -27,12 +27,13 @@ export class PlatformAuthService {
 
     const valid = await verifyPassword(password, admin.passwordHash);
     if (!valid) {
+      const { maxFailedLogins, lockoutMinutes } = await this.platformSettings.getSettings();
       const failed = admin.failedLoginAttempts + 1;
       await this.db.platformAdmin.update({
         where: { id: admin.id },
         data: {
           failedLoginAttempts: failed,
-          lockedUntil: failed >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000) : null,
+          lockedUntil: failed >= maxFailedLogins ? new Date(Date.now() + lockoutMinutes * 60 * 1000) : null,
         },
       });
       throw new UnauthorizedException("Invalid email or password");

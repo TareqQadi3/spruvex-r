@@ -136,12 +136,20 @@ export function FloorsPage() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <Button variant="ghost" size="icon" onClick={() => openEditor(floor)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={t("catalog.edit")}
+                  aria-label={t("catalog.edit")}
+                  onClick={() => openEditor(floor)}
+                >
                   <Pencil className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
+                  title={t("catalog.delete")}
+                  aria-label={t("catalog.delete")}
                   onClick={() => {
                     if (confirm(t("catalog.confirmDelete"))) remove.mutate(floor.id);
                   }}
@@ -216,6 +224,7 @@ export function FloorsPage() {
             <div className="flex items-end gap-2 pb-2">
               <Switch
                 checked={form.isActive}
+                aria-label={t("catalog.active")}
                 onCheckedChange={(isActive) => setForm({ ...form, isActive })}
               />
               <span className="text-sm">{t("catalog.active")}</span>

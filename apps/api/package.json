@@ -14,7 +14,8 @@
     "prisma:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:sync-permissions": "ts-node --transpile-only prisma/sync-role-permissions.ts"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"
@@ -28,6 +29,7 @@
     "@nestjs/mapped-types": "^2.1.1",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/platform-socket.io": "^11.1.28",
+    "@nestjs/schedule": "^5.0.1",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^11.1.28",
     "@prisma/client": "^6.4.0",
@@ -37,7 +39,10 @@
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "css-tree": "^3.2.1",
+    "exceljs": "^4.4.0",
     "helmet": "^8.0.0",
+    "multer": "^2.3.0",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
     "redis": "^6.1.0",
@@ -52,8 +57,10 @@
     "@nestjs/testing": "^11.0.0",
     "@spruvex-r/config": "workspace:*",
     "@types/bcryptjs": "^2.4.6",
+    "@types/css-tree": "^3.2.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.10.0",
     "@types/qrcode": "^1.5.6",
     "@types/supertest": "^7.2.0",

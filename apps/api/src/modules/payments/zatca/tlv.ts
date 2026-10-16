@@ -54,3 +54,44 @@ export function decodeZatcaQrPayload(payload: string): Map<number, string> {
   }
   return tags;
 }
+
+/**
+ * ZATCA e-invoicing Phase 2 — extends the Phase 1 QR with the cryptographic
+ * chain: the invoice hash, the CSID-signed ECDSA signature over that hash,
+ * the CSID's public key, and (only once ZATCA has countersigned the CSID
+ * certificate) ZATCA's own signature over that public key. Tags 1-5 are
+ * byte-for-byte identical to Phase 1 — a Phase 2 QR is a strict superset,
+ * never a different encoding of the shared fields.
+ */
+export interface ZatcaPhase2QrInput extends ZatcaQrInput {
+  /** Raw bytes of the invoice hash (not hex/base64 — TLV values are raw binary). */
+  invoiceHash: Buffer;
+  /** Raw ECDSA signature bytes over the invoice hash, produced by the CSID private key. */
+  signature: Buffer;
+  /** Raw public key bytes from the CSID certificate. */
+  publicKey: Buffer;
+  /** ZATCA's own signature over the CSID public key — absent until the CSID is countersigned. */
+  stampSignature?: Buffer;
+}
+
+function tlvBinary(tag: number, value: Buffer): Buffer {
+  if (value.length > 255) {
+    throw new Error(`TLV value for tag ${tag} exceeds 255 bytes`);
+  }
+  return Buffer.concat([Buffer.from([tag, value.length]), value]);
+}
+
+export function buildZatcaPhase2QrPayload(input: ZatcaPhase2QrInput): string {
+  const records = [
+    tlv(1, input.sellerName),
+    tlv(2, input.vatNumber),
+    tlv(3, input.timestamp),
+    tlv(4, input.total),
+    tlv(5, input.vatAmount),
+    tlvBinary(6, input.invoiceHash),
+    tlvBinary(7, input.signature),
+    tlvBinary(8, input.publicKey),
+    ...(input.stampSignature ? [tlvBinary(9, input.stampSignature)] : []),
+  ];
+  return Buffer.concat(records).toString("base64");
+}

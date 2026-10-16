@@ -1,13 +1,23 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
-import { Badge, Card, CardContent } from "@spruvex-r/ui";
+import { Badge, Button, Card, CardContent } from "@spruvex-r/ui";
 
 import { useLocale, useLocalizedField } from "@/components/LocaleProvider";
+import { clientGet } from "@/lib/client-api";
 import { formatMoney } from "@/lib/money";
 import type { TrackedOrder } from "@/lib/types";
+
+/** Set by TableCartClient right after a successful submit, keyed by the
+ * resulting orderId — best-effort only, purely to bold "your items" on a
+ * shared table bill. A device that never ordered here (or cleared storage)
+ * just sees no highlighting, which is harmless. */
+function myPhoneStorageKey(orderId: string): string {
+  return `spruvex:ordering:my-phone:order:${orderId}`;
+}
 
 const STEPS = ["new", "confirmed", "preparing", "ready", "served"] as const;
 const STEP_INDEX: Record<string, number> = Object.fromEntries(
@@ -33,8 +43,18 @@ export function OrderTrackerClient({
 }) {
   const { t, locale } = useLocale();
   const name = useLocalizedField();
+  const router = useRouter();
   const [order, setOrder] = useState(initialOrder);
   const [live, setLive] = useState(false);
+  const [myPhone, setMyPhone] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      setMyPhone(localStorage.getItem(myPhoneStorageKey(orderId)));
+    } catch {
+      setMyPhone(null);
+    }
+  }, [orderId]);
 
   useEffect(() => {
     const socket: Socket = io(publicApiOrigin, { transports: ["websocket"] });
@@ -44,8 +64,18 @@ export function OrderTrackerClient({
       setLive(Boolean(res?.ok));
     });
     socket.on("disconnect", () => setLive(false));
-    socket.on("order.status", (event: GuestStatusEvent) => {
+    socket.on("order.status", async (event: GuestStatusEvent) => {
       if (event.id !== orderId) return;
+      // The socket payload is trimmed to {status,total} — a shared table's
+      // order can also gain new ITEMS (another participant's round), which
+      // this event never carries, so re-fetch the full order on any update
+      // rather than trusting the trimmed fields alone.
+      try {
+        setOrder(await clientGet<TrackedOrder>(`/public/orders/${orderId}/track`));
+        return;
+      } catch {
+        // fall through to the trimmed update below
+      }
       setOrder((current) => ({ ...current, status: event.status, total: event.total }));
     });
 
@@ -107,15 +137,40 @@ export function OrderTrackerClient({
             </div>
           )}
 
-          <div className="space-y-1 border-t pt-3">
-            {order.items.map((item, index) => (
+          {(() => {
+            const isShared = order.items.some((item) => item.participantPhone);
+            const mine = isShared && myPhone
+              ? order.items.filter((item) => item.participantPhone === myPhone)
+              : [];
+            const others = isShared && myPhone
+              ? order.items.filter((item) => item.participantPhone !== myPhone)
+              : order.items;
+            const renderLine = (item: (typeof order.items)[number], index: number) => (
               <div key={index} className="flex justify-between text-sm">
                 <span>
                   {item.quantity}× {name({ name: item.name, nameEn: item.nameEn })}
                 </span>
               </div>
-            ))}
-          </div>
+            );
+            return (
+              <div className="space-y-3 border-t pt-3">
+                {mine.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-primary">{t("track.yourItems")}</p>
+                    {mine.map(renderLine)}
+                  </div>
+                )}
+                {others.length > 0 && (
+                  <div className="space-y-1">
+                    {mine.length > 0 && (
+                      <p className="text-xs font-semibold text-muted-foreground">{t("track.otherItems")}</p>
+                    )}
+                    {others.map(renderLine)}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="flex justify-between border-t pt-3 font-bold">
             <span>{t("cart.total")}</span>
@@ -124,7 +179,17 @@ export function OrderTrackerClient({
         </CardContent>
       </Card>
 
-      {order.table && <p className="text-center text-sm text-muted-foreground">{order.table}</p>}
+      {order.table && (
+        <div className="space-y-3 text-center">
+          <p className="text-sm text-muted-foreground">{order.table}</p>
+          <p className="text-xs text-muted-foreground">{t("track.tableNotice")}</p>
+          {!cancelled && (
+            <Button variant="outline" className="w-full" onClick={() => router.back()}>
+              {t("track.orderMore")}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

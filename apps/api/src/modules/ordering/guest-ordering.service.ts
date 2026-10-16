@@ -1,12 +1,16 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 
+import type { OrderingChannel } from "@spruvex-r/types";
+
+import { BusinessHoursService } from "../../shared/business-hours/business-hours.service";
 import { PlatformPrismaService } from "../../shared/prisma/platform-prisma.service";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import {
   GUEST_ACTOR,
   TenantContextService,
 } from "../../shared/tenancy/tenant-context.service";
-import { GuestCreateOrderDto } from "./dto/order.dto";
+import { CouponsService } from "../marketing/coupons.service";
+import { GuestCreateOrderDto, GuestDeliveryOrderDto, GuestTableOrderDto } from "./dto/order.dto";
 import { OrderingService } from "./ordering.service";
 
 /**
@@ -22,6 +26,8 @@ export class GuestOrderingService {
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     private readonly ordering: OrderingService,
+    private readonly businessHours: BusinessHoursService,
+    private readonly coupons: CouponsService,
   ) {}
 
   private async resolveToken(qrToken: string) {
@@ -48,6 +54,8 @@ export class GuestOrderingService {
             currency: true,
             defaultLocale: true,
             status: true,
+            menuTemplate: true,
+            menuCustomCss: true,
           },
         },
       },
@@ -69,6 +77,10 @@ export class GuestOrderingService {
 
   async tableInfo(qrToken: string) {
     const table = await this.resolveToken(qrToken);
+    const channelStatus = await this.tenantContext.run(
+      { userId: GUEST_ACTOR, tenantId: table.tenantId, permissions: new Set() },
+      () => this.businessHours.getChannelStatus(table.branchId, "dine_in"),
+    );
     return {
       restaurant: {
         name: table.tenant.name,
@@ -77,16 +89,26 @@ export class GuestOrderingService {
         logoUrl: table.tenant.logoUrl,
         currency: table.tenant.currency,
         defaultLocale: table.tenant.defaultLocale,
+        menuTemplate: table.tenant.menuTemplate,
+        menuCustomCss: table.tenant.menuCustomCss,
       },
       branch: { name: table.branch.name, nameEn: table.branch.nameEn },
       table: { number: table.number, status: table.status },
+      channelStatus,
     };
   }
 
-  /** Active menu for the table's branch (branch availability + price overrides applied). */
+  /**
+   * Active menu for the table's branch — branch availability, per-channel
+   * (dine_in) visibility/price overrides, and per-branch modifier
+   * availability all applied. Never blocked by hours/pause: browsing is
+   * always allowed, only order creation checks that (item 1's "show the
+   * menu, disable checkout" requirement) — `channelStatus` tells the
+   * frontend what banner to show.
+   */
   async menu(qrToken: string) {
     const table = await this.resolveToken(qrToken);
-    return this.buildMenu(table.tenantId, table.branchId);
+    return this.buildMenu(table.tenantId, table.branchId, "dine_in");
   }
 
   // --- External ordering link (/restaurant/{slug}) --------------------- //
@@ -102,6 +124,8 @@ export class GuestOrderingService {
         logoUrl: true,
         currency: true,
         defaultLocale: true,
+        menuTemplate: true,
+        menuCustomCss: true,
       },
     });
     if (!tenant) {
@@ -114,7 +138,22 @@ export class GuestOrderingService {
     const tenant = await this.resolveRestaurant(slug);
     const branch = await this.prisma.forTenant(tenant.id).branch.findFirst({
       where: { slug: branchSlug, deletedAt: null, isActive: true },
-      select: { id: true, name: true, nameEn: true, slug: true, address: true, phone: true },
+      select: {
+        id: true,
+        name: true,
+        nameEn: true,
+        slug: true,
+        address: true,
+        phone: true,
+        lat: true,
+        lng: true,
+        deliveryFeeAmount: true,
+        deliveryMinOrderAmount: true,
+        deliveryRadiusKm: true,
+        deliveryEstimatedMinutes: true,
+        pickupEstimatedMinutes: true,
+        selfServicePaymentMethods: true,
+      },
     });
     if (!branch) {
       throw new NotFoundException("Branch not found");
@@ -134,17 +173,51 @@ export class GuestOrderingService {
     return { restaurant, branches };
   }
 
-  async branchMenu(slug: string, branchSlug: string) {
+  /**
+   * `channel` selects which self-service ordering mode the customer is
+   * currently viewing (pricing/visibility overrides + hours status apply
+   * accordingly); omit while the customer hasn't picked pickup vs delivery
+   * yet — the branch-level base price/availability still applies, and both
+   * channels' live status + the branch's delivery config are always
+   * included so the frontend can render the picker correctly up front.
+   */
+  async branchMenu(slug: string, branchSlug: string, channel?: "takeaway" | "delivery") {
     const { tenant, branch } = await this.resolveBranch(slug, branchSlug);
-    const menu = await this.buildMenu(tenant.id, branch.id);
-    return { branch: { name: branch.name, nameEn: branch.nameEn, slug: branch.slug }, ...menu };
+    const menu = await this.buildMenu(tenant.id, branch.id, channel);
+    const [takeawayStatus, deliveryStatus] = await this.tenantContext.run(
+      { userId: GUEST_ACTOR, tenantId: tenant.id, permissions: new Set() },
+      () =>
+        Promise.all([
+          this.businessHours.getChannelStatus(branch.id, "takeaway"),
+          this.businessHours.getChannelStatus(branch.id, "delivery"),
+        ]),
+    );
+    return {
+      branch: { name: branch.name, nameEn: branch.nameEn, slug: branch.slug },
+      ...menu,
+      channelStatuses: { takeaway: takeawayStatus, delivery: deliveryStatus },
+      delivery: {
+        feeAmount: branch.deliveryFeeAmount.toString(),
+        minOrderAmount: branch.deliveryMinOrderAmount.toString(),
+        estimatedMinutes: branch.deliveryEstimatedMinutes,
+        paymentMethods: branch.selfServicePaymentMethods,
+      },
+      pickup: {
+        estimatedMinutes: branch.pickupEstimatedMinutes,
+        paymentMethods: branch.selfServicePaymentMethods,
+      },
+    };
   }
 
   /** Pickup (takeaway) order through the external link — phone required. */
   async createTakeawayOrder(
     slug: string,
     branchSlug: string,
-    dto: GuestCreateOrderDto & { customerPhone: string },
+    dto: GuestCreateOrderDto & {
+      customerPhone: string;
+      paymentMethod?: "cash" | "online";
+      couponCode?: string;
+    },
     idempotencyKey: string,
   ) {
     const { tenant, branch } = await this.resolveBranch(slug, branchSlug);
@@ -160,6 +233,8 @@ export class GuestOrderingService {
             notes: dto.notes,
             customerName: dto.customerName,
             customerPhone: dto.customerPhone,
+            intendedPaymentMethod: dto.paymentMethod,
+            couponCode: dto.couponCode,
           },
           { source: "external_link", tenantId: tenant.id },
           idempotencyKey,
@@ -170,6 +245,69 @@ export class GuestOrderingService {
       orderNumber: order.orderNumber,
       status: order.status,
       total: order.total.toString(),
+      discount: order.discount.toString(),
+      estimatedMinutes: branch.pickupEstimatedMinutes,
+    };
+  }
+
+  /** Guest-facing coupon preview before order submission — see CouponsService.preview. */
+  async validateCoupon(
+    slug: string,
+    branchSlug: string,
+    dto: { code: string; channel: "takeaway" | "delivery"; subtotal: string },
+  ) {
+    const { tenant } = await this.resolveBranch(slug, branchSlug);
+    return this.tenantContext.run(
+      { userId: GUEST_ACTOR, tenantId: tenant.id, permissions: new Set() },
+      () => this.coupons.preview(tenant.id, dto.code, dto.channel, dto.subtotal),
+    );
+  }
+
+  /**
+   * First-party delivery order through the external link — address
+   * mandatory, "Pin" (lat/lng) optional and only used for the delivery-
+   * radius check when the branch has one configured. Fee/minimum-
+   * order/radius/payment-method are all enforced server-side inside
+   * OrderingService.create (never trust the frontend to have hidden an
+   * out-of-range address or a below-minimum cart).
+   */
+  async createDeliveryOrder(
+    slug: string,
+    branchSlug: string,
+    dto: GuestDeliveryOrderDto,
+    idempotencyKey: string,
+  ) {
+    const { tenant, branch } = await this.resolveBranch(slug, branchSlug);
+
+    const order = await this.tenantContext.run(
+      { userId: GUEST_ACTOR, tenantId: tenant.id, permissions: new Set() },
+      () =>
+        this.ordering.create(
+          {
+            type: "delivery",
+            branchId: branch.id,
+            items: dto.items,
+            notes: dto.notes,
+            customerName: dto.customerName,
+            customerPhone: dto.customerPhone,
+            deliveryAddress: dto.deliveryAddress,
+            deliveryLat: dto.deliveryLat,
+            deliveryLng: dto.deliveryLng,
+            intendedPaymentMethod: dto.paymentMethod,
+            couponCode: dto.couponCode,
+          },
+          { source: "external_link", tenantId: tenant.id },
+          idempotencyKey,
+        ),
+    );
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      total: order.total.toString(),
+      discount: order.discount.toString(),
+      deliveryFeeAmount: order.deliveryFeeAmount?.toString() ?? "0",
+      estimatedMinutes: branch.deliveryEstimatedMinutes,
     };
   }
 
@@ -193,7 +331,7 @@ export class GuestOrderingService {
           select: { name: true, nameEn: true, logoUrl: true, currency: true, defaultLocale: true },
         },
         items: {
-          select: { quantity: true, productSnapshot: true },
+          select: { quantity: true, productSnapshot: true, participantPhone: true },
           orderBy: { createdAt: "asc" },
         },
       },
@@ -214,13 +352,21 @@ export class GuestOrderingService {
         quantity: item.quantity,
         name: (item.productSnapshot as { name: string }).name,
         nameEn: (item.productSnapshot as { nameEn: string | null }).nameEn,
+        participantPhone: item.participantPhone,
       })),
     };
   }
 
   // ---------------------------------------------------------------------- //
 
-  private async buildMenu(tenantId: string, branchId: string) {
+  /**
+   * `channel` applies per-channel visibility/price overrides on top of the
+   * branch-level base setting (item 3) — omit it for the "haven't picked
+   * pickup vs delivery yet" browse view, which just uses branch-level
+   * pricing/availability. Modifier options hidden per-branch (item 2) are
+   * filtered out the same way products are.
+   */
+  private async buildMenu(tenantId: string, branchId: string, channel?: OrderingChannel) {
     const scoped = this.prisma.forTenant(tenantId);
 
     const categories = await scoped.category.findMany({
@@ -233,6 +379,11 @@ export class GuestOrderingService {
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       include: {
         branchSettings: { where: { branchId } },
+        channelOverrides: channel ? { where: { branchId, channel } } : false,
+        comboComponents: {
+          orderBy: { sortOrder: "asc" },
+          select: { quantity: true, componentProduct: { select: { name: true, nameEn: true } } },
+        },
         modifierGroups: {
           orderBy: { sortOrder: "asc" },
           include: {
@@ -241,6 +392,7 @@ export class GuestOrderingService {
                 modifiers: {
                   where: { deletedAt: null, isActive: true },
                   orderBy: { sortOrder: "asc" },
+                  include: { branchSettings: { where: { branchId } } },
                 },
               },
             },
@@ -253,57 +405,79 @@ export class GuestOrderingService {
       categories,
       products: products
         .filter((product) => product.branchSettings[0]?.isAvailable !== false)
-        .map((product) => ({
-          id: product.id,
-          categoryId: product.categoryId,
-          name: product.name,
-          nameEn: product.nameEn,
-          description: product.description,
-          descriptionEn: product.descriptionEn,
-          imageUrl: product.imageUrl,
-          price: (product.branchSettings[0]?.priceOverride ?? product.basePrice).toString(),
-          modifierGroups: product.modifierGroups
-            .filter((link) => link.group.deletedAt === null && link.group.isActive)
-            .map((link) => ({
-              id: link.group.id,
-              name: link.group.name,
-              nameEn: link.group.nameEn,
-              isRequired: link.group.isRequired,
-              minSelect: link.group.minSelect,
-              maxSelect: link.group.maxSelect,
-              modifiers: link.group.modifiers.map((modifier) => ({
-                id: modifier.id,
-                name: modifier.name,
-                nameEn: modifier.nameEn,
-                priceAdjustment: modifier.priceAdjustment.toString(),
+        .filter((product) => !channel || product.channelOverrides?.[0]?.isVisible !== false)
+        .map((product) => {
+          const channelOverride = channel ? product.channelOverrides?.[0] : undefined;
+          return {
+            id: product.id,
+            categoryId: product.categoryId,
+            name: product.name,
+            nameEn: product.nameEn,
+            description: product.description,
+            descriptionEn: product.descriptionEn,
+            imageUrl: product.imageUrl,
+            price: (
+              channelOverride?.priceOverride ??
+              product.branchSettings[0]?.priceOverride ??
+              product.basePrice
+            ).toString(),
+            badges: product.badges,
+            prepTimeMinutes: product.prepTimeMinutes,
+            isCombo: product.isCombo,
+            comboItems: product.isCombo
+              ? product.comboComponents.map((c) => ({
+                  name: c.componentProduct.name,
+                  nameEn: c.componentProduct.nameEn,
+                  quantity: c.quantity,
+                }))
+              : undefined,
+            modifierGroups: product.modifierGroups
+              .filter((link) => link.group.deletedAt === null && link.group.isActive)
+              .map((link) => ({
+                id: link.group.id,
+                name: link.group.name,
+                nameEn: link.group.nameEn,
+                isRequired: link.group.isRequired,
+                minSelect: link.group.minSelect,
+                maxSelect: link.group.maxSelect,
+                modifiers: link.group.modifiers
+                  .filter((modifier) => modifier.branchSettings[0]?.isAvailable !== false)
+                  .map((modifier) => ({
+                    id: modifier.id,
+                    name: modifier.name,
+                    nameEn: modifier.nameEn,
+                    priceAdjustment: modifier.priceAdjustment.toString(),
+                  })),
               })),
-            })),
-        })),
+          };
+        }),
     };
   }
 
-  /** Creates a dine-in order attached to the table's open session. */
-  async createOrder(qrToken: string, dto: GuestCreateOrderDto, idempotencyKey: string) {
+  /**
+   * Joins (or opens) the table's shared session and either creates its
+   * first order or appends this round to whichever order the session
+   * already has open — see `OrderingService.orderForTable` for the whole
+   * "several phones, one real order" mechanism and its concurrency handling.
+   */
+  async createOrder(qrToken: string, dto: GuestTableOrderDto, idempotencyKey: string) {
     const table = await this.resolveToken(qrToken);
 
-    const order = await this.tenantContext.run(
+    const { order, sessionId } = await this.tenantContext.run(
       { userId: GUEST_ACTOR, tenantId: table.tenantId, permissions: new Set() },
       () =>
-        this.ordering.create(
-          {
-            type: "dine_in",
-            tableId: table.id,
-            items: dto.items,
-            notes: dto.notes,
-            customerName: dto.customerName,
-          },
-          { source: "qr", tenantId: table.tenantId },
+        this.ordering.orderForTable(
+          table.id,
+          dto.items,
+          dto.customerPhone,
+          { source: "qr", notes: dto.notes, customerName: dto.customerName },
           idempotencyKey,
         ),
     );
 
     return {
       orderId: order.id,
+      sessionId,
       orderNumber: order.orderNumber,
       status: order.status,
       total: order.total.toString(),

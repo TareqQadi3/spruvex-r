@@ -190,6 +190,7 @@ export function TablesPage() {
                   variant="ghost"
                   size="icon"
                   title={t("tables.qr.download")}
+                  aria-label={t("tables.qr.download")}
                   onClick={() =>
                     downloadFile(`/tables/${table.id}/qr.png`, `table-${table.number}-qr.png`).catch(
                       (e) => alert(e instanceof ApiError ? e.message : t("common.error")),
@@ -202,6 +203,7 @@ export function TablesPage() {
                   variant="ghost"
                   size="icon"
                   title={t("tables.qr.regenerate")}
+                  aria-label={t("tables.qr.regenerate")}
                   onClick={() => {
                     if (confirm(t("tables.qr.regenerateConfirm"))) regenerate.mutate(table.id);
                   }}
@@ -212,6 +214,7 @@ export function TablesPage() {
                   variant="ghost"
                   size="icon"
                   title={t("catalog.edit")}
+                  aria-label={t("catalog.edit")}
                   onClick={() => openEditor(table)}
                 >
                   <Pencil className="h-4 w-4" />
@@ -220,6 +223,7 @@ export function TablesPage() {
                   variant="ghost"
                   size="icon"
                   title={t("catalog.delete")}
+                  aria-label={t("catalog.delete")}
                   onClick={() => {
                     if (confirm(t("catalog.confirmDelete"))) remove.mutate(table.id);
                   }}

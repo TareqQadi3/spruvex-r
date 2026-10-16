@@ -24,7 +24,12 @@ export interface MenuProduct {
   descriptionEn: string | null;
   imageUrl: string | null;
   price: string;
+  badges: string[];
+  prepTimeMinutes: number | null;
   modifierGroups: MenuModifierGroup[];
+  isCombo?: boolean;
+  /** Present only when isCombo — the real items this bundle includes. */
+  comboItems?: Array<{ name: string; nameEn: string | null; quantity: number }>;
 }
 
 export interface MenuCategory {
@@ -40,6 +45,13 @@ export interface Menu {
   products: MenuProduct[];
 }
 
+export interface ChannelStatus {
+  channel: "dine_in" | "takeaway" | "delivery";
+  open: boolean;
+  reason: string;
+  label?: string;
+}
+
 export interface TableInfo {
   restaurant: {
     name: string;
@@ -48,9 +60,12 @@ export interface TableInfo {
     logoUrl: string | null;
     currency: string;
     defaultLocale: string;
+    menuTemplate: string;
+    menuCustomCss: string | null;
   };
   branch: { name: string; nameEn: string | null };
   table: { number: string; status: string };
+  channelStatus: ChannelStatus;
 }
 
 export interface RestaurantInfo {
@@ -61,6 +76,8 @@ export interface RestaurantInfo {
     logoUrl: string | null;
     currency: string;
     defaultLocale: string;
+    menuTemplate: string;
+    menuCustomCss: string | null;
   };
   branches: Array<{
     id: string;
@@ -72,6 +89,13 @@ export interface RestaurantInfo {
   }>;
 }
 
+export interface BranchMenu extends Menu {
+  branch: { name: string; nameEn: string | null; slug: string };
+  channelStatuses: { takeaway: ChannelStatus; delivery: ChannelStatus };
+  delivery: { feeAmount: string; minOrderAmount: string; estimatedMinutes: number; paymentMethods: ("cash" | "online")[] };
+  pickup: { estimatedMinutes: number; paymentMethods: ("cash" | "online")[] };
+}
+
 export interface CartLineInput {
   productId: string;
   quantity: number;
@@ -81,9 +105,14 @@ export interface CartLineInput {
 
 export interface GuestOrderResult {
   orderId: string;
+  /** Present for shared table-session orders — the same value for every
+   * participant who joined the same table's QR. */
+  sessionId?: string;
   orderNumber: number;
   status: string;
   total: string;
+  /** Present for takeaway/delivery orders only (never dine-in). */
+  discount?: string;
 }
 
 export interface TrackedOrder {
@@ -101,5 +130,5 @@ export interface TrackedOrder {
     currency: string;
     defaultLocale: string;
   };
-  items: Array<{ quantity: number; name: string; nameEn: string | null }>;
+  items: Array<{ quantity: number; name: string; nameEn: string | null; participantPhone?: string | null }>;
 }

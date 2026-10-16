@@ -10,6 +10,7 @@ import {
   Card,
   CardContent,
   Dialog,
+  ImageInput,
   Input,
   Label,
   Spinner,
@@ -17,7 +18,7 @@ import {
   Textarea,
 } from "@spruvex-r/ui";
 
-import { ApiError } from "../../lib/api";
+import { ApiError, uploadImage } from "../../lib/api";
 import { catalogApi, localizedName, type Category } from "../../lib/catalog-api";
 
 interface CategoryForm {
@@ -155,12 +156,20 @@ export function CategoriesPage() {
                     toggleActive.mutate({ id: category.id, isActive })
                   }
                 />
-                <Button variant="ghost" size="icon" onClick={() => openEditor(category)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={t("catalog.edit")}
+                  aria-label={t("catalog.edit")}
+                  onClick={() => openEditor(category)}
+                >
                   <Pencil className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
+                  title={t("catalog.delete")}
+                  aria-label={t("catalog.delete")}
                   onClick={() => {
                     if (confirm(t("catalog.confirmDelete"))) remove.mutate(category.id);
                   }}
@@ -208,31 +217,32 @@ export function CategoriesPage() {
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="cimg">{t("catalog.imageUrl")}</Label>
-              <Input
-                id="cimg"
-                dir="ltr"
-                type="url"
-                value={form.imageUrl}
-                onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="csort">{t("catalog.sortOrder")}</Label>
-              <Input
-                id="csort"
-                type="number"
-                min={0}
-                value={form.sortOrder}
-                onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })}
-              />
-            </div>
+          <ImageInput
+            label={t("catalog.imageUrl")}
+            value={form.imageUrl}
+            onChange={(imageUrl) => setForm({ ...form, imageUrl })}
+            onUploadFile={uploadImage}
+            uploadTabLabel={t("common.uploadTab")}
+            urlTabLabel={t("common.urlTab")}
+            uploadButtonLabel={t("common.uploadButton")}
+            removeLabel={t("common.removeImage")}
+            errorFallback={t("common.uploadError")}
+            constraintsHint={t("common.imageConstraints")}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="csort">{t("catalog.sortOrder")}</Label>
+            <Input
+              id="csort"
+              type="number"
+              min={0}
+              value={form.sortOrder}
+              onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) })}
+            />
           </div>
           <div className="flex items-center gap-2">
             <Switch
               checked={form.isActive}
+              aria-label={t("catalog.active")}
               onCheckedChange={(isActive) => setForm({ ...form, isActive })}
             />
             <span className="text-sm">{t("catalog.active")}</span>

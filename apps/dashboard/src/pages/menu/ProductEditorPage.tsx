@@ -13,6 +13,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  ImageInput,
   Input,
   Label,
   Select,
@@ -22,7 +23,7 @@ import {
 } from "@spruvex-r/ui";
 
 import { api } from "../../lib/api";
-import { ApiError } from "../../lib/api";
+import { ApiError, uploadImage } from "../../lib/api";
 import { catalogApi, localizedName, type Product } from "../../lib/catalog-api";
 import { inventoryApi, type RecipeItemRow } from "../../lib/inventory-api";
 
@@ -44,6 +45,7 @@ interface ProductForm {
   taxRate: string;
   sortOrder: number;
   isActive: boolean;
+  isCombo: boolean;
 }
 
 const emptyForm: ProductForm = {
@@ -58,6 +60,7 @@ const emptyForm: ProductForm = {
   taxRate: "",
   sortOrder: 0,
   isActive: true,
+  isCombo: false,
 };
 
 export function ProductEditorPage() {
@@ -103,6 +106,7 @@ export function ProductEditorPage() {
         taxRate: p.taxRate ?? "",
         sortOrder: p.sortOrder,
         isActive: p.isActive,
+        isCombo: p.isCombo,
       });
     }
   }, [product.data]);
@@ -124,6 +128,7 @@ export function ProductEditorPage() {
         ...(form.taxRate ? { taxRate: form.taxRate } : {}),
         sortOrder: form.sortOrder,
         isActive: form.isActive,
+        isCombo: form.isCombo,
       };
       return isNew ? catalogApi.createProduct(body) : catalogApi.updateProduct(id!, body);
     },
@@ -155,6 +160,16 @@ export function ProductEditorPage() {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["catalog", "product", id] }),
+    onError: (e) => alert(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
+  const availabilityAction = useMutation({
+    mutationFn: (input: { branchId: string; action: "available" | "unavailable" | "sold_out_today" }) => {
+      if (input.action === "available") return catalogApi.markAvailable(id!, input.branchId);
+      if (input.action === "unavailable") return catalogApi.markUnavailable(id!, input.branchId);
+      return catalogApi.markSoldOutToday(id!, input.branchId);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["catalog", "product", id] }),
     onError: (e) => alert(e instanceof ApiError ? e.message : t("common.error")),
   });
 
@@ -274,16 +289,18 @@ export function ProductEditorPage() {
                   onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="pimg">{t("catalog.imageUrl")}</Label>
-                <Input
-                  id="pimg"
-                  dir="ltr"
-                  type="url"
-                  value={form.imageUrl}
-                  onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-                />
-              </div>
+              <ImageInput
+                label={t("catalog.imageUrl")}
+                value={form.imageUrl}
+                onChange={(imageUrl) => setForm({ ...form, imageUrl })}
+                onUploadFile={uploadImage}
+                uploadTabLabel={t("common.uploadTab")}
+                urlTabLabel={t("common.urlTab")}
+                uploadButtonLabel={t("common.uploadButton")}
+                removeLabel={t("common.removeImage")}
+                errorFallback={t("common.uploadError")}
+                constraintsHint={t("common.imageConstraints")}
+              />
               <div className="space-y-2">
                 <Label htmlFor="psort">{t("catalog.sortOrder")}</Label>
                 <Input
@@ -298,9 +315,19 @@ export function ProductEditorPage() {
             <div className="flex items-center gap-2">
               <Switch
                 checked={form.isActive}
+                aria-label={t("catalog.active")}
                 onCheckedChange={(isActive) => setForm({ ...form, isActive })}
               />
               <span className="text-sm">{t("catalog.active")}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={form.isCombo}
+                aria-label={t("catalog.products.isCombo")}
+                onCheckedChange={(isCombo) => setForm({ ...form, isCombo })}
+              />
+              <span className="text-sm">{t("catalog.products.isCombo")}</span>
+              <span className="text-xs text-muted-foreground">{t("catalog.products.isComboHint")}</span>
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => navigate("/menu/products")}>
@@ -419,18 +446,41 @@ export function ProductEditorPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Switch
-                          checked={isAvailable}
-                          disabled={setBranchSetting.isPending}
-                          onCheckedChange={(next) =>
-                            setBranchSetting.mutate({
-                              branchId: branch.id,
-                              isAvailable: next,
-                              priceOverride: setting?.priceOverride ?? null,
-                            })
+                        {!isAvailable && (
+                          <Badge variant={setting?.unavailableReason === "stock" ? "muted" : "destructive"}>
+                            {setting?.unavailableReason === "stock"
+                              ? t("catalog.products.reasonStock")
+                              : setting?.unavailableReason === "sold_out_today"
+                                ? t("catalog.products.reasonSoldOutToday")
+                                : t("catalog.products.reasonManual")}
+                          </Badge>
+                        )}
+                        <Button
+                          size="sm"
+                          variant={isAvailable ? "default" : "outline"}
+                          disabled={availabilityAction.isPending}
+                          onClick={() => availabilityAction.mutate({ branchId: branch.id, action: "available" })}
+                        >
+                          {t("catalog.products.available")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={setting?.unavailableReason === "sold_out_today" ? "destructive" : "outline"}
+                          disabled={availabilityAction.isPending}
+                          onClick={() =>
+                            availabilityAction.mutate({ branchId: branch.id, action: "sold_out_today" })
                           }
-                        />
-                        <span className="text-sm">{t("catalog.products.availableInBranch")}</span>
+                        >
+                          {t("catalog.products.soldOutToday")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={setting?.unavailableReason === "manual" ? "destructive" : "outline"}
+                          disabled={availabilityAction.isPending}
+                          onClick={() => availabilityAction.mutate({ branchId: branch.id, action: "unavailable" })}
+                        >
+                          {t("catalog.products.markUnavailable")}
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -439,10 +489,139 @@ export function ProductEditorPage() {
             </CardContent>
           </Card>
 
-          <RecipeEditor productId={id!} />
+          {form.isCombo ? (
+            <ComboComponentsEditor productId={id!} currentProduct={product.data} />
+          ) : (
+            <RecipeEditor productId={id!} />
+          )}
         </>
       )}
     </div>
+  );
+}
+
+/** Fixed-bundle combo builder — pick real existing products + how many of
+ * each one combo unit includes. Pricing/food-cost split is computed
+ * entirely server-side at order time (see OrderingService.priceCombo). */
+function ComboComponentsEditor({
+  productId,
+  currentProduct,
+}: {
+  productId: string;
+  currentProduct: Product | undefined;
+}) {
+  const { t, i18n } = useTranslation();
+  const queryClient = useQueryClient();
+
+  const allProducts = useQuery({
+    queryKey: ["catalog", "products"],
+    queryFn: () => catalogApi.listProducts(),
+  });
+
+  const [rows, setRows] = useState<Array<{ componentProductId: string; quantity: number }>>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (currentProduct) {
+      setRows(
+        currentProduct.comboComponents.map((c) => ({
+          componentProductId: c.componentProductId,
+          quantity: c.quantity,
+        })),
+      );
+    }
+  }, [currentProduct]);
+
+  const candidates = (allProducts.data ?? []).filter((p) => p.id !== productId && !p.isCombo);
+
+  const save = useMutation({
+    mutationFn: () =>
+      catalogApi.setComboComponents(
+        productId,
+        rows
+          .filter((r) => r.componentProductId)
+          .map((r, index) => ({ componentProductId: r.componentProductId, quantity: r.quantity, sortOrder: index })),
+      ),
+    onSuccess: async () => {
+      setError(null);
+      await queryClient.invalidateQueries({ queryKey: ["catalog", "product", productId] });
+    },
+    onError: (e) => setError(e instanceof ApiError ? e.message : t("common.error")),
+  });
+
+  function addRow() {
+    const first = candidates.find((p) => !rows.some((r) => r.componentProductId === p.id));
+    setRows([...rows, { componentProductId: first?.id ?? "", quantity: 1 }]);
+  }
+
+  function updateRow(index: number, patch: Partial<{ componentProductId: string; quantity: number }>) {
+    setRows(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  function removeRow(index: number) {
+    setRows(rows.filter((_, i) => i !== index));
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("catalog.products.comboComponents")}</CardTitle>
+        <CardDescription>{t("catalog.products.comboComponentsHint")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error && <Alert variant="destructive">{error}</Alert>}
+
+        <div className="space-y-2">
+          {rows.map((row, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2 rounded-md border p-2">
+              <Select
+                className="w-56"
+                value={row.componentProductId}
+                onChange={(e) => updateRow(index, { componentProductId: e.target.value })}
+              >
+                <option value="" disabled>
+                  —
+                </option>
+                {candidates.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {localizedName(p, i18n.language)} ({p.basePrice})
+                  </option>
+                ))}
+              </Select>
+              <Input
+                className="w-24"
+                dir="ltr"
+                type="number"
+                min={1}
+                value={row.quantity}
+                onChange={(e) => updateRow(index, { quantity: Math.max(1, Number(e.target.value)) })}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                title={t("catalog.delete")}
+                aria-label={t("catalog.delete")}
+                onClick={() => removeRow(index)}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          ))}
+          {rows.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t("catalog.products.comboComponentsEmpty")}</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between">
+          <Button type="button" variant="outline" size="sm" onClick={addRow}>
+            <Plus className="h-4 w-4" /> {t("catalog.products.addComponent")}
+          </Button>
+          <Button type="button" size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? <Spinner className="border-primary-foreground" /> : t("common.save")}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -450,6 +629,8 @@ interface RecipeRow {
   ingredientId: string;
   unitId: string;
   quantity: string;
+  isCritical: boolean;
+  criticalThreshold: string;
 }
 
 /** Food-cost recipe editor (Phase 7) — full-replace list of ingredient lines + live cost/margin preview. */
@@ -481,6 +662,8 @@ function RecipeEditor({ productId }: { productId: string }) {
           ingredientId: item.ingredientId,
           unitId: item.unitId,
           quantity: item.quantity,
+          isCritical: item.isCritical,
+          criticalThreshold: item.criticalThreshold ?? "",
         })),
       );
     }
@@ -490,7 +673,15 @@ function RecipeEditor({ productId }: { productId: string }) {
     mutationFn: () =>
       inventoryApi.setRecipe(
         productId,
-        rows.filter((row) => row.ingredientId && row.unitId && row.quantity),
+        rows
+          .filter((row) => row.ingredientId && row.unitId && row.quantity)
+          .map((row) => ({
+            ingredientId: row.ingredientId,
+            unitId: row.unitId,
+            quantity: row.quantity,
+            isCritical: row.isCritical,
+            criticalThreshold: row.isCritical && row.criticalThreshold ? row.criticalThreshold : undefined,
+          })),
       ),
     onSuccess: async () => {
       setError(null);
@@ -505,7 +696,16 @@ function RecipeEditor({ productId }: { productId: string }) {
   function addRow() {
     const firstIngredient = ingredients.data?.[0];
     const firstUnit = units.data?.find((u) => u.type === firstIngredient?.unitType);
-    setRows([...rows, { ingredientId: firstIngredient?.id ?? "", unitId: firstUnit?.id ?? "", quantity: "" }]);
+    setRows([
+      ...rows,
+      {
+        ingredientId: firstIngredient?.id ?? "",
+        unitId: firstUnit?.id ?? "",
+        quantity: "",
+        isCritical: false,
+        criticalThreshold: "",
+      },
+    ]);
   }
 
   function updateRow(index: number, patch: Partial<RecipeRow>) {
@@ -544,50 +744,77 @@ function RecipeEditor({ productId }: { productId: string }) {
             const selectedIngredient = ingredients.data?.find((i) => i.id === row.ingredientId);
             const compatibleUnits = units.data?.filter((u) => u.type === selectedIngredient?.unitType) ?? [];
             return (
-              <div key={index} className="flex flex-wrap items-center gap-2">
-                <Select
-                  className="w-48"
-                  value={row.ingredientId}
-                  onChange={(e) => {
-                    const ingredient = ingredients.data?.find((i) => i.id === e.target.value);
-                    const compatible = units.data?.find((u) => u.type === ingredient?.unitType);
-                    updateRow(index, { ingredientId: e.target.value, unitId: compatible?.id ?? "" });
-                  }}
-                >
-                  <option value="" disabled>
-                    —
-                  </option>
-                  {ingredients.data?.map((ingredient) => (
-                    <option key={ingredient.id} value={ingredient.id}>
-                      {localizedName(ingredient, i18n.language)}
+              <div key={index} className="space-y-2 rounded-md border p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    className="w-48"
+                    value={row.ingredientId}
+                    onChange={(e) => {
+                      const ingredient = ingredients.data?.find((i) => i.id === e.target.value);
+                      const compatible = units.data?.find((u) => u.type === ingredient?.unitType);
+                      updateRow(index, { ingredientId: e.target.value, unitId: compatible?.id ?? "" });
+                    }}
+                  >
+                    <option value="" disabled>
+                      —
                     </option>
-                  ))}
-                </Select>
-                <Input
-                  className="w-28"
-                  dir="ltr"
-                  inputMode="decimal"
-                  placeholder={t("inventory.recipe.quantity")}
-                  value={row.quantity}
-                  onChange={(e) => updateRow(index, { quantity: e.target.value })}
-                />
-                <Select
-                  className="w-32"
-                  value={row.unitId}
-                  onChange={(e) => updateRow(index, { unitId: e.target.value })}
-                >
-                  <option value="" disabled>
-                    —
-                  </option>
-                  {compatibleUnits.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {localizedName(unit, i18n.language)}
+                    {ingredients.data?.map((ingredient) => (
+                      <option key={ingredient.id} value={ingredient.id}>
+                        {localizedName(ingredient, i18n.language)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input
+                    className="w-28"
+                    dir="ltr"
+                    inputMode="decimal"
+                    placeholder={t("inventory.recipe.quantity")}
+                    value={row.quantity}
+                    onChange={(e) => updateRow(index, { quantity: e.target.value })}
+                  />
+                  <Select
+                    className="w-32"
+                    value={row.unitId}
+                    onChange={(e) => updateRow(index, { unitId: e.target.value })}
+                  >
+                    <option value="" disabled>
+                      —
                     </option>
-                  ))}
-                </Select>
-                <Button variant="ghost" size="icon" onClick={() => removeRow(index)}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                    {compatibleUnits.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {localizedName(unit, i18n.language)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title={t("catalog.delete")}
+                    aria-label={t("catalog.delete")}
+                    onClick={() => removeRow(index)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 ps-1 text-sm">
+                  <Switch
+                    checked={row.isCritical}
+                    onCheckedChange={(checked) => updateRow(index, { isCritical: checked })}
+                    aria-label={t("inventory.recipe.criticalToggle")}
+                  />
+                  <span className="text-muted-foreground">{t("inventory.recipe.criticalToggle")}</span>
+                  {row.isCritical && (
+                    <Input
+                      className="w-32"
+                      dir="ltr"
+                      inputMode="decimal"
+                      placeholder={t("inventory.recipe.criticalThreshold")}
+                      value={row.criticalThreshold}
+                      onChange={(e) => updateRow(index, { criticalThreshold: e.target.value })}
+                    />
+                  )}
+                </div>
               </div>
             );
           })}

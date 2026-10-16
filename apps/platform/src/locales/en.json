@@ -20,7 +20,8 @@
   "nav": {
     "tenants": "Restaurants",
     "subscriptions": "Subscriptions",
-    "system": "System status"
+    "system": "System status",
+    "settings": "Settings"
   },
   "tenants": {
     "title": "Registered restaurants",
@@ -61,5 +62,26 @@
     "activeTenants": "Active restaurants",
     "suspendedTenants": "Suspended restaurants",
     "subscriptionsByStatus": "Subscriptions by status"
+  },
+  "settings": {
+    "title": "Platform settings",
+    "saved": "Saved successfully",
+    "rangeError": "{{field}} must be a whole number between {{min}} and {{max}}.",
+    "policyTitle": "OTP & login-lockout policy",
+    "policyHint": "Shared by both tenant-user login and platform-admin login — one policy, both places.",
+    "otpTtlMinutes": "OTP validity (minutes)",
+    "otpMaxVerifyAttempts": "Max OTP verification attempts",
+    "maxFailedLogins": "Failed logins before lockout",
+    "maxFailedLoginsHint": "Applies to tenant-user AND platform-admin login alike.",
+    "lockoutMinutes": "Lockout duration (minutes)",
+    "maxUploadMb": "Default upload size limit (MB)",
+    "maxUploadBytes": "Upload size limit",
+    "maxUploadMbCeilingHint": "Cannot exceed {{max}}MB — Multer's own hard ceiling rejects anything larger before this setting is even checked.",
+    "auditLogTitle": "Change log",
+    "auditLogHint": "Every settings change: who, what, old and new value, when.",
+    "auditLogEmpty": "No settings changes yet.",
+    "auditLogWhen": "When",
+    "auditLogWho": "Who",
+    "auditLogChanges": "Changes"
   }
 }

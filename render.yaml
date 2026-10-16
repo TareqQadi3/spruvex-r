@@ -3,24 +3,21 @@
 # NOT deploy-verified: this sandbox has no way to create a Render account or
 # trigger an actual deploy, so this file is reviewed-but-unproven, same
 # caveat as docker-compose.prod.yml. See docs/RENDER_DEPLOY.md for the full
-# walkthrough, including the one manual step Render's managed Postgres can't
-# do for us (creating the second, RLS-restricted database role).
+# walkthrough. The database lives on Neon (free, non-expiring); the API
+# creates its RLS-restricted role and runs migrations itself on boot.
 #
 # Free-tier notes:
 #   - Free web services spin down after 15 min of inactivity (cold start on
-#     the next request) and free Postgres is deleted after 30 days with no
-#     grace period — fine for "let me try this on a real URL", not for an
-#     actual paying customer. See docs/RENDER_DEPLOY.md for upgrade notes.
+#     the next request). See docs/RENDER_DEPLOY.md for upgrade notes.
 #   - Redis is intentionally not provisioned here: the realtime layer
 #     already degrades gracefully to an in-memory adapter when REDIS_URL is
 #     unset (shared/realtime/redis-io.adapter.ts) — fine for a single
 #     instance, which is all the free tier gives you anyway.
 
-databases:
-  - name: spruvex-r-db
-    databaseName: spruvex_r
-    user: spruvex_admin
-    plan: free
+# Database: NOT provisioned on Render. Render's free Postgres is deleted
+# after 30 days (that is what happened to the old spruvex-r-db). We use a
+# free Neon project instead (https://neon.tech) — it never expires, it only
+# sleeps when idle and wakes on the next query. See docs/RENDER_DEPLOY.md.
 
 services:
   - type: web
@@ -31,18 +28,28 @@ services:
     plan: free
     healthCheckPath: /api/v1/health
     envVars:
+      # Paste Neon's connection string (owner role, direct — NOT the
+      # "-pooler" host) here. Migrations + platform-admin queries use it.
       - key: ADMIN_DATABASE_URL
-        fromDatabase:
-          name: spruvex-r-db
-          property: connectionString
-      # No `fromDatabase` equivalent for a second, RLS-restricted role —
-      # Render's managed Postgres only provisions the one role above. Create
-      # `spruvex_app` once by hand (docs/RENDER_DEPLOY.md has the exact SQL),
-      # then paste its connection string here.
-      - key: DATABASE_URL
         sync: false
+      # DATABASE_URL is intentionally not set: the API derives it from
+      # ADMIN_DATABASE_URL + this password, connecting as the restricted
+      # NOBYPASSRLS role `spruvex_app` (shared/prisma/derive-app-database-url.ts).
+      - key: BOOTSTRAP_APP_ROLE_PASSWORD
+        generateValue: true
+      # Both idempotent, so they stay on: every boot ensures the spruvex_app
+      # role/grants exist and applies any pending migrations.
+      - key: RUN_DB_BOOTSTRAP
+        value: "true"
+      - key: RUN_DB_MIGRATE
+        value: "true"
       - key: JWT_SECRET
         generateValue: true
+      # Not generateValue: spruvex-site (a separate deployment) must be
+      # configured with this exact same value — generate one with
+      # `openssl rand -hex 32` and paste it into both places by hand.
+      - key: SPRUVEX_SITE_API_KEY
+        sync: false
       - key: JWT_ACCESS_TTL_SECONDS
         value: "900"
       - key: REFRESH_TOKEN_TTL_DAYS
@@ -53,6 +60,18 @@ services:
         value: "https://spruvex-r-dashboard.onrender.com,https://spruvex-r-pos.onrender.com,https://spruvex-r-kds.onrender.com,https://spruvex-r-ordering.onrender.com,https://spruvex-r-platform.onrender.com"
       - key: ORDERING_BASE_URL
         value: https://spruvex-r-ordering.onrender.com
+      # Returned to spruvex-site by POST /public/trial-signup (and used in
+      # emails) as the link the new merchant signs in at.
+      - key: DASHBOARD_BASE_URL
+        value: https://spruvex-r-dashboard.onrender.com
+      # Used to build absolute URLs for uploaded logo/product/category
+      # images. NOTE: the free plan's disk is ephemeral — uploaded files
+      # are lost on every redeploy/restart. Fine for "try it out"; needs a
+      # Render persistent Disk (paid) or a real object-storage backend
+      # (swap modules/uploads/uploads.service.ts) before relying on this
+      # for actual customer data.
+      - key: PUBLIC_API_ORIGIN
+        value: https://spruvex-r-api.onrender.com
       # Optional — set these two to bootstrap the first platform admin login
       # on first deploy, then unset them (see docs/RENDER_DEPLOY.md).
       - key: PLATFORM_ADMIN_EMAIL
@@ -62,6 +81,10 @@ services:
       # Optional error tracking — leave unset, zero behavior change.
       - key: SENTRY_DSN
         sync: false
+      # Only needed once some tenant enables ZATCA Phase 2 e-invoicing —
+      # encrypts their CSID credentials at rest. Generate a long random value.
+      - key: ZATCA_CREDENTIALS_ENCRYPTION_KEY
+        sync: false
 
   - type: web
     name: spruvex-r-dashboard
@@ -70,11 +93,12 @@ services:
     dockerContext: .
     plan: free
     envVars:
+      # Must be the API's PUBLIC https URL, not `fromService: hostport`: the
+      # nginx proxy resolves it over public DNS (1.1.1.1) and needs a scheme,
+      # and Render's private `host:port` has neither. Syncing the old
+      # hostport value broke every login with a 5xx.
       - key: API_INTERNAL_ORIGIN
-        fromService:
-          type: web
-          name: spruvex-r-api
-          property: hostport
+        value: https://spruvex-r-api.onrender.com
 
   - type: web
     name: spruvex-r-pos
@@ -83,11 +107,12 @@ services:
     dockerContext: .
     plan: free
     envVars:
+      # Must be the API's PUBLIC https URL, not `fromService: hostport`: the
+      # nginx proxy resolves it over public DNS (1.1.1.1) and needs a scheme,
+      # and Render's private `host:port` has neither. Syncing the old
+      # hostport value broke every login with a 5xx.
       - key: API_INTERNAL_ORIGIN
-        fromService:
-          type: web
-          name: spruvex-r-api
-          property: hostport
+        value: https://spruvex-r-api.onrender.com
 
   - type: web
     name: spruvex-r-kds
@@ -96,11 +121,12 @@ services:
     dockerContext: .
     plan: free
     envVars:
+      # Must be the API's PUBLIC https URL, not `fromService: hostport`: the
+      # nginx proxy resolves it over public DNS (1.1.1.1) and needs a scheme,
+      # and Render's private `host:port` has neither. Syncing the old
+      # hostport value broke every login with a 5xx.
       - key: API_INTERNAL_ORIGIN
-        fromService:
-          type: web
-          name: spruvex-r-api
-          property: hostport
+        value: https://spruvex-r-api.onrender.com
 
   - type: web
     name: spruvex-r-platform
@@ -109,11 +135,12 @@ services:
     dockerContext: .
     plan: free
     envVars:
+      # Must be the API's PUBLIC https URL, not `fromService: hostport`: the
+      # nginx proxy resolves it over public DNS (1.1.1.1) and needs a scheme,
+      # and Render's private `host:port` has neither. Syncing the old
+      # hostport value broke every login with a 5xx.
       - key: API_INTERNAL_ORIGIN
-        fromService:
-          type: web
-          name: spruvex-r-api
-          property: hostport
+        value: https://spruvex-r-api.onrender.com
 
   - type: web
     name: spruvex-r-ordering

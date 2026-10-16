@@ -4,14 +4,20 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Prisma } from "@prisma/client";
 
+import { DOMAIN_EVENTS } from "@spruvex-r/types";
+
 import { AuditService } from "../../shared/audit/audit.service";
+import { riyadhDateString } from "../../shared/common/riyadh-date";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
 import {
   BranchSettingDto,
+  ChannelOverrideDto,
   CreateProductDto,
+  SetComboComponentsDto,
   SetProductModifierGroupsDto,
   UpdateProductDto,
 } from "./dto/product.dto";
@@ -23,6 +29,8 @@ const PRODUCT_INCLUDE = {
       branchId: true,
       priceOverride: true,
       isAvailable: true,
+      unavailableReason: true,
+      soldOutDate: true,
       branch: { select: { name: true, nameEn: true } },
     },
   },
@@ -48,6 +56,15 @@ const PRODUCT_INCLUDE = {
       },
     },
   },
+  comboComponents: {
+    orderBy: { sortOrder: "asc" },
+    select: {
+      componentProductId: true,
+      quantity: true,
+      sortOrder: true,
+      componentProduct: { select: { id: true, name: true, nameEn: true, basePrice: true } },
+    },
+  },
 } satisfies Prisma.ProductInclude;
 
 @Injectable()
@@ -56,6 +73,7 @@ export class ProductsService {
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     private readonly audit: AuditService,
+    private readonly events: EventEmitter2,
   ) {}
 
   list(categoryId?: string) {
@@ -107,6 +125,16 @@ export class ProductsService {
     }
     if (dto.sku !== undefined) {
       await this.assertSkuAvailable(dto.sku, id);
+    }
+    if (dto.isCombo) {
+      const usedAsComponent = await this.prisma.scoped.comboComponent.count({
+        where: { componentProductId: id },
+      });
+      if (usedAsComponent > 0) {
+        throw new ConflictException(
+          "This product is already used as a component of another combo — it cannot become a combo itself",
+        );
+      }
     }
 
     const product = await this.prisma.scoped.product.update({
@@ -179,6 +207,62 @@ export class ProductsService {
     return this.get(id);
   }
 
+  /**
+   * Replaces the fixed bundle of real products inside a combo. The combo
+   * itself must already be marked isCombo (update it first); components
+   * must be real, active, non-combo products from the same tenant — no
+   * nesting, and no bundling a product that isn't orderable on its own.
+   */
+  async setComboComponents(id: string, dto: SetComboComponentsDto) {
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    const combo = await this.get(id);
+    if (!combo.isCombo) {
+      throw new ConflictException('Mark the product as a combo (isCombo: true) before setting its components');
+    }
+    if (dto.components.length === 0) {
+      throw new BadRequestException("A combo needs at least one component");
+    }
+
+    const componentIds = dto.components.map((c) => c.componentProductId);
+    if (new Set(componentIds).size !== componentIds.length) {
+      throw new BadRequestException("Duplicate component in list");
+    }
+    if (componentIds.includes(id)) {
+      throw new BadRequestException("A combo cannot include itself");
+    }
+
+    const found = await this.prisma.scoped.product.findMany({
+      where: { id: { in: componentIds }, deletedAt: null },
+      select: { id: true, isCombo: true },
+    });
+    if (found.length !== componentIds.length) {
+      throw new NotFoundException("One or more component products not found");
+    }
+    if (found.some((p) => p.isCombo)) {
+      throw new BadRequestException("A combo cannot include another combo as a component");
+    }
+
+    const scoped = this.prisma.scoped;
+    await scoped.comboComponent.deleteMany({ where: { comboProductId: id } });
+    await scoped.comboComponent.createMany({
+      data: dto.components.map((c, index) => ({
+        tenantId,
+        comboProductId: id,
+        componentProductId: c.componentProductId,
+        quantity: c.quantity ?? 1,
+        sortOrder: c.sortOrder ?? index,
+      })),
+    });
+
+    await this.audit.log({
+      action: "product.combo_components_updated",
+      entityType: "product",
+      entityId: id,
+      meta: { componentIds },
+    });
+    return this.get(id);
+  }
+
   /** Upserts availability + price override for a product in one branch. */
   async setBranchSetting(id: string, branchId: string, dto: BranchSettingDto) {
     const ctx = this.tenantContext.contextOrThrow;
@@ -200,14 +284,28 @@ export class ProductsService {
         branchId,
         priceOverride: dto.priceOverride ?? null,
         isAvailable: dto.isAvailable,
+        unavailableReason: dto.isAvailable ? null : "manual",
+        soldOutDate: null,
         createdBy: ctx.userId,
       },
       update: {
         priceOverride: dto.priceOverride ?? null,
         isAvailable: dto.isAvailable,
+        unavailableReason: dto.isAvailable ? null : "manual",
+        soldOutDate: null,
         updatedBy: ctx.userId,
       },
     });
+
+    // A merchant re-enabling a product always wins immediately, even if the
+    // system had it hidden for a critical-ingredient stockout — see
+    // InventoryService.reevaluateStockGating's doc comment. Without this,
+    // the next unrelated stock movement for some OTHER ingredient could
+    // still find the stale ProductStockHide row and treat it as still
+    // system-owned.
+    if (dto.isAvailable) {
+      await this.prisma.scoped.productStockHide.deleteMany({ where: { productId: id, branchId } });
+    }
 
     await this.audit.log({
       action: "product.branch_setting_updated",
@@ -216,7 +314,140 @@ export class ProductsService {
       branchId,
       meta: { priceOverride: dto.priceOverride ?? null, isAvailable: dto.isAvailable },
     });
+    this.emitAvailabilityChanged(branchId, id, dto.isAvailable);
     return setting;
+  }
+
+  /**
+   * Marks a product sold-out for TODAY only (Asia/Riyadh calendar date) — a
+   * daily sweep (CatalogAvailabilityCron) flips it back to available once
+   * that date has passed, with no staff action required.
+   */
+  async markSoldOutToday(id: string, branchId: string) {
+    return this.setAvailabilityState(id, branchId, {
+      isAvailable: false,
+      unavailableReason: "sold_out_today",
+      soldOutDate: new Date(riyadhDateString()),
+    });
+  }
+
+  /** Marks a product unavailable indefinitely — stays off until a human re-enables it. */
+  async markUnavailable(id: string, branchId: string) {
+    return this.setAvailabilityState(id, branchId, {
+      isAvailable: false,
+      unavailableReason: "manual",
+      soldOutDate: null,
+    });
+  }
+
+  /** Re-enables a product at a branch — clears any stale system stock-hide too. */
+  async markAvailable(id: string, branchId: string) {
+    const result = await this.setAvailabilityState(id, branchId, {
+      isAvailable: true,
+      unavailableReason: null,
+      soldOutDate: null,
+    });
+    await this.prisma.scoped.productStockHide.deleteMany({ where: { productId: id, branchId } });
+    return result;
+  }
+
+  private async setAvailabilityState(
+    id: string,
+    branchId: string,
+    state: { isAvailable: boolean; unavailableReason: string | null; soldOutDate: Date | null },
+  ) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    await this.get(id);
+    const branch = await this.prisma.scoped.branch.findFirst({ where: { id: branchId, deletedAt: null } });
+    if (!branch) {
+      throw new NotFoundException("Branch not found");
+    }
+
+    const setting = await this.prisma.scoped.productBranchSetting.upsert({
+      where: { productId_branchId: { productId: id, branchId } },
+      create: {
+        tenantId,
+        productId: id,
+        branchId,
+        isAvailable: state.isAvailable,
+        unavailableReason: state.unavailableReason,
+        soldOutDate: state.soldOutDate,
+        createdBy: ctx.userId,
+      },
+      update: {
+        isAvailable: state.isAvailable,
+        unavailableReason: state.unavailableReason,
+        soldOutDate: state.soldOutDate,
+        updatedBy: ctx.userId,
+      },
+    });
+
+    await this.audit.log({
+      action: "product.availability_state_changed",
+      entityType: "product",
+      entityId: id,
+      branchId,
+      meta: { isAvailable: state.isAvailable, reason: state.unavailableReason },
+    });
+    this.emitAvailabilityChanged(branchId, id, state.isAvailable);
+    return setting;
+  }
+
+  private emitAvailabilityChanged(branchId: string, productId: string, isAvailable: boolean) {
+    this.events.emit(DOMAIN_EVENTS.PRODUCT_AVAILABILITY_CHANGED, {
+      tenantId: this.tenantContext.tenantIdOrThrow,
+      branchId,
+      productId,
+      isAvailable,
+    });
+  }
+
+  /** Upserts a per-channel visibility/price override for a product at a branch (item 3). */
+  async setChannelOverride(id: string, branchId: string, dto: ChannelOverrideDto) {
+    const ctx = this.tenantContext.contextOrThrow;
+    const tenantId = this.tenantContext.tenantIdOrThrow;
+    await this.get(id);
+    const branch = await this.prisma.scoped.branch.findFirst({ where: { id: branchId, deletedAt: null } });
+    if (!branch) {
+      throw new NotFoundException("Branch not found");
+    }
+
+    const override = await this.prisma.scoped.productChannelOverride.upsert({
+      where: { productId_branchId_channel: { productId: id, branchId, channel: dto.channel } },
+      create: {
+        tenantId,
+        productId: id,
+        branchId,
+        channel: dto.channel,
+        isVisible: dto.isVisible,
+        priceOverride: dto.priceOverride ?? null,
+        createdBy: ctx.userId,
+      },
+      update: {
+        isVisible: dto.isVisible,
+        priceOverride: dto.priceOverride ?? null,
+        updatedBy: ctx.userId,
+      },
+    });
+
+    await this.audit.log({
+      action: "product.channel_override_updated",
+      entityType: "product",
+      entityId: id,
+      branchId,
+      meta: { channel: dto.channel, isVisible: dto.isVisible, priceOverride: dto.priceOverride ?? null },
+    });
+    this.emitAvailabilityChanged(branchId, id, dto.isVisible);
+    return override;
+  }
+
+  /** All per-channel overrides for a product across branches (dashboard editing view). */
+  listChannelOverrides(id: string) {
+    return this.prisma.scoped.productChannelOverride.findMany({
+      where: { productId: id },
+      include: { branch: { select: { id: true, name: true, nameEn: true } } },
+    });
   }
 
   private async assertCategory(categoryId: string) {

@@ -16,6 +16,10 @@ import type { MenuModifier, MenuProduct } from "@/lib/types";
 interface CartState {
   lines: CartLine[];
   addLine: (product: MenuProduct, modifiers: MenuModifier[], notes?: string) => void;
+  /** Bulk-append — used by "repeat last order" to add several lines at once. */
+  addLines: (
+    items: Array<{ product: MenuProduct; modifiers: MenuModifier[]; quantity: number; notes?: string }>,
+  ) => void;
   removeLine: (lineId: string) => void;
   setQuantity: (lineId: string, quantity: number) => void;
   clear: () => void;
@@ -57,6 +61,22 @@ export function CartProvider({ scope, children }: { scope: string; children: Rea
     [],
   );
 
+  const addLines = useCallback(
+    (items: Array<{ product: MenuProduct; modifiers: MenuModifier[]; quantity: number; notes?: string }>) => {
+      setLines((current) => [
+        ...current,
+        ...items.map((item) => ({
+          lineId: crypto.randomUUID(),
+          product: item.product,
+          quantity: item.quantity,
+          modifiers: item.modifiers,
+          notes: item.notes,
+        })),
+      ]);
+    },
+    [],
+  );
+
   const removeLine = useCallback((lineId: string) => {
     setLines((current) => current.filter((line) => line.lineId !== lineId));
   }, []);
@@ -72,8 +92,8 @@ export function CartProvider({ scope, children }: { scope: string; children: Rea
   const clear = useCallback(() => setLines([]), []);
 
   const value = useMemo(
-    () => ({ lines, addLine, removeLine, setQuantity, clear }),
-    [lines, addLine, removeLine, setQuantity, clear],
+    () => ({ lines, addLine, addLines, removeLine, setQuantity, clear }),
+    [lines, addLine, addLines, removeLine, setQuantity, clear],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

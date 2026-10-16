@@ -2,6 +2,7 @@ import { Type } from "class-transformer";
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsOptional,
   IsString,
   IsUUID,
@@ -28,6 +29,17 @@ export class RecipeItemLineDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  /** Marks this ingredient as make-or-break — see RecipeItem.isCritical's doc comment. */
+  @IsOptional()
+  @IsBoolean()
+  isCritical?: boolean;
+
+  /** Base-unit stock level at/below which the product auto-hides. Omitted/null = 0 (fully out). */
+  @IsOptional()
+  @IsString()
+  @Matches(POSITIVE_QUANTITY_RULE, { message: QUANTITY_MESSAGE })
+  criticalThreshold?: string;
 }
 
 /** Replaces the entire recipe for a product in one call — simplest, race-free API for an editor UI. */

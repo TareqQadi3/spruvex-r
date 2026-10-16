@@ -8,7 +8,7 @@ export interface OrderModifier {
 
 export interface OrderItem {
   id: string;
-  productSnapshot: { name: string; nameEn: string | null };
+  productSnapshot: { name: string; nameEn: string | null; comboParentName?: string };
   quantity: number;
   notes: string | null;
   modifiers: OrderModifier[];

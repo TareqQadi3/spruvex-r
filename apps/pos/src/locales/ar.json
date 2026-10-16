@@ -8,7 +8,7 @@
     "error": "تعذر تسجيل الدخول"
   },
   "branch": { "select": "اختر الفرع" },
-  "tabs": { "menu": "طلب جديد", "orders": "الطلبات النشطة" },
+  "tabs": { "menu": "طلب جديد", "orders": "الطلبات النشطة", "sessions": "جلسات الطاولات" },
   "pos": {
     "all": "الكل",
     "cart": "الطلب الحالي",
@@ -19,6 +19,9 @@
     "table": "طاولة {{number}}",
     "notes": "ملاحظات الطلب",
     "itemNotes": "ملاحظة الصنف",
+    "decreaseQty": "إنقاص الكمية",
+    "increaseQty": "زيادة الكمية",
+    "removeItem": "إزالة الصنف من الطلب",
     "total": "الإجمالي",
     "vatIncluded": "شامل الضريبة {{rate}}%",
     "send": "إرسال الطلب",
@@ -78,7 +81,19 @@
     "pay": "تسجيل الدفعة",
     "exact": "المبلغ كاملاً",
     "completed": "اكتمل الدفع ✔",
-    "showReceipt": "عرض الإيصال"
+    "showReceipt": "عرض الإيصال",
+    "loyalty": {
+      "phonePlaceholder": "رقم جوال العميل",
+      "attach": "ربط العميل",
+      "stamps": "{{count}} دمغة",
+      "spend": "{{amount}} ريال نحو المكافأة",
+      "points": "{{count}} نقطة",
+      "redeem": {
+        "stamp_card": "استبدال مكافأة الدمغات",
+        "spend_threshold": "استبدال خصم الإنفاق",
+        "points_per_riyal": "استبدال النقاط"
+      }
+    }
   },
   "discount": {
     "title": "تطبيق خصم",
@@ -99,11 +114,42 @@
     "total": "الإجمالي",
     "payments": "المدفوعات",
     "thanks": "شكراً لزيارتكم",
-    "newOrder": "طلب جديد"
+    "newOrder": "طلب جديد",
+    "refund": "استرداد"
+  },
+  "refund": {
+    "title": "استرداد الطلب",
+    "amount": "المبلغ المسترد",
+    "method": "طريقة الاسترداد",
+    "cash": "كاش",
+    "card": "شبكة",
+    "reason": "السبب (إلزامي)",
+    "reference": "رقم العملية (اختياري)",
+    "submit": "تنفيذ الاسترداد",
+    "cancel": "إلغاء",
+    "success": "تم الاسترداد بنجاح",
+    "error": "فشل الاسترداد",
+    "amountRequired": "أدخل المبلغ",
+    "reasonRequired": "السبب إلزامي"
   },
   "sync": {
     "pending": "{{count}} طلب بانتظار الإرسال",
     "syncing": "جارٍ المزامنة..."
+  },
+  "sessions": {
+    "empty": "لا توجد جلسات طاولات مفتوحة حالياً",
+    "noParticipants": "لم يمسح أحد رمز QR لهذه الطاولة بعد",
+    "noOrderYet": "لا يوجد طلب على هذه الجلسة بعد",
+    "stale": "غير نشطة — تحتاج متابعة",
+    "unpaidBalance": "الرصيد غير المدفوع",
+    "unpaidCloseWarning": "لا يزال على هذه الطاولة رصيد غير مدفوع بقيمة {{amount}} ريال. إغلاقها الآن لن يحصّله — تأكد قبل المتابعة.",
+    "addItems": "إضافة أصناف",
+    "splitAndPay": "تقسيم ودفع",
+    "close": "إغلاق الجلسة",
+    "forceClose": "إغلاق على أي حال",
+    "splitTitle": "تقسيم الفاتورة — طلب #{{number}}",
+    "splitMode": { "equal": "تقسيم بالتساوي", "by_item": "كل شخص يدفع طلبه" },
+    "sharedBucket": "أصناف مشتركة / غير محددة"
   },
   "common": { "language": "English", "loading": "جارٍ التحميل...", "error": "حدث خطأ" }
 }

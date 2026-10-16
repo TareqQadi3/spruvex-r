@@ -8,8 +8,13 @@ export interface NavItem {
   labelKey: string;
   path: string;
   icon: string;
-  /** Permission required to see the item. Undefined = visible to any member. */
-  permission?: string;
+  /**
+   * Permission(s) required to see the item. A string[] means "any one of
+   * these" (e.g. the import tool is reachable with menu.manage OR
+   * loyalty.manage, since it covers both catalog and customer data).
+   * Undefined = visible to any member.
+   */
+  permission?: string | string[];
   comingSoon?: boolean;
 }
 
@@ -18,11 +23,16 @@ export const NAV_ITEMS: NavItem[] = [
   { labelKey: "branches", path: "/branches", icon: "store", permission: "branches.manage" },
   { labelKey: "team", path: "/team", icon: "users", permission: "users.manage" },
   { labelKey: "settings", path: "/settings", icon: "settings", permission: "tenant.settings.manage" },
+  { labelKey: "integrations", path: "/integrations", icon: "puzzle", permission: "tenant.settings.manage" },
+  { labelKey: "loyalty", path: "/loyalty", icon: "gift", permission: "loyalty.manage" },
+  { labelKey: "coupons", path: "/coupons", icon: "tag", permission: "marketing.manage_coupons" },
   { labelKey: "billing", path: "/billing", icon: "credit-card", permission: "billing.view" },
   { labelKey: "menu", path: "/menu", icon: "book-open", permission: "menu.manage" },
   { labelKey: "tables", path: "/tables", icon: "layout-grid", permission: "tables.manage" },
   { labelKey: "inventory", path: "/inventory", icon: "package", permission: "inventory.view" },
+  { labelKey: "purchases", path: "/purchases", icon: "truck", permission: "purchases.view" },
   { labelKey: "reports", path: "/reports", icon: "bar-chart", permission: "reports.view" },
+  { labelKey: "import", path: "/import", icon: "upload", permission: ["menu.manage", "loyalty.manage"] },
   // Business modules — later phases:
   { labelKey: "orders", path: "/orders", icon: "receipt", permission: "orders.view", comingSoon: true },
   { labelKey: "pos", path: "/pos", icon: "monitor", permission: "orders.create", comingSoon: true },
@@ -34,5 +44,9 @@ export function visibleNavItems(
   permissions: ReadonlySet<string> | string[],
 ): NavItem[] {
   const set = Array.isArray(permissions) ? new Set(permissions) : permissions;
-  return items.filter((item) => !item.permission || set.has(item.permission));
+  return items.filter((item) => {
+    if (!item.permission) return true;
+    const required = Array.isArray(item.permission) ? item.permission : [item.permission];
+    return required.some((p) => set.has(p));
+  });
 }

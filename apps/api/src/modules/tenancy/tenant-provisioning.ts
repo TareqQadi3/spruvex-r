@@ -30,6 +30,13 @@ export interface ProvisionTenantInput {
   logoUrl?: string;
   vatNumber?: string;
   crNumber?: string;
+  address?: string;
+  city?: string;
+  district?: string;
+  buildingNumber?: string;
+  postalCode?: string;
+  additionalAddress?: string;
+  contactPhone?: string;
   /** Omit to create the tenant without a branch (wizard creates it in step 3). */
   branch?: { name?: string; nameEn?: string; slug?: string };
   ownerUserId: string;
@@ -40,6 +47,26 @@ export interface ProvisionedTenant {
   branchId?: string;
   ownerUserId: string;
   roleIdsByKey: Record<string, string>;
+}
+
+/** URL-safe slug from a restaurant name — keeps Arabic letters, ASCII-lowercases the rest. */
+export function slugify(value: string): string {
+  const base = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9؀-ۿ]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "restaurant";
+}
+
+/** Appends `-2`, `-3`, ... to `base` until an unused tenant slug is found. */
+export async function findAvailableSlug(db: PrismaClient, base: string): Promise<string> {
+  let candidate = base;
+  for (let i = 2; ; i++) {
+    const taken = await db.tenant.findUnique({ where: { slug: candidate } });
+    if (!taken) return candidate;
+    candidate = `${base}-${i}`;
+  }
 }
 
 /** Upserts the global permission catalog from @spruvex-r/types. Idempotent. */
@@ -70,6 +97,13 @@ export async function provisionTenant(
         logoUrl: input.logoUrl,
         vatNumber: input.vatNumber,
         crNumber: input.crNumber,
+        address: input.address,
+        city: input.city,
+        district: input.district,
+        buildingNumber: input.buildingNumber,
+        postalCode: input.postalCode,
+        additionalAddress: input.additionalAddress,
+        contactPhone: input.contactPhone,
         createdBy: input.ownerUserId,
       },
     });

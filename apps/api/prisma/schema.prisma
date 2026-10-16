@@ -36,8 +36,18 @@ model Tenant {
   legalName             String?      @map("legal_name")
   vatNumber             String?      @map("vat_number")
   crNumber              String?      @map("cr_number")
-  /// ZATCA: registered address of the establishment.
+  /// ZATCA: registered address of the establishment (street name / line 1).
   address               String?
+  /// National Address components (KSA tax-invoice seller address, ZATCA
+  /// PostalAddress block) — collected as mandatory onboarding fields
+  /// alongside vatNumber/crNumber, same compliance reason.
+  city                  String?
+  district              String?
+  additionalAddress     String?      @map("additional_address")
+  buildingNumber        String?      @map("building_number")
+  postalCode            String?      @map("postal_code")
+  /// Restaurant's main contact number (distinct from any one branch's phone).
+  contactPhone          String?      @map("contact_phone")
   status                TenantStatus @default(active)
   /// Business type: restaurant | cafe | cloud_kitchen | food_truck | bakery | other
   type                  String?
@@ -52,40 +62,114 @@ model Tenant {
   settings              Json         @default("{}")
   onboardingCompletedAt DateTime?    @map("onboarding_completed_at")
 
+  /// Printed-receipt customization — optional onboarding step, editable
+  /// later from settings. themeColor is one of THEME_PRESETS
+  /// (@spruvex-r/types) — a curated, contrast-checked key, never a raw
+  /// user-picked hex (better-colors: never ship an unverified color pair).
+  themeColor          String  @default("green") @map("theme_color")
+  receiptHeaderNote   String? @map("receipt_header_note")
+  receiptFooterNote   String? @map("receipt_footer_note")
+  /// One of RECEIPT_TEMPLATE_KEYS (@spruvex-r/types) — snapshotted into
+  /// Receipt.payload at issuance, so changing it never retroactively alters
+  /// an already-issued invoice.
+  receiptTemplate     String  @default("classic") @map("receipt_template")
+  /// One of RECEIPT_LOGO_POSITIONS.
+  receiptLogoPosition String  @default("top-center") @map("receipt_logo_position")
+  /// One of RECEIPT_LOGO_SIZES.
+  receiptLogoSize     String  @default("medium") @map("receipt_logo_size")
+
+  /// Public digital-menu (apps/ordering) appearance. One of MENU_TEMPLATE_KEYS
+  /// (@spruvex-r/types), or "custom" to use menuCustomCss instead of a preset.
+  menuTemplate  String  @default("classic") @map("menu_template")
+  /// Sanitized (never raw) CSS — see shared/security/menu-css-sanitizer.ts.
+  /// Only meaningful when menuTemplate = "custom". Already scoped under
+  /// .spx-menu-custom by the sanitizer before it's ever stored.
+  menuCustomCss String? @map("menu_custom_css") @db.Text
+
+  /// ZATCA Phase 2 (Fatoora integration) — opt-in per restaurant (plan
+  /// decision: owner enables it only once their revenue wave actually
+  /// requires it; Phase 1's QR-only invoice keeps working either way).
+  zatcaPhase2Enabled      Boolean @default(false) @map("zatca_phase2_enabled")
+  /// "sandbox" while onboarding with ZATCA's compliance CSID, "production"
+  /// once the production CSID is issued. Irrelevant while disabled.
+  zatcaEnvironment        String  @default("sandbox") @map("zatca_environment")
+  /// Compliance/production CSID materials from the Fatoora portal, at rest
+  /// AES-256-GCM encrypted (see shared/security/crypto-vault.ts) — never
+  /// selected into an API response.
+  zatcaCsidCertificateEnc String? @map("zatca_csid_certificate_enc") @db.Text
+  zatcaCsidPrivateKeyEnc  String? @map("zatca_csid_private_key_enc") @db.Text
+  /// The CSID binarySecurityToken (Basic-auth username against Fatoora) —
+  /// not as sensitive as the private key/secret, but still credential
+  /// material, so encrypted the same way.
+  zatcaCsidTokenEnc       String? @map("zatca_csid_token_enc") @db.Text
+  zatcaCsidSecretEnc      String? @map("zatca_csid_secret_enc") @db.Text
+  /// Free-text note for the settings page (e.g. onboarding request date) —
+  /// not itself credential material.
+  zatcaCsidRequestId      String? @map("zatca_csid_request_id")
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  branches              Branch[]
-  roles                 Role[]
-  userRoles             UserRole[]
-  posPins               PosPin[]
-  auditLogs             AuditLog[]
-  categories            Category[]
-  products              Product[]
-  productBranchSettings ProductBranchSetting[]
-  modifierGroups        ModifierGroup[]
-  modifiers             Modifier[]
-  productModifierGroups ProductModifierGroup[]
-  floors                Floor[]
-  tables                Table[]
-  tableSessions         TableSession[]
-  orders                Order[]
-  orderItems            OrderItem[]
-  orderItemModifiers    OrderItemModifier[]
-  orderStatusHistories  OrderStatusHistory[]
-  shifts                Shift[]
-  payments              Payment[]
-  receipts              Receipt[]
-  ingredients           Ingredient[]
-  stockLocations        StockLocation[]
-  stockLevels           StockLevel[]
-  stockMovements        StockMovement[]
-  recipeItems           RecipeItem[]
-  subscription          Subscription?
-  subscriptionInvoices  SubscriptionInvoice[]
+  branches                     Branch[]
+  roles                        Role[]
+  userRoles                    UserRole[]
+  posPins                      PosPin[]
+  auditLogs                    AuditLog[]
+  categories                   Category[]
+  products                     Product[]
+  productBranchSettings        ProductBranchSetting[]
+  modifierGroups               ModifierGroup[]
+  modifiers                    Modifier[]
+  productModifierGroups        ProductModifierGroup[]
+  floors                       Floor[]
+  tables                       Table[]
+  tableSessions                TableSession[]
+  tableSessionParticipants     TableSessionParticipant[]
+  orders                       Order[]
+  orderAppendLogs              OrderAppendLog[]
+  orderItems                   OrderItem[]
+  orderItemModifiers           OrderItemModifier[]
+  orderStatusHistories         OrderStatusHistory[]
+  shifts                       Shift[]
+  payments                     Payment[]
+  receipts                     Receipt[]
+  creditNotes                  CreditNote[]
+  debitNotes                   DebitNote[]
+  refunds                      Refund[]
+  branchInvoiceChains          BranchInvoiceChain[]
+  ingredients                  Ingredient[]
+  stockLocations               StockLocation[]
+  stockLevels                  StockLevel[]
+  stockMovements               StockMovement[]
+  recipeItems                  RecipeItem[]
+  subscription                 Subscription?
+  subscriptionInvoices         SubscriptionInvoice[]
+  integrationConnections       IntegrationConnection[]
+  deliveryProductMappings      DeliveryProductMapping[]
+  whatsappTemplateOverrides    WhatsappTemplateOverride[]
+  productStockHides            ProductStockHide[]
+  ingredientReorderAlerts      IngredientReorderAlert[]
+  orderFeedbackRequests        OrderFeedbackRequest[]
+  loyaltyProgramConfigs        LoyaltyProgramConfig[]
+  loyaltyCustomers             LoyaltyCustomer[]
+  loyaltyLedgerEntries         LoyaltyLedgerEntry[]
+  suppliers                    Supplier[]
+  purchaseInvoices             PurchaseInvoice[]
+  purchaseInvoiceItems         PurchaseInvoiceItem[]
+  purchaseInvoiceReversals     PurchaseInvoiceReversal[]
+  purchaseInvoiceReversalItems PurchaseInvoiceReversalItem[]
+  expenses                     Expense[]
+  stockTransfers               StockTransfer[]
+  stockTransferItems           StockTransferItem[]
+  importJobs                   ImportJob[]
+  branchChannelPauses          BranchChannelPause[]
+  productChannelOverrides      ProductChannelOverride[]
+  modifierBranchSettings       ModifierBranchSetting[]
+  coupons                      Coupon[]
+  comboComponents              ComboComponent[]
 
   @@map("tenants")
 }
@@ -101,11 +185,49 @@ model Branch {
   email            String?
   lat              Decimal? @db.Decimal(9, 6)
   lng              Decimal? @db.Decimal(9, 6)
-  /// Weekly working hours, e.g. {"sun": [{"from": "08:00", "to": "23:00"}], ...}
+  /// Weekly recurring hours + per-channel overrides + one-off date
+  /// exceptions (holidays, Ramadan, full closures). Shape:
+  /// {
+  ///   "schedule": { "sun": [{"from":"08:00","to":"23:00"}], ... },       // baseline, all channels
+  ///   "channelSchedule": { "delivery": { "sun": [...], ... }, ... },     // optional per-channel override
+  ///   "exceptions": [
+  ///     {"date":"2026-09-23","closed":true,"label":"اليوم الوطني"},
+  ///     {"date":"2026-03-10","channel":"delivery","hours":[{"from":"18:00","to":"23:00"}],"label":"رمضان"}
+  ///   ]
+  /// }
+  /// A branch with an empty "schedule" (the default) is treated as always
+  /// open — hours-based gating only activates once a merchant configures at
+  /// least one weekly slot, so existing tenants who never touch this screen
+  /// see no behavior change. See BusinessHoursService.
   workingHours     Json     @default("{}") @map("working_hours")
   /// Self-ordering settings, e.g. {"qrOrderingEnabled": true, "requireCashierConfirmation": false}
   orderingSettings Json     @default("{}") @map("ordering_settings")
   isActive         Boolean  @default(true) @map("is_active")
+
+  /// Self-service delivery/pickup channel configuration — SAR amounts are
+  /// NUMERIC, never float. Frozen onto each Order at creation time so later
+  /// edits never change historical orders.
+  deliveryFeeAmount         Decimal  @default(0) @map("delivery_fee_amount") @db.Decimal(12, 2)
+  deliveryMinOrderAmount    Decimal  @default(0) @map("delivery_min_order_amount") @db.Decimal(12, 2)
+  /// Straight-line (haversine) delivery radius from this branch's lat/lng,
+  /// in km. Null = no radius restriction — either not configured, or the
+  /// merchant accepts delivery anywhere. Simplification: a circle, not a
+  /// hand-drawn polygon zone (a possible future enhancement).
+  deliveryRadiusKm          Decimal? @map("delivery_radius_km") @db.Decimal(6, 2)
+  deliveryEstimatedMinutes  Int      @default(45) @map("delivery_estimated_minutes")
+  pickupEstimatedMinutes    Int      @default(20) @map("pickup_estimated_minutes")
+  /// Accepted PaymentMethod values for self-service delivery/pickup orders,
+  /// e.g. ["cash","online"]. Dine-in/POS payment is unaffected.
+  selfServicePaymentMethods Json     @default("[\"cash\"]") @map("self_service_payment_methods")
+  /// Auto-slowdown (item 4): once this many orders are simultaneously in a
+  /// non-terminal status for the branch, displayed prep/delivery estimates
+  /// are padded and staff see a "busy" banner. Null = feature off.
+  autoSlowdownThreshold     Int?     @map("auto_slowdown_threshold")
+  /// A second, higher threshold at which self-service channels are
+  /// auto-paused (a BranchChannelPause row is created by the system, same
+  /// as a manual pause) instead of just padding the estimate. Null = never
+  /// auto-pause.
+  autoPauseThreshold        Int?     @map("auto_pause_threshold")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -113,21 +235,72 @@ model Branch {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
-  userRoles             UserRole[]
-  posPins               PosPin[]
-  productBranchSettings ProductBranchSetting[]
-  floors                Floor[]
-  tables                Table[]
-  orders                Order[]
-  shifts                Shift[]
-  stockLocations        StockLocation[]
-  stockLevels           StockLevel[]
-  stockMovements        StockMovement[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  userRoles               UserRole[]
+  posPins                 PosPin[]
+  productBranchSettings   ProductBranchSetting[]
+  modifierBranchSettings  ModifierBranchSetting[]
+  productChannelOverrides ProductChannelOverride[]
+  channelPauses           BranchChannelPause[]
+  floors                  Floor[]
+  tables                  Table[]
+  orders                  Order[]
+  shifts                  Shift[]
+  stockLocations          StockLocation[]
+  stockLevels             StockLevel[]
+  stockMovements          StockMovement[]
+  invoiceChain            BranchInvoiceChain?
+  integrationConnections  IntegrationConnection[]
+  productStockHides       ProductStockHide[]
+  ingredientReorderAlerts IngredientReorderAlert[]
+  feedbackRequests        OrderFeedbackRequest[]
+  loyaltyProgramConfigs   LoyaltyProgramConfig[]
+  loyaltyLedgerEntries    LoyaltyLedgerEntry[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
   @@map("branches")
+}
+
+/// The 3 customer self-service ordering channels — distinct from `OrderType`
+/// (which also includes POS-only `walkin`). Business hours, manual pauses,
+/// and per-channel product visibility/pricing all key off this. Staff-taken
+/// POS orders never check any of this — a closed electronic channel never
+/// blocks a cashier ringing up a walk-in or phone order.
+enum OrderingChannel {
+  dine_in
+  takeaway
+  delivery
+
+  @@map("ordering_channel")
+}
+
+/// An immediate manual "pause" of one self-service channel at one branch —
+/// separate from the weekly schedule, for emergencies (kitchen slammed, no
+/// drivers). The row's mere existence means "paused"; resuming deletes it.
+/// `pausedUntil = null` means indefinite (until a human resumes it);
+/// otherwise a periodic sweep (BusinessHoursService) deletes the row once
+/// `pausedUntil` has passed. System-initiated auto-slowdown pauses
+/// (Branch.autoPauseThreshold) use this exact same table with
+/// `pausedBy = null`.
+model BranchChannelPause {
+  id       String          @id @default(uuid()) @db.Uuid
+  tenantId String          @map("tenant_id") @db.Uuid
+  branchId String          @map("branch_id") @db.Uuid
+  channel  OrderingChannel
+
+  reason      String?
+  pausedUntil DateTime? @map("paused_until")
+  /// null = system-initiated (auto-slowdown), not a human action.
+  pausedBy    String?   @map("paused_by") @db.Uuid
+  pausedAt    DateTime  @default(now()) @map("paused_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, channel])
+  @@index([tenantId, branchId])
+  @@map("branch_channel_pauses")
 }
 
 /// Users are a global identity (email/phone unique across the platform);
@@ -399,6 +572,23 @@ model Product {
   isActive             Boolean @default(true) @map("is_active")
   /// Availability windows (e.g. breakfast-only) — schema readiness, enforced in a later phase.
   availabilitySchedule Json    @default("{}") @map("availability_schedule")
+  /// Fixed merchandising tag set, e.g. ["bestseller","new","spicy",
+  /// "vegetarian","contains_nuts","contains_dairy","gluten_free"] —
+  /// validated server-side against PRODUCT_BADGE_KEYS, rendered client-side
+  /// as chips on both the digital menu and dashboard catalog.
+  badges               Json    @default("[]")
+  /// Shown to customers as an estimate; also feeds auto-slowdown padding.
+  prepTimeMinutes      Int?    @map("prep_time_minutes")
+
+  /// Combo/bundle offer (e.g. "lunch meal" = burger + fries + drink at a
+  /// special combined price). `basePrice` above IS the combo's special
+  /// price for one unit — components keep their own real prices only to
+  /// compute how the combo price is split between them for revenue
+  /// reporting (see OrderingService's combo expansion); their true food
+  /// cost is never touched by that split. A combo cannot itself be used as
+  /// a component (no nesting) and carries no modifier groups of its own in
+  /// this first version — just a fixed bundle, not a build-your-own.
+  isCombo Boolean @default(false) @map("is_combo")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -406,19 +596,59 @@ model Product {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant         Tenant                 @relation(fields: [tenantId], references: [id])
-  category       Category               @relation(fields: [categoryId], references: [id])
-  branchSettings ProductBranchSetting[]
-  modifierGroups ProductModifierGroup[]
-  orderItems     OrderItem[]
-  recipeItems    RecipeItem[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  category                Category                 @relation(fields: [categoryId], references: [id])
+  branchSettings          ProductBranchSetting[]
+  channelOverrides        ProductChannelOverride[]
+  modifierGroups          ProductModifierGroup[]
+  orderItems              OrderItem[]
+  recipeItems             RecipeItem[]
+  deliveryProductMappings DeliveryProductMapping[]
+  stockHides              ProductStockHide[]
+  feedbackRequests        OrderFeedbackRequest[]
+  /// This product's own components, when it IS a combo.
+  comboComponents         ComboComponent[]         @relation("ComboParent")
+  /// Combos that include this product as one of their components.
+  partOfCombos            ComboComponent[]         @relation("ComboMember")
 
   @@unique([tenantId, sku])
   @@index([tenantId, categoryId])
   @@map("products")
 }
 
-/// Per-branch availability and price override for a product.
+/// One real menu item inside a combo product, with how many units of it one
+/// combo unit includes. `componentProduct` must not itself be a combo (no
+/// nesting) — enforced in ProductsService, not here.
+model ComboComponent {
+  id                 String @id @default(uuid()) @db.Uuid
+  tenantId           String @map("tenant_id") @db.Uuid
+  comboProductId     String @map("combo_product_id") @db.Uuid
+  componentProductId String @map("component_product_id") @db.Uuid
+  quantity           Int    @default(1)
+  sortOrder          Int    @default(0) @map("sort_order")
+
+  tenant           Tenant  @relation(fields: [tenantId], references: [id])
+  comboProduct     Product @relation("ComboParent", fields: [comboProductId], references: [id])
+  componentProduct Product @relation("ComboMember", fields: [componentProductId], references: [id])
+
+  @@unique([comboProductId, componentProductId])
+  @@index([tenantId, comboProductId])
+  @@map("combo_components")
+}
+
+/// Per-branch availability and price override for a product — the hard
+/// gate every order-creation/menu-rendering path checks (`isAvailable`).
+/// `unavailableReason`/`soldOutDate` are metadata for UI/reporting only,
+/// never re-derived into a second source of truth:
+///   - "manual"          — merchant marked it unavailable indefinitely.
+///   - "sold_out_today"  — merchant marked it sold out for today only;
+///                         a daily cron (BusinessHoursService) flips
+///                         isAvailable back to true once soldOutDate has
+///                         passed.
+///   - "stock"           — the auto-hide-on-stockout engine did this (see
+///                         ProductStockHide, which remains the actual
+///                         source of truth for that mechanism — this field
+///                         is set alongside it purely for a consistent UI).
 model ProductBranchSetting {
   id        String @id @default(uuid()) @db.Uuid
   tenantId  String @map("tenant_id") @db.Uuid
@@ -426,8 +656,10 @@ model ProductBranchSetting {
   branchId  String @map("branch_id") @db.Uuid
 
   /// null = product base price applies
-  priceOverride Decimal? @map("price_override") @db.Decimal(12, 2)
-  isAvailable   Boolean  @default(true) @map("is_available")
+  priceOverride     Decimal?  @map("price_override") @db.Decimal(12, 2)
+  isAvailable       Boolean   @default(true) @map("is_available")
+  unavailableReason String?   @map("unavailable_reason")
+  soldOutDate       DateTime? @map("sold_out_date") @db.Date
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -441,6 +673,36 @@ model ProductBranchSetting {
   @@unique([productId, branchId])
   @@index([tenantId, branchId])
   @@map("product_branch_settings")
+}
+
+/// Per-branch, per-channel visibility + price override layered ON TOP of
+/// ProductBranchSetting — e.g. a dine-in-only special hidden from delivery,
+/// or a higher delivery price to cover packaging/commission. Resolution
+/// order (see MenuChannelService): ProductBranchSetting.isAvailable=false
+/// always wins (a real stockout blocks every channel); otherwise this
+/// row's isVisible/priceOverride apply for that one channel only.
+model ProductChannelOverride {
+  id        String          @id @default(uuid()) @db.Uuid
+  tenantId  String          @map("tenant_id") @db.Uuid
+  productId String          @map("product_id") @db.Uuid
+  branchId  String          @map("branch_id") @db.Uuid
+  channel   OrderingChannel
+
+  isVisible     Boolean  @default(true) @map("is_visible")
+  priceOverride Decimal? @map("price_override") @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+
+  @@unique([productId, branchId, channel])
+  @@index([tenantId, branchId, channel])
+  @@map("product_channel_overrides")
 }
 
 /// e.g. "الحجم / Size", "إضافات / Extras", "الصوصات / Sauces"
@@ -497,12 +759,39 @@ model Modifier {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant             Tenant              @relation(fields: [tenantId], references: [id])
-  group              ModifierGroup       @relation(fields: [modifierGroupId], references: [id])
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id])
+  group              ModifierGroup           @relation(fields: [modifierGroupId], references: [id])
   orderItemModifiers OrderItemModifier[]
+  branchSettings     ModifierBranchSetting[]
 
   @@index([tenantId, modifierGroupId])
   @@map("modifiers")
+}
+
+/// Per-branch availability for a single modifier/option (e.g. product is
+/// available but its "Beef" option ran out while "Chicken" is still fine).
+/// No price-override dimension here — only the branch/product settings
+/// above override price; a modifier's priceAdjustment is tenant-wide.
+model ModifierBranchSetting {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  modifierId String @map("modifier_id") @db.Uuid
+  branchId   String @map("branch_id") @db.Uuid
+
+  isAvailable Boolean @default(true) @map("is_available")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  modifier Modifier @relation(fields: [modifierId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  @@unique([modifierId, branchId])
+  @@index([tenantId, branchId])
+  @@map("modifier_branch_settings")
 }
 
 /// Attaches modifier groups to products (ordered).
@@ -598,8 +887,12 @@ model Table {
   @@map("tables")
 }
 
-/// A dining session: customers seated at a table. Future orders (Phase 4)
-/// attach to the open session so the whole visit closes as one bill.
+/// A dining session: everyone seated at a table, identified by their own
+/// phone number, sharing ONE real order/invoice. At most one open session
+/// per table (enforced by a partial unique index — see migration SQL);
+/// `OrderingService` finds-or-creates it on the first QR scan and every
+/// later scan of the same table joins it as a new `TableSessionParticipant`
+/// instead of starting a separate bill.
 model TableSession {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @map("tenant_id") @db.Uuid
@@ -612,16 +905,68 @@ model TableSession {
   closedBy String?   @map("closed_by") @db.Uuid
   notes    String?
 
+  /// Bumped on every join/order/append — the inactivity-timeout poller's clock.
+  lastActivityAt DateTime  @default(now()) @map("last_activity_at")
+  /// Set when the timeout poller found the session stale but would NOT
+  /// auto-close it (its order has an unpaid balance) — surfaced to the
+  /// cashier's open-sessions view instead of silently closing. Cleared on
+  /// the next activity or on manual close.
+  staleFlaggedAt DateTime? @map("stale_flagged_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id])
-  table  Table   @relation(fields: [tableId], references: [id])
-  orders Order[]
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id])
+  table        Table                     @relation(fields: [tableId], references: [id])
+  orders       Order[]
+  participants TableSessionParticipant[]
 
   @@index([tableId, closedAt])
   @@index([tenantId, branchId])
   @@map("table_sessions")
+}
+
+/// One phone number that has joined a table session — the identity used to
+/// attribute `OrderItem`s for per-person bill splitting, and the recipient
+/// list for order-status WhatsApp notifications (the same phone identity
+/// loyalty/ratings already use elsewhere).
+model TableSessionParticipant {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @map("tenant_id") @db.Uuid
+  branchId       String @map("branch_id") @db.Uuid
+  tableSessionId String @map("table_session_id") @db.Uuid
+
+  phone String
+  name  String?
+
+  joinedAt       DateTime @default(now()) @map("joined_at")
+  lastActivityAt DateTime @default(now()) @map("last_activity_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  tableSession TableSession @relation(fields: [tableSessionId], references: [id])
+
+  @@unique([tableSessionId, phone])
+  @@map("table_session_participants")
+}
+
+/// Idempotency ledger for appending a round of items to an ALREADY-OPEN
+/// session order (`OrderingService.appendItems`) — `Order.idempotencyKey`
+/// only covers the order's own creation (one row, one key), so a retried
+/// "add these items" request needs its own dedupe record instead of
+/// silently appending the same round twice.
+model OrderAppendLog {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @map("tenant_id") @db.Uuid
+  orderId        String @map("order_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  order  Order  @relation(fields: [orderId], references: [id])
+
+  @@unique([tenantId, idempotencyKey])
+  @@map("order_append_logs")
 }
 
 // ============================================================================
@@ -639,6 +984,10 @@ enum OrderStatus {
   served
   completed
   cancelled
+  /// Reached only from `completed`, when a credit note refunds the FULL
+  /// receipt total. A partial refund keeps the order `completed` — see
+  /// the `refunds`/`credit_notes` tables.
+  refunded
 
   @@map("order_status")
 }
@@ -702,25 +1051,102 @@ model Order {
   placedBy        String? @map("placed_by") @db.Uuid
   cancelledReason String? @map("cancelled_reason")
 
+  /// Set only for orders ingested from a real delivery-platform webhook
+  /// (source = "delivery") — the platform's own order id (also composes the
+  /// idempotency key, so a retried/duplicate webhook never double-creates),
+  /// which provider it came from, and the commission it charges, kept
+  /// separate from `total` so reports can show gross revenue vs commission
+  /// rather than netting it away silently.
+  externalOrderId    String?  @map("external_order_id")
+  deliveryProvider   String?  @map("delivery_provider")
+  deliveryCommission Decimal? @map("delivery_commission") @db.Decimal(12, 2)
+
+  /// First-party self-service delivery (type=delivery, source=external_link
+  /// or qr) — the address/pin the customer entered and the fee actually
+  /// charged, frozen at order time (never recomputed from current branch
+  /// settings later). Included in `subtotal`/`total`/`vatAmount` above.
+  deliveryAddress       String?        @map("delivery_address")
+  deliveryLat           Decimal?       @map("delivery_lat") @db.Decimal(9, 6)
+  deliveryLng           Decimal?       @map("delivery_lng") @db.Decimal(9, 6)
+  deliveryFeeAmount     Decimal?       @map("delivery_fee_amount") @db.Decimal(12, 2)
+  /// Self-service delivery/pickup only: how the customer said they'll pay
+  /// at order time, before any Payment row exists. "online" is expected to
+  /// be followed by a POST to the existing public payment-gateway checkout
+  /// endpoint; "cash" means pay on delivery/pickup like a normal tab.
+  intendedPaymentMethod PaymentMethod? @map("intended_payment_method")
+
+  /// Coupon redeemed at order-creation time (first-party takeaway/delivery
+  /// checkout only — never dine-in). The discount it produced is folded
+  /// into `discount`/`discountType`("coupon")/`discountValue`/`discountReason`
+  /// above like any other discount; this column exists only so redemption
+  /// counts (total + per-customer) can be queried without parsing text.
+  couponId String? @map("coupon_id") @db.Uuid
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   createdBy String?   @map("created_by") @db.Uuid
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant        Tenant               @relation(fields: [tenantId], references: [id])
-  branch        Branch               @relation(fields: [branchId], references: [id])
-  table         Table?               @relation(fields: [tableId], references: [id])
-  tableSession  TableSession?        @relation(fields: [tableSessionId], references: [id])
-  items         OrderItem[]
-  statusHistory OrderStatusHistory[]
-  payments      Payment[]
-  receipt       Receipt?
+  tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  branch               Branch                @relation(fields: [branchId], references: [id])
+  table                Table?                @relation(fields: [tableId], references: [id])
+  tableSession         TableSession?         @relation(fields: [tableSessionId], references: [id])
+  coupon               Coupon?               @relation(fields: [couponId], references: [id])
+  items                OrderItem[]
+  statusHistory        OrderStatusHistory[]
+  payments             Payment[]
+  receipt              Receipt?
+  refunds              Refund[]
+  feedbackRequest      OrderFeedbackRequest?
+  loyaltyLedgerEntries LoyaltyLedgerEntry[]
+  appendLogs           OrderAppendLog[]
 
   @@unique([branchId, orderDate, orderNumber])
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, branchId, createdAt])
   @@map("orders")
+}
+
+/// Discount coupon code for the first-party digital ordering checkout
+/// (takeaway/delivery only — never dine-in, never POS). Tenant-wide (no
+/// per-branch scoping; not asked for). Redemption counts are derived by
+/// querying `orders.couponId`, not a running counter, so a cancelled order
+/// never permanently burns a redemption slot.
+model Coupon {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// Stored upper-case; matched case-insensitively at redemption time.
+  code String
+
+  discountType      String   @map("discount_type") /// "percentage" | "fixed"
+  discountValue     Decimal  @map("discount_value") @db.Decimal(12, 2)
+  /// Caps the computed amount for a percentage coupon (e.g. "up to 20 SAR off"). Ignored for "fixed".
+  maxDiscountAmount Decimal? @map("max_discount_amount") @db.Decimal(12, 2)
+  minOrderAmount    Decimal  @default(0) @map("min_order_amount") @db.Decimal(12, 2)
+
+  /// OrderingChannel[]; empty = valid on both takeaway and delivery.
+  channels String[] @default([])
+
+  startAt DateTime? @map("start_at")
+  endAt   DateTime? @map("end_at")
+
+  maxRedemptions            Int? @map("max_redemptions")
+  maxRedemptionsPerCustomer Int? @map("max_redemptions_per_customer")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  orders Order[]
+
+  @@unique([tenantId, code])
+  @@map("coupons")
 }
 
 model OrderItem {
@@ -739,6 +1165,16 @@ model OrderItem {
   /// (unitPrice + modifier adjustments) * quantity
   lineTotal Decimal @map("line_total") @db.Decimal(12, 2)
   notes     String?
+
+  /// Shared table sessions only: the phone number of whoever ordered this
+  /// specific line — null for every non-session order (walk-in/POS/
+  /// takeaway/delivery), and for lines a cashier adds without picking a
+  /// participant. This is what "split by item" bills against.
+  participantPhone String? @map("participant_phone")
+  /// How many of `quantity` units have been credited back via a per-item
+  /// refund (`RefundsService` still issues the actual credit note — this
+  /// only tracks how much of THIS line is still outstanding for splitting).
+  refundedQuantity Int     @default(0) @map("refunded_quantity")
 
   /// Food-cost snapshot (Phase 7) — frozen at order time from the product's
   /// recipe and each ingredient's average cost, same rationale as the price
@@ -828,6 +1264,7 @@ model Shift {
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   branch   Branch    @relation(fields: [branchId], references: [id])
   payments Payment[]
+  refunds  Refund[]
 
   @@index([tenantId, branchId, closedAt])
   @@map("shifts")
@@ -836,12 +1273,22 @@ model Shift {
 enum PaymentMethod {
   cash
   card
+  /// Paid through a digital-menu payment gateway (Moyasar/Tap/HyperPay) or
+  /// remitted by a delivery platform on the customer's behalf — never a
+  /// physical cash/card transaction, so shift cash reconciliation ignores it
+  /// exactly like `card` already does.
+  online
 
   @@map("payment_method")
 }
 
 enum PaymentStatus {
+  /// A gateway checkout session was created; awaiting the provider's webhook.
+  pending
   completed
+  /// The gateway reported a failed/declined charge — the order falls back
+  /// to "pay on delivery/pickup" rather than being blocked.
+  failed
   voided
 
   @@map("payment_status")
@@ -880,8 +1327,7 @@ model Payment {
 }
 
 /// Receipt foundation — sequential per-branch numbering, frozen restaurant
-/// info and VAT-ready fields. The ZATCA invoice service (Phase 7) builds on
-/// this structure. Thermal print layout consumes `payload`.
+/// info and VAT-ready fields. Thermal print layout consumes `payload`.
 model Receipt {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @map("tenant_id") @db.Uuid
@@ -900,24 +1346,194 @@ model Receipt {
 
   /// ZATCA Phase 1: simplified-invoice QR content (TLV, Base64) —
   /// seller name, VAT number, timestamp, total incl. VAT, VAT amount.
+  /// Still populated even when Phase 2 is enabled (Phase 2's QR is a
+  /// superset, built once signing succeeds).
   qrPayload String? @map("qr_payload")
 
-  /// ZATCA Phase 2 readiness (plan §9.3): per-branch hash chain computed at
-  /// issuance; reporting status/response filled when the integration lands.
-  invoiceHash         String? @map("invoice_hash")
-  previousInvoiceHash String? @map("previous_invoice_hash")
-  zatcaStatus         String  @default("not_submitted") @map("zatca_status")
-  zatcaResponse       Json?   @map("zatca_response")
+  /// ZATCA Phase 2 (see shared/zatca/*). Populated only when the tenant has
+  /// zatcaPhase2Enabled — otherwise this stays exactly as Phase 1 always was.
+  documentUuid        String    @unique @default(uuid()) @map("document_uuid") @db.Uuid
+  /// true = Standard Tax Invoice (B2B/B2G, clearance flow); false = Simplified (B2C, reporting flow).
+  isStandardInvoice   Boolean   @default(false) @map("is_standard_invoice")
+  buyerName           String?   @map("buyer_name")
+  buyerVatNumber      String?   @map("buyer_vat_number")
+  /// Canonical UBL 2.1 XML this invoice was hashed/signed from (kept for
+  /// audit + resubmission; XXE-safe because we only ever generate this
+  /// XML ourselves, never parse externally-supplied XML into it).
+  xmlContent          String?   @map("xml_content") @db.Text
+  /// Per-branch hash chain (plan §9.3): SHA-256 of the canonical XML,
+  /// chained via previousInvoiceHash to whatever document (invoice, credit
+  /// or debit note) that branch issued immediately before this one.
+  invoiceHash         String?   @map("invoice_hash")
+  previousInvoiceHash String?   @map("previous_invoice_hash")
+  /// XAdES-BES-style signature + the CSID cryptographic stamp, once signed.
+  cryptographicStamp  String?   @map("cryptographic_stamp") @db.Text
+  /// not_submitted (Phase 1, or Phase 2 disabled) | pending | cleared |
+  /// reported | rejected.
+  zatcaStatus         String    @default("not_submitted") @map("zatca_status")
+  zatcaResponse       Json?     @map("zatca_response")
+  zatcaSubmittedAt    DateTime? @map("zatca_submitted_at")
 
   issuedAt DateTime @default(now()) @map("issued_at")
   issuedBy String?  @map("issued_by") @db.Uuid
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  order  Order  @relation(fields: [orderId], references: [id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  order       Order        @relation(fields: [orderId], references: [id])
+  creditNotes CreditNote[]
+  debitNotes  DebitNote[]
+  refunds     Refund[]
 
   @@unique([branchId, receiptNumber])
   @@index([tenantId, branchId])
+  @@index([tenantId, issuedAt])
   @@map("receipts")
+}
+
+/// One credit note per refund (full or partial) against a completed
+/// receipt — append-only, same tamper-evidence and ZATCA shape as Receipt.
+/// Never updated/deleted: a mistaken credit note is corrected by issuing a
+/// debit note, not by editing this row.
+model CreditNote {
+  id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
+  branchId  String @map("branch_id") @db.Uuid
+  receiptId String @map("receipt_id") @db.Uuid
+
+  creditNoteNumber Int @map("credit_note_number")
+
+  reason  String
+  /// Frozen snapshot, same shape as Receipt.payload (restaurant/branch/order
+  /// lines being credited, plus `reason`).
+  payload Json
+
+  subtotal  Decimal @db.Decimal(12, 2)
+  vatRate   Decimal @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount Decimal @map("vat_amount") @db.Decimal(12, 2)
+  total     Decimal @db.Decimal(12, 2)
+
+  qrPayload String? @map("qr_payload")
+
+  documentUuid        String    @unique @default(uuid()) @map("document_uuid") @db.Uuid
+  isStandardInvoice   Boolean   @default(false) @map("is_standard_invoice")
+  buyerName           String?   @map("buyer_name")
+  buyerVatNumber      String?   @map("buyer_vat_number")
+  xmlContent          String?   @map("xml_content") @db.Text
+  invoiceHash         String?   @map("invoice_hash")
+  previousInvoiceHash String?   @map("previous_invoice_hash")
+  cryptographicStamp  String?   @map("cryptographic_stamp") @db.Text
+  zatcaStatus         String    @default("not_submitted") @map("zatca_status")
+  zatcaResponse       Json?     @map("zatca_response")
+  zatcaSubmittedAt    DateTime? @map("zatca_submitted_at")
+
+  issuedAt DateTime @default(now()) @map("issued_at")
+  issuedBy String?  @map("issued_by") @db.Uuid
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  receipt Receipt @relation(fields: [receiptId], references: [id])
+  refund  Refund?
+
+  @@unique([branchId, creditNoteNumber])
+  @@index([tenantId, receiptId])
+  @@index([tenantId, issuedAt])
+  @@map("credit_notes")
+}
+
+/// Corrects an under-billed receipt (extra amount owed) — same append-only
+/// shape as CreditNote. Rare in a POS context; mainly for B2B corrections.
+/// Collecting the extra amount is a manual follow-up, out of scope here.
+model DebitNote {
+  id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
+  branchId  String @map("branch_id") @db.Uuid
+  receiptId String @map("receipt_id") @db.Uuid
+
+  debitNoteNumber Int @map("debit_note_number")
+
+  reason  String
+  payload Json
+
+  subtotal  Decimal @db.Decimal(12, 2)
+  vatRate   Decimal @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount Decimal @map("vat_amount") @db.Decimal(12, 2)
+  total     Decimal @db.Decimal(12, 2)
+
+  qrPayload String? @map("qr_payload")
+
+  documentUuid        String    @unique @default(uuid()) @map("document_uuid") @db.Uuid
+  isStandardInvoice   Boolean   @default(false) @map("is_standard_invoice")
+  buyerName           String?   @map("buyer_name")
+  buyerVatNumber      String?   @map("buyer_vat_number")
+  xmlContent          String?   @map("xml_content") @db.Text
+  invoiceHash         String?   @map("invoice_hash")
+  previousInvoiceHash String?   @map("previous_invoice_hash")
+  cryptographicStamp  String?   @map("cryptographic_stamp") @db.Text
+  zatcaStatus         String    @default("not_submitted") @map("zatca_status")
+  zatcaResponse       Json?     @map("zatca_response")
+  zatcaSubmittedAt    DateTime? @map("zatca_submitted_at")
+
+  issuedAt DateTime @default(now()) @map("issued_at")
+  issuedBy String?  @map("issued_by") @db.Uuid
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  receipt Receipt @relation(fields: [receiptId], references: [id])
+
+  @@unique([branchId, debitNoteNumber])
+  @@index([tenantId, receiptId])
+  @@index([tenantId, issuedAt])
+  @@map("debit_notes")
+}
+
+/// The actual cash/card movement that hands money back to the customer,
+/// always posted to the shift that is OPEN when the refund is processed
+/// (never a retroactive edit of the shift the original payment belonged
+/// to — that shift may already be closed and reconciled). Shift close
+/// (shifts.service.ts) subtracts cash-method refunds from expected cash.
+model Refund {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  branchId     String @map("branch_id") @db.Uuid
+  orderId      String @map("order_id") @db.Uuid
+  receiptId    String @map("receipt_id") @db.Uuid
+  creditNoteId String @unique @map("credit_note_id") @db.Uuid
+  shiftId      String @map("shift_id") @db.Uuid
+
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(12, 2)
+  reference String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String   @map("created_by") @db.Uuid
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  order      Order      @relation(fields: [orderId], references: [id])
+  receipt    Receipt    @relation(fields: [receiptId], references: [id])
+  creditNote CreditNote @relation(fields: [creditNoteId], references: [id])
+  shift      Shift      @relation(fields: [shiftId], references: [id])
+
+  @@index([tenantId, orderId])
+  @@index([tenantId, shiftId])
+  @@map("refunds")
+}
+
+/// One row per branch: the tip of that branch's ZATCA invoice hash chain,
+/// shared across receipts, credit notes and debit notes (plan §9.3 — the
+/// chain is per issuing unit, and this project treats "branch" as that
+/// unit). Updated transactionally in the same transaction as each new
+/// document, under a row lock, so concurrent POS terminals in one branch
+/// never compute the same previousInvoiceHash twice.
+model BranchInvoiceChain {
+  branchId String @id @map("branch_id") @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  lastHash String @map("last_hash")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId])
+  @@map("branch_invoice_chains")
 }
 
 // ============================================================================
@@ -987,10 +1603,14 @@ model Ingredient {
   updatedBy String?   @map("updated_by") @db.Uuid
   deletedAt DateTime? @map("deleted_at")
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id])
-  stockLevels    StockLevel[]
-  stockMovements StockMovement[]
-  recipeItems    RecipeItem[]
+  tenant               Tenant                   @relation(fields: [tenantId], references: [id])
+  stockLevels          StockLevel[]
+  stockMovements       StockMovement[]
+  recipeItems          RecipeItem[]
+  stockHides           ProductStockHide[]
+  purchaseInvoiceItems PurchaseInvoiceItem[]
+  stockTransferItems   StockTransferItem[]
+  reorderAlerts        IngredientReorderAlert[]
 
   @@index([tenantId])
   @@map("ingredients")
@@ -1053,6 +1673,10 @@ enum StockMovementType {
   adjustment
   transfer_in
   transfer_out
+  /// Reverses a specific prior "purchase" movement (e.g. cancelling a
+  /// confirmed purchase invoice) — never edits or deletes the original,
+  /// same append-only principle as a sales credit note.
+  purchase_reversal
 
   @@map("stock_movement_type")
 }
@@ -1110,6 +1734,15 @@ model RecipeItem {
   quantity Decimal @db.Decimal(10, 3)
   notes    String?
 
+  /// Marks this ingredient as make-or-break for the product: when its total
+  /// branch stock falls to/below criticalThreshold (base units, null = 0),
+  /// the product is auto-hidden at that branch (see ProductStockHide /
+  /// InventoryService.reevaluateStockGating) — real availability gating,
+  /// the same isAvailable flag POS/digital-menu already read, not a
+  /// separate cosmetic flag.
+  isCritical        Boolean  @default(false) @map("is_critical")
+  criticalThreshold Decimal? @map("critical_threshold") @db.Decimal(14, 3)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by") @db.Uuid
@@ -1123,6 +1756,443 @@ model RecipeItem {
   @@unique([productId, ingredientId])
   @@index([tenantId, productId])
   @@map("recipe_items")
+}
+
+/// Status is deliberately an open enum, not a boolean/pair of booleans —
+/// see StockTransfersService's doc comment for the exact transition graph.
+/// A future intermediate state (e.g. "in_transit" for courier tracking)
+/// is one more enum value plus one more `if (current.status === ...)`
+/// branch, not a redesign.
+enum StockTransferStatus {
+  draft
+  sent
+  received
+  rejected
+  cancelled
+
+  @@map("stock_transfer_status")
+}
+
+/// Inter-branch stock transfer. The critical invariant this whole model
+/// exists to express: while status = "sent", the transferred quantity is
+/// counted at NEITHER branch — stock_levels at fromBranch was already
+/// decremented (transfer_out) and toBranch's stock_levels is only
+/// incremented on receive (transfer_in). Goods genuinely in transit are
+/// genuinely absent from every branch's book, which is the honest picture,
+/// not a rounding error to paper over.
+model StockTransfer {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  /// Loose reference, not a Prisma relation — same convention as
+  /// PurchaseInvoice.branchId (see vat-return.service.ts's doc comment);
+  /// branch names are resolved via a lookup map when needed.
+  fromBranchId String @map("from_branch_id") @db.Uuid
+  toBranchId   String @map("to_branch_id") @db.Uuid
+
+  status StockTransferStatus @default(draft)
+  notes  String?
+
+  sentAt       DateTime? @map("sent_at")
+  sentBy       String?   @map("sent_by") @db.Uuid
+  receivedAt   DateTime? @map("received_at")
+  receivedBy   String?   @map("received_by") @db.Uuid
+  rejectedAt   DateTime? @map("rejected_at")
+  rejectedBy   String?   @map("rejected_by") @db.Uuid
+  rejectReason String?   @map("reject_reason")
+  cancelledAt  DateTime? @map("cancelled_at")
+  cancelledBy  String?   @map("cancelled_by") @db.Uuid
+  cancelReason String?   @map("cancel_reason")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id])
+  items  StockTransferItem[]
+
+  @@index([tenantId, fromBranchId])
+  @@index([tenantId, toBranchId])
+  @@index([tenantId, status])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id              String @id @default(uuid()) @db.Uuid
+  tenantId        String @map("tenant_id") @db.Uuid
+  stockTransferId String @map("stock_transfer_id") @db.Uuid
+  ingredientId    String @map("ingredient_id") @db.Uuid
+
+  /// Requested/sent quantity (base units) — set at creation, frozen once sent.
+  sentQuantity   Decimal  @map("sent_quantity") @db.Decimal(14, 3)
+  /// Which fromBranch location this decrements — resolved (branch default
+  /// if omitted) at creation time, same convention as
+  /// PurchaseInvoiceItem.locationId.
+  fromLocationId String   @map("from_location_id") @db.Uuid
+  /// Ingredient.averageCost snapshotted at SEND time (null while draft) —
+  /// frozen the same way PurchaseInvoiceItem.unitPrice is, so a purchase
+  /// elsewhere between send and receive can never retroactively change
+  /// what this transfer is valued at.
+  unitCostAtSend Decimal? @map("unit_cost_at_send") @db.Decimal(12, 4)
+
+  /// Which toBranch location received it — chosen at receive time (the
+  /// receiving branch's own layout, not the sender's concern), null until
+  /// actually received.
+  toLocationId      String?  @map("to_location_id") @db.Uuid
+  /// Actually-received quantity — null until received; may be less than
+  /// sentQuantity (partial/damaged receipt). The un-received remainder is
+  /// simply never posted as transfer_in — it is a genuine loss, the same
+  /// economic reality as a waste movement, just recorded here instead of a
+  /// synthetic extra movement.
+  receivedQuantity  Decimal? @map("received_quantity") @db.Decimal(14, 3)
+  /// Mandatory whenever receivedQuantity < sentQuantity — enforced in
+  /// StockTransfersService, not here (needs the real sentQuantity to
+  /// compare against, which a DTO-level decorator can't see).
+  discrepancyReason String?  @map("discrepancy_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  stockTransfer StockTransfer @relation(fields: [stockTransferId], references: [id])
+  ingredient    Ingredient    @relation(fields: [ingredientId], references: [id])
+
+  @@index([tenantId, stockTransferId])
+  @@map("stock_transfer_items")
+}
+
+/// Tracks a product currently auto-hidden by the system because a critical
+/// recipe ingredient (RecipeItem.isCritical) fell to/below its threshold at
+/// this branch. The row's existence is the single source of truth for "the
+/// SYSTEM, not the merchant, turned this off": InventoryService only ever
+/// flips a product back on for a branch where a row is present, and a
+/// merchant's own manual re-enable (products.service.setBranchSetting)
+/// deletes the row so the system never fights their override. Deleted the
+/// moment either stock recovers or the merchant manually re-enables.
+model ProductStockHide {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  ingredientId String   @map("ingredient_id") @db.Uuid
+  hiddenAt     DateTime @default(now()) @map("hidden_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  product    Product    @relation(fields: [productId], references: [id])
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@unique([productId, branchId])
+  @@index([tenantId, branchId])
+  @@map("product_stock_hides")
+}
+
+/// Tracks that a reorder-alert WhatsApp notification has already been sent
+/// for this (branch, ingredient) pair — the "don't re-notify while still
+/// below the threshold" state the WhatsApp round needs. Mirrors
+/// ProductStockHide's shape/lifecycle exactly: created when a stock
+/// movement first drives the branch's TOTAL on-hand quantity (summed
+/// across every stock location, same aggregation reevaluateStockGating
+/// already uses) at/below Ingredient.reorderLevel, deleted the moment it
+/// rises back above — so the next crossing notifies again.
+model IngredientReorderAlert {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  ingredientId String   @map("ingredient_id") @db.Uuid
+  alertedAt    DateTime @default(now()) @map("alerted_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@unique([branchId, ingredientId])
+  @@index([tenantId, branchId])
+  @@map("ingredient_reorder_alerts")
+}
+
+/// A vendor the tenant buys from. Deliberately minimal — no API integration
+/// exists yet (manual invoice entry only, see PurchaseInvoice), but nothing
+/// here blocks adding one later (e.g. an externalId/provider column) without
+/// restructuring.
+model Supplier {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  name         String
+  nameEn       String? @map("name_en")
+  /// Optional — a supplier not registered for VAT has none.
+  vatNumber    String? @map("vat_number")
+  contactPhone String? @map("contact_phone")
+  contactEmail String? @map("contact_email")
+  address      String?
+  notes        String?
+  isActive     Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  purchaseInvoices PurchaseInvoice[]
+
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+enum PurchaseInvoiceStatus {
+  draft
+  confirmed
+  cancelled
+
+  @@map("purchase_invoice_status")
+}
+
+enum PurchaseInvoiceItemType {
+  stock
+  expense
+
+  @@map("purchase_invoice_item_type")
+}
+
+/// A manually-entered supplier tax invoice — the input-VAT source of truth
+/// for the VAT return (reports/vat-return.service.ts). Confirming posts each
+/// line to the SAME real ledgers everything else uses (InventoryService
+/// stock receiving for "stock" lines, Expense for "expense" lines) — this
+/// table is never itself an alternate accounting record, only the
+/// manually-entered document that drives those real postings exactly once
+/// (see PurchasesService.confirm's row-locked, idempotent transaction).
+///
+/// Deliberately no PO/GRN linkage yet (three-way match) — supplierId +
+/// supplierInvoiceNumber is the only cross-document key today, but nothing
+/// here (e.g. a future purchaseOrderId column) requires restructuring this
+/// table to add one.
+model PurchaseInvoice {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  branchId   String @map("branch_id") @db.Uuid
+  supplierId String @map("supplier_id") @db.Uuid
+
+  /// The supplier's own invoice number (not our sequential numbering) —
+  /// what the accountant matches back to the physical/PDF document.
+  supplierInvoiceNumber String                @map("supplier_invoice_number")
+  invoiceDate           DateTime              @map("invoice_date") @db.Date
+  status                PurchaseInvoiceStatus @default(draft)
+
+  /// VAT-EXCLUSIVE net amounts (supplier tax invoices are priced net + VAT
+  /// on top) — the opposite convention from Order/Receipt, which are
+  /// VAT-inclusive gross. Always derived from items server-side, never
+  /// trusted from the request.
+  subtotal  Decimal @db.Decimal(12, 2)
+  vatAmount Decimal @map("vat_amount") @db.Decimal(12, 2)
+  total     Decimal @db.Decimal(12, 2)
+
+  /// Optional scan/photo of the original supplier invoice — private
+  /// storage, never the public /uploads/ path (see UploadsService).
+  attachmentUrl      String? @map("attachment_url")
+  attachmentFilename String? @map("attachment_filename")
+  notes              String?
+
+  confirmedAt  DateTime? @map("confirmed_at")
+  confirmedBy  String?   @map("confirmed_by") @db.Uuid
+  cancelledAt  DateTime? @map("cancelled_at")
+  cancelledBy  String?   @map("cancelled_by") @db.Uuid
+  cancelReason String?   @map("cancel_reason")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant    Tenant                    @relation(fields: [tenantId], references: [id])
+  supplier  Supplier                  @relation(fields: [supplierId], references: [id])
+  items     PurchaseInvoiceItem[]
+  reversals PurchaseInvoiceReversal[]
+
+  /// The same supplier invoice must never be entered twice.
+  @@unique([tenantId, supplierId, supplierInvoiceNumber])
+  @@index([tenantId, branchId, invoiceDate])
+  @@index([tenantId, status])
+  @@map("purchase_invoices")
+}
+
+model PurchaseInvoiceItem {
+  id                String @id @default(uuid()) @db.Uuid
+  tenantId          String @map("tenant_id") @db.Uuid
+  purchaseInvoiceId String @map("purchase_invoice_id") @db.Uuid
+
+  description String
+  itemType    PurchaseInvoiceItemType @map("item_type")
+
+  quantity       Decimal @db.Decimal(14, 3)
+  /// Net (pre-VAT) price per unit of `quantity`.
+  unitPrice      Decimal @map("unit_price") @db.Decimal(12, 4)
+  /// Editable per line, defaulting from settings.defaultPurchaseVatRate —
+  /// never a hardcoded rate (see PurchasesService).
+  vatRatePercent Decimal @map("vat_rate_percent") @db.Decimal(5, 2)
+
+  lineSubtotal Decimal @map("line_subtotal") @db.Decimal(12, 2)
+  lineVat      Decimal @map("line_vat") @db.Decimal(12, 2)
+  lineTotal    Decimal @map("line_total") @db.Decimal(12, 2)
+
+  /// "stock" lines only — which ingredient/location this receives into.
+  /// Quantity/unitPrice are in the ingredient's BASE unit, same convention
+  /// the existing manual stock-purchase form already uses.
+  ingredientId String? @map("ingredient_id") @db.Uuid
+  locationId   String? @map("location_id") @db.Uuid
+
+  /// "expense" lines only — free-text bucket (rent/utilities/maintenance/...),
+  /// deliberately not an enum so new categories never need a code change.
+  expenseCategory String? @map("expense_category")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant          Tenant                        @relation(fields: [tenantId], references: [id])
+  purchaseInvoice PurchaseInvoice               @relation(fields: [purchaseInvoiceId], references: [id])
+  ingredient      Ingredient?                   @relation(fields: [ingredientId], references: [id])
+  reversalItems   PurchaseInvoiceReversalItem[]
+
+  @@index([tenantId, purchaseInvoiceId])
+  @@map("purchase_invoice_items")
+}
+
+enum PurchaseInvoiceReversalType {
+  /// The whole invoice was cancelled — every item's full quantity is reversed.
+  cancellation
+  /// Reserved for a future standalone feature: a partial reversal against a
+  /// supplier-issued credit note, reusing this exact posting mechanism with
+  /// PurchaseInvoiceReversalItem.quantity less than the original line's.
+  supplier_credit_note
+
+  @@map("purchase_invoice_reversal_type")
+}
+
+/// One reversal EVENT against a confirmed purchase invoice — general on
+/// purpose (see reversalType) rather than a cancellation-only table, so a
+/// future supplier-credit-note feature reuses this same posting mechanism
+/// instead of a parallel one. A cancellation creates exactly one of these,
+/// reversing every item's full quantity; nothing here assumes "full
+/// invoice" beyond that.
+model PurchaseInvoiceReversal {
+  id                String @id @default(uuid()) @db.Uuid
+  tenantId          String @map("tenant_id") @db.Uuid
+  purchaseInvoiceId String @map("purchase_invoice_id") @db.Uuid
+
+  reversalType PurchaseInvoiceReversalType @map("reversal_type")
+  reason       String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by") @db.Uuid
+
+  tenant          Tenant                        @relation(fields: [tenantId], references: [id])
+  purchaseInvoice PurchaseInvoice               @relation(fields: [purchaseInvoiceId], references: [id])
+  items           PurchaseInvoiceReversalItem[]
+
+  @@index([tenantId, purchaseInvoiceId])
+  @@map("purchase_invoice_reversals")
+}
+
+/// One reversed line. The resulting StockMovement (stock lines) or Expense
+/// (expense lines) is found via the SAME referenceType/referenceId
+/// convention used everywhere else in this schema
+/// (referenceType="purchase_invoice_reversal_item", referenceId=this row's
+/// id) rather than a duplicate FK column here.
+model PurchaseInvoiceReversalItem {
+  id                    String @id @default(uuid()) @db.Uuid
+  tenantId              String @map("tenant_id") @db.Uuid
+  reversalId            String @map("reversal_id") @db.Uuid
+  purchaseInvoiceItemId String @map("purchase_invoice_item_id") @db.Uuid
+
+  /// How much of the original line's quantity this undoes — the full
+  /// original quantity for a cancellation, a lesser amount for a future
+  /// partial supplier-credit-note reversal.
+  quantity Decimal @db.Decimal(14, 3)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant              Tenant                  @relation(fields: [tenantId], references: [id])
+  reversal            PurchaseInvoiceReversal @relation(fields: [reversalId], references: [id])
+  purchaseInvoiceItem PurchaseInvoiceItem     @relation(fields: [purchaseInvoiceItemId], references: [id])
+
+  @@index([tenantId, reversalId])
+  @@index([tenantId, purchaseInvoiceItemId])
+  @@map("purchase_invoice_reversal_items")
+}
+
+/// The tenant's first real operational-expense ledger — nothing like it
+/// existed before (see vat-return.service.ts's prior "no input-VAT tracking"
+/// note). Posted exactly once per confirmed "expense" PurchaseInvoiceItem
+/// (referenceType/referenceId is the same idempotency convention
+/// StockMovement already uses for its system-triggered rows).
+model Expense {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+
+  /// Free-text bucket, same non-enum reasoning as PurchaseInvoiceItem.
+  category    String?
+  description String
+  /// Net (pre-VAT) amount.
+  amount      Decimal @db.Decimal(12, 2)
+  vatAmount   Decimal @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  total       Decimal @db.Decimal(12, 2)
+
+  incurredAt DateTime @map("incurred_at") @db.Date
+
+  /// e.g. referenceType="purchase_invoice_item" for expenses posted from a
+  /// confirmed purchase invoice line — null referenceType/referenceId means
+  /// a manually-entered expense (future extension point; not built yet).
+  referenceType String? @map("reference_type")
+  referenceId   String? @map("reference_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, referenceType, referenceId])
+  @@index([tenantId, branchId, incurredAt])
+  @@map("expenses")
+}
+
+/// Post-order WhatsApp rating request. Created the moment an order reaches
+/// "completed" (FeedbackOrderListener), sent ~30 minutes later once
+/// sendAfter passes (FeedbackService's polling sender — a due row is one
+/// with sendAfter <= now and sentAt still null), and answered through the
+/// public capability-token link the WhatsApp template carries (id doubles
+/// as the token, same convention as Receipt/public order tracking).
+/// rating/comment stay null until the customer actually responds.
+model OrderFeedbackRequest {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  orderId  String @unique @map("order_id") @db.Uuid
+
+  /// Best-effort "main item" of the order (highest line total) — purely
+  /// informational context for the dashboard, never enforced.
+  primaryProductId String? @map("primary_product_id") @db.Uuid
+
+  sendAfter DateTime  @map("send_after")
+  sentAt    DateTime? @map("sent_at")
+
+  rating  Int?      @db.SmallInt
+  comment String?
+  ratedAt DateTime? @map("rated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  branch         Branch   @relation(fields: [branchId], references: [id])
+  order          Order    @relation(fields: [orderId], references: [id])
+  primaryProduct Product? @relation(fields: [primaryProductId], references: [id])
+
+  @@index([tenantId, branchId, ratedAt])
+  @@index([sendAfter, sentAt])
+  @@map("order_feedback_requests")
 }
 
 // ---------------------------------------------------------------------------
@@ -1258,5 +2328,360 @@ model PlatformAdmin {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  platformAuditLogs PlatformAuditLog[]
+
   @@map("platform_admins")
+}
+
+/// Platform-wide (not per-tenant) operational settings — OTP/lockout policy,
+/// upload size ceiling. A single enforced-singleton row: `id` always equals
+/// SINGLETON_ID (see shared/platform-settings), so there is exactly one row
+/// by construction rather than by convention. `settings` holds whatever
+/// PlatformSettingsShape keys have been explicitly set; PlatformSettingsService
+/// merges this over PLATFORM_SETTINGS_DEFAULTS, so an absent key (including
+/// "the row doesn't exist yet") always resolves to today's documented
+/// default — no tenant or platform-admin flow can silently break because a
+/// setting was never touched.
+model PlatformSettings {
+  id        String   @id
+  settings  Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  @@map("platform_settings")
+}
+
+/// Append-only audit trail for platform-admin actions that have no single
+/// tenant to attach to (see AuditLog, which is tenant_id NOT NULL and
+/// therefore cannot record a genuinely global change like a platform
+/// settings update). Same tamper-evidence intent as audit_logs: the app
+/// role's UPDATE/DELETE are revoked in this migration.
+model PlatformAuditLog {
+  id              String  @id @default(uuid()) @db.Uuid
+  platformAdminId String  @map("platform_admin_id") @db.Uuid
+  action          String
+  entityType      String? @map("entity_type")
+  entityId        String? @map("entity_id")
+  /// Structured context: for a settings change, { changes: { key: { from, to } }, platformAdminEmail }.
+  meta            Json    @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  platformAdmin PlatformAdmin @relation(fields: [platformAdminId], references: [id])
+
+  @@index([action, createdAt])
+  @@map("platform_audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Integrations & add-ons — delivery platforms, digital-menu payment gateways,
+// NFC card terminals, WhatsApp. Every connection stores its own credentials
+// (AES-256-GCM encrypted, see shared/security/crypto-vault.ts) and never
+// creates a side data path: a delivery-platform webhook or a gateway's
+// successful checkout both flow through the SAME OrderingService.create()/
+// PaymentsService used by the POS and the customer ordering app, so stock
+// deduction, KDS visibility, reports, and refunds all just work.
+// ---------------------------------------------------------------------------
+
+enum IntegrationCategory {
+  delivery_platform
+  payment_gateway
+  nfc_terminal
+  whatsapp
+
+  @@map("integration_category")
+}
+
+/// One connection = one (tenant [+ branch], category, provider) triple.
+/// branchId is set for connections that are inherently tied to one physical
+/// location (a delivery-platform store listing, an NFC terminal sitting at
+/// one counter) and null for connections that belong to the business as a
+/// whole (one payment-gateway merchant account, one WhatsApp Business number).
+model IntegrationConnection {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  branchId String? @map("branch_id") @db.Uuid
+
+  category IntegrationCategory
+  /// "hungerstation" | "moyasar" | "tap" | "hyperpay" | "geidea" | "whatsapp_cloud" | ...
+  provider String
+
+  isEnabled   Boolean @default(false) @map("is_enabled")
+  /// "test" | "live" — meaningful for payment gateways; ignored otherwise.
+  environment String  @default("test")
+
+  /// Non-secret settings: external store id, phone number id, business
+  /// display name, terminal id, publishable/public key, etc.
+  config Json @default("{}")
+
+  /// The provider's main API key/access token/secret key — encrypted.
+  /// Never selected into any API response.
+  secretEnc        String? @map("secret_enc") @db.Text
+  /// A second secret some providers need for verifying inbound webhooks,
+  /// distinct from the main API key — encrypted.
+  webhookSecretEnc String? @map("webhook_secret_enc") @db.Text
+
+  lastVerifiedAt   DateTime? @map("last_verified_at")
+  lastSyncedAt     DateTime? @map("last_synced_at")
+  /// Drives the dashboard's connection-status badge ("key error" etc.) —
+  /// never stores the secret itself, only a human-readable failure reason.
+  lastErrorMessage String?   @map("last_error_message")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant          Tenant                   @relation(fields: [tenantId], references: [id])
+  branch          Branch?                  @relation(fields: [branchId], references: [id])
+  productMappings DeliveryProductMapping[]
+
+  @@unique([tenantId, branchId, category, provider])
+  @@index([tenantId, category])
+  @@map("integration_connections")
+}
+
+/// Maps an internal catalog product to a delivery platform's own item id, so
+/// an incoming webhook order (which only knows the platform's ids) resolves
+/// to a real productId before it ever reaches OrderingService.create().
+/// Populated by the owner once per product (no live partner API access to
+/// auto-sync against in this environment — see the delivery-integration
+/// module's doc comment for what a real push-sync would need).
+model DeliveryProductMapping {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  productId    String @map("product_id") @db.Uuid
+
+  externalItemId   String  @map("external_item_id")
+  externalItemName String? @map("external_item_name")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant                @relation(fields: [tenantId], references: [id])
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  product    Product               @relation(fields: [productId], references: [id])
+
+  @@unique([connectionId, externalItemId])
+  @@unique([connectionId, productId])
+  @@map("delivery_product_mappings")
+}
+
+/// Per-tenant customization of one system-defined WhatsApp message template
+/// (the catalog itself is code, see @spruvex-r/types' WHATSAPP_MESSAGE_TEMPLATES).
+/// WhatsApp requires templates to be pre-approved by Meta before they can be
+/// sent outside a customer-initiated 24h window — approvalStatus reflects
+/// what happened in the tenant's own Meta Business Manager, set manually;
+/// this system has no live Meta credentials to verify it automatically.
+model WhatsappTemplateOverride {
+  id          String @id @default(uuid()) @db.Uuid
+  tenantId    String @map("tenant_id") @db.Uuid
+  templateKey String @map("template_key")
+
+  customBodyAr     String? @map("custom_body_ar")
+  /// "not_submitted" | "pending" | "approved" | "rejected"
+  approvalStatus   String  @default("not_submitted") @map("approval_status")
+  /// The exact template name registered in Meta Business Manager — required
+  /// to actually send (Meta addresses templates by name, not by our key).
+  metaTemplateName String? @map("meta_template_name")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, templateKey])
+  @@map("whatsapp_template_overrides")
+}
+
+// ---------------------------------------------------------------------------
+// Loyalty program — stamp cards, spend-threshold discounts, points-per-riyal,
+// and membership tiers. Every earn/redeem is a REAL order mutation (a real
+// discount via OrderingService.applyDiscount, or a real $0 line via
+// OrderingService.addComplimentaryItem) — this schema only tracks the
+// customer's running balance and an auditable ledger, never a parallel price.
+
+enum LoyaltyProgramType {
+  stamp_card
+  spend_threshold
+  points_per_riyal
+  tier
+
+  @@map("loyalty_program_type")
+}
+
+/// One program's rules. branchId = null applies tenant-wide; a specific
+/// branchId overrides the tenant-wide row for just that branch (same nullable
+/// pattern as IntegrationConnection). isEnabled is the "pause without losing
+/// data" toggle — the config and every customer's accumulated balance survive
+/// a merchant turning a program off and back on.
+model LoyaltyProgramConfig {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  branchId String? @map("branch_id") @db.Uuid
+
+  type      LoyaltyProgramType
+  isEnabled Boolean            @default(true) @map("is_enabled")
+
+  /// Shape depends on `type` (validated at the DTO layer):
+  /// stamp_card: { stampsRequired, earnProductId?, earnCategoryId?, rewardProductId }
+  /// spend_threshold: { thresholdAmount, discountPercent, resetPeriod: "monthly"|"yearly"|"none", carryOver }
+  /// points_per_riyal: { pointsPerRiyal, redemptionPointsUnit, redemptionSarValue }
+  /// tier: { tiers: [{ key, nameAr, nameEn, minSpend, discountPercent }, ...] }
+  config Json @default("{}")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@unique([tenantId, branchId, type])
+  @@index([tenantId, type])
+  @@map("loyalty_program_configs")
+}
+
+/// One customer's loyalty identity + running balances, keyed by phone number
+/// ONLY (no separate account/login) — the same number used for ordering and
+/// WhatsApp. Shared across all of the tenant's branches: a customer's stamps/
+/// points/spend/tier follow them between branches, while each branch's
+/// LoyaltyProgramConfig decides whether earning/redemption is active there.
+model LoyaltyCustomer {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  /// Same format as Order.customerPhone.
+  phone    String
+  /// Last known name, opportunistically updated from orders.
+  name     String?
+
+  stampCount Int @default(0) @map("stamp_count")
+
+  /// Toward the current spend_threshold cycle — reset per its resetPeriod/carryOver.
+  spendAccumulated Decimal   @default(0) @map("spend_accumulated") @db.Decimal(12, 2)
+  spendPeriodStart DateTime? @map("spend_period_start")
+
+  pointsBalance Int @default(0) @map("points_balance")
+
+  /// Never resets — the sole input to tier calculation.
+  lifetimeSpend Decimal @default(0) @map("lifetime_spend") @db.Decimal(12, 2)
+  /// Cached current tier key (from the tier config's `tiers[].key`); recomputed on every earn.
+  tierKey       String? @map("tier_key")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant               @relation(fields: [tenantId], references: [id])
+  ledgerEntries LoyaltyLedgerEntry[]
+
+  @@unique([tenantId, phone])
+  @@map("loyalty_customers")
+}
+
+enum LoyaltyLedgerType {
+  stamp_earned
+  stamp_redeemed
+  stamp_reversed
+  spend_accrued
+  spend_redeemed
+  spend_reversed
+  points_earned
+  points_redeemed
+  points_reversed
+  tier_changed
+
+  @@map("loyalty_ledger_type")
+}
+
+/// Append-only audit trail for every balance change — the basis for refund/
+/// cancellation reversal (find every entry tied to orderId and undo it) and
+/// for the audit log the merchant can inspect per customer.
+model LoyaltyLedgerEntry {
+  id         String  @id @default(uuid()) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  branchId   String  @map("branch_id") @db.Uuid
+  customerId String  @map("customer_id") @db.Uuid
+  /// The invoice/order that triggered this entry (earn or redeem) — null for
+  /// a manual adjustment with no order context.
+  orderId    String? @map("order_id") @db.Uuid
+
+  type   LoyaltyLedgerType
+  /// Signed delta on the counter `type` refers to (stamps/points/SAR) —
+  /// interpretation depends on `type`; never itself a price.
+  amount Decimal           @db.Decimal(12, 3)
+  /// Free-form context, e.g. { rewardProductId } or { tierFrom, tierTo }.
+  meta   Json              @default("{}")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  /// null = system/automatic; set = the cashier who triggered a manual redemption.
+  performedBy String?  @map("performed_by") @db.Uuid
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id])
+  branch   Branch          @relation(fields: [branchId], references: [id])
+  customer LoyaltyCustomer @relation(fields: [customerId], references: [id])
+  order    Order?          @relation(fields: [orderId], references: [id])
+
+  @@index([tenantId, customerId, createdAt])
+  @@index([tenantId, orderId])
+  @@map("loyalty_ledger_entries")
+}
+
+enum ImportDataType {
+  categories
+  products
+  customers
+
+  @@map("import_data_type")
+}
+
+enum ImportJobStatus {
+  uploaded
+  mapped
+  completed
+
+  @@map("import_job_status")
+}
+
+/// A merchant-driven bulk data import from an uploaded spreadsheet (moving
+/// from another POS). The whole parsed file (`headers`/`rows`) is captured
+/// once at upload time so the later mapping/preview/execute steps never
+/// re-read the file — see ImportsService's doc comment for the full
+/// upload -> map -> preview -> execute flow and why each row is created
+/// through the exact same service methods a manual entry would use.
+model ImportJob {
+  id       String          @id @default(uuid()) @db.Uuid
+  tenantId String          @map("tenant_id") @db.Uuid
+  type     ImportDataType
+  status   ImportJobStatus @default(uploaded)
+
+  filename String @map("filename")
+  /// Raw header row, in file order — string[].
+  headers  Json
+  /// One object per data row, keyed by the ORIGINAL header text (not yet
+  /// mapped to our field keys) — Record<string, string>[].
+  rows     Json
+  rowCount Int    @map("row_count")
+
+  /// Record<originalHeader, ourFieldKey | null> — null means "ignore this column".
+  mapping Json?
+  /// Set once execute() finishes — one entry per row:
+  /// { rowNumber, status: "created"|"skipped_duplicate"|"failed", identifier?, error? }[].
+  results Json?
+
+  successCount Int? @map("success_count")
+  skippedCount Int? @map("skipped_count")
+  failedCount  Int? @map("failed_count")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  createdBy   String?   @map("created_by") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@map("import_jobs")
 }

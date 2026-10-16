@@ -143,4 +143,42 @@ describe("multi-tenant isolation (RLS)", () => {
     const owner = roles.find((r) => r.key === "owner");
     expect(owner!.rolePermissions.length).toBeGreaterThan(20);
   });
+
+  /**
+   * Schema-driven sweep (cleanup-round audit item #2): rather than one
+   * hand-written assertion per table — which silently stops covering a new
+   * table the day someone forgets to add its RLS block to a migration —
+   * this derives the list of tables that MUST be tenant-isolated straight
+   * from the schema itself (any table with a tenant_id column) and checks
+   * every one of them against Postgres's actual RLS state, not just "the
+   * migration file that created it looked right at the time".
+   */
+  describe("RLS coverage sweep — every tenant-owned table, derived from the schema", () => {
+    it("has RLS enabled, FORCED, and a tenant_isolation policy on every table with a tenant_id column", async () => {
+      const rows = await admin.$queryRaw<
+        { table_name: string; relrowsecurity: boolean; relforcerowsecurity: boolean; has_policy: boolean }[]
+      >`
+        SELECT c.relname AS table_name, c.relrowsecurity, c.relforcerowsecurity,
+               EXISTS(
+                 SELECT 1 FROM pg_policies p
+                 WHERE p.schemaname = 'public' AND p.tablename = c.relname AND p.policyname = 'tenant_isolation'
+               ) AS has_policy
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r'
+          AND EXISTS (
+            SELECT 1 FROM information_schema.columns col
+            WHERE col.table_schema = 'public' AND col.table_name = c.relname AND col.column_name = 'tenant_id'
+          )
+        ORDER BY c.relname
+      `;
+
+      // Guards against this test silently passing vacuously (e.g. a query
+      // typo returning zero rows) — a real deployment has dozens of these.
+      expect(rows.length).toBeGreaterThan(30);
+
+      const unprotected = rows.filter((r) => !r.relrowsecurity || !r.relforcerowsecurity || !r.has_policy);
+      expect(unprotected).toEqual([]);
+    });
+  });
 });

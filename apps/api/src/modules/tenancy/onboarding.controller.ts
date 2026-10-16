@@ -6,6 +6,7 @@ import {
   CreateBranchDto,
   CreateRestaurantDto,
   CreateStaffDto,
+  MarkSetupStepDto,
 } from "./dto/onboarding.dto";
 import { OnboardingService } from "./onboarding.service";
 
@@ -46,5 +47,19 @@ export class OnboardingController {
   @Post("complete")
   complete() {
     return this.onboarding.complete();
+  }
+
+  /** Drives the dashboard's "missing setup" reminder banner. */
+  @RequirePermission("tenant.settings.manage")
+  @Get("setup-status")
+  setupStatus() {
+    return this.onboarding.getSetupStatus();
+  }
+
+  @RequirePermission("tenant.settings.manage")
+  @HttpCode(200)
+  @Post("setup-status")
+  markSetupStep(@Body() dto: MarkSetupStepDto) {
+    return this.onboarding.markSetupStep(dto.step, dto.status);
   }
 }

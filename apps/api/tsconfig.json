@@ -12,5 +12,5 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "test", "prisma/seed.ts"]
+  "include": ["src", "test", "prisma/seed.ts", "prisma/sync-role-permissions.ts"]
 }

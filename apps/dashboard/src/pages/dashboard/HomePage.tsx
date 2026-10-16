@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@spruvex-r/ui";
 
+import { MissingSetupBanner } from "../../components/MissingSetupBanner";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { localizedName } from "../../lib/catalog-api";
@@ -37,6 +38,8 @@ export function HomePage() {
         <h1 className="text-2xl font-bold">{t("home.welcome", { name: user?.name ?? "" })}</h1>
         <p className="text-muted-foreground">{t("home.subtitle")}</p>
       </div>
+
+      <MissingSetupBanner />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {canBranches && (
@@ -106,6 +109,38 @@ export function HomePage() {
                   <Badge key={alert.ingredientId} variant="destructive">
                     {localizedName(alert, i18n.language)} ({alert.quantity})
                   </Badge>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {summary.data.autoHiddenAlerts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm text-muted-foreground">{t("home.autoHiddenAlerts")}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {summary.data.autoHiddenAlerts.map((alert, index) => (
+                  <div key={index} className="flex flex-wrap items-center gap-2 text-sm">
+                    <Badge variant="destructive">
+                      {localizedName(
+                        { name: alert.productName, nameEn: alert.productNameEn },
+                        i18n.language,
+                      )}
+                    </Badge>
+                    <span className="text-muted-foreground">
+                      {t("home.autoHiddenReason", {
+                        branch: localizedName(
+                          { name: alert.branchName, nameEn: alert.branchNameEn },
+                          i18n.language,
+                        ),
+                        ingredient: localizedName(
+                          { name: alert.ingredientName, nameEn: alert.ingredientNameEn },
+                          i18n.language,
+                        ),
+                      })}
+                    </span>
+                  </div>
                 ))}
               </CardContent>
             </Card>

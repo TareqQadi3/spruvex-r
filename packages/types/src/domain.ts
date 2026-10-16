@@ -8,6 +8,7 @@ export const ORDER_STATUSES = [
   "served",
   "completed",
   "cancelled",
+  "refunded",
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
@@ -21,6 +22,10 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
  * (counter orders paid before/without table service). Every transition to
  * `completed` is guarded by FULL PAYMENT at the service level, and
  * cancellation is blocked once payments exist.
+ *
+ * Refunds: `completed` -> `refunded` only when a credit note refunds the
+ * FULL receipt total (payments.refund permission, see refunds.service.ts);
+ * a partial refund keeps the order `completed`.
  */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   new: ["confirmed", "cancelled"],
@@ -28,8 +33,9 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[
   preparing: ["ready", "cancelled"],
   ready: ["served", "completed"],
   served: ["completed"],
-  completed: [],
+  completed: ["refunded"],
   cancelled: [],
+  refunded: [],
 };
 
 export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
@@ -44,6 +50,26 @@ export type OrderType = (typeof ORDER_TYPES)[number];
 
 export const ORDER_SOURCES = ["pos", "qr", "external_link", "delivery"] as const;
 export type OrderSource = (typeof ORDER_SOURCES)[number];
+
+/**
+ * The 3 customer self-service ordering channels — a subset of OrderType
+ * (excludes `walkin`, which is POS-only and never subject to business-hours
+ * gating, manual pausing, or channel-specific pricing/visibility).
+ */
+export const ORDERING_CHANNELS = ["dine_in", "takeaway", "delivery"] as const;
+export type OrderingChannel = (typeof ORDERING_CHANNELS)[number];
+
+/** Fixed merchandising tag set for products — validated server-side, rendered as chips. */
+export const PRODUCT_BADGE_KEYS = [
+  "bestseller",
+  "new",
+  "spicy",
+  "vegetarian",
+  "contains_nuts",
+  "contains_dairy",
+  "gluten_free",
+] as const;
+export type ProductBadgeKey = (typeof PRODUCT_BADGE_KEYS)[number];
 
 export const TENANT_STATUSES = ["active", "suspended"] as const;
 export type TenantStatus = (typeof TENANT_STATUSES)[number];

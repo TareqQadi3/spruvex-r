@@ -16,6 +16,7 @@ import {
   CreateIngredientDto,
   UpdateIngredientDto,
 } from "./dto/ingredient.dto";
+import { UpdateReorderAlertSettingsDto } from "./dto/reorder-alert-settings.dto";
 import {
   RecordAdjustmentDto,
   RecordPurchaseDto,
@@ -27,6 +28,7 @@ import {
 } from "./dto/stock-location.dto";
 import { IngredientsService } from "./ingredients.service";
 import { InventoryService } from "./inventory.service";
+import { ReorderAlertsService } from "./reorder-alerts.service";
 import { StockLocationsService } from "./stock-locations.service";
 
 @Controller("inventory")
@@ -35,6 +37,7 @@ export class InventoryController {
     private readonly ingredients: IngredientsService,
     private readonly locations: StockLocationsService,
     private readonly inventory: InventoryService,
+    private readonly reorderAlerts: ReorderAlertsService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -141,5 +144,32 @@ export class InventoryController {
   @Post("stock/adjustment")
   recordAdjustment(@Body() dto: RecordAdjustmentDto) {
     return this.inventory.recordAdjustment(dto);
+  }
+
+  /** Products currently auto-hidden by the critical-ingredient stockout engine — dashboard alert list. */
+  @RequirePermission("inventory.view")
+  @Get("auto-hidden")
+  listAutoHidden(@Query("branchId") branchId?: string) {
+    return this.inventory.listAutoHidden(branchId);
+  }
+
+  /** Every stock level at/below its ingredient's reorderLevel, most critical first, with the last supplier bought from (if any). */
+  @RequirePermission("inventory.view")
+  @Get("reorder-alerts")
+  listReorderAlerts(@Query("branchId") branchId?: string) {
+    return this.reorderAlerts.list(branchId);
+  }
+
+  /** Whether a reorder-alert crossing sends a WhatsApp notice to the tenant's registered number, and what that number is. */
+  @RequirePermission("tenant.settings.manage")
+  @Get("reorder-alerts/settings")
+  getReorderAlertSettings() {
+    return this.reorderAlerts.getWhatsappSettings();
+  }
+
+  @RequirePermission("tenant.settings.manage")
+  @Patch("reorder-alerts/settings")
+  updateReorderAlertSettings(@Body() dto: UpdateReorderAlertSettingsDto) {
+    return this.reorderAlerts.updateWhatsappSettings(dto);
   }
 }

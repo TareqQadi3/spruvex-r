@@ -8,7 +8,7 @@
     "error": "Sign-in failed"
   },
   "branch": { "select": "Select branch" },
-  "tabs": { "menu": "New order", "orders": "Active orders" },
+  "tabs": { "menu": "New order", "orders": "Active orders", "sessions": "Table sessions" },
   "pos": {
     "all": "All",
     "cart": "Current order",
@@ -19,6 +19,9 @@
     "table": "Table {{number}}",
     "notes": "Order notes",
     "itemNotes": "Item note",
+    "decreaseQty": "Decrease quantity",
+    "increaseQty": "Increase quantity",
+    "removeItem": "Remove item from order",
     "total": "Total",
     "vatIncluded": "VAT {{rate}}% included",
     "send": "Send order",
@@ -78,7 +81,19 @@
     "pay": "Record payment",
     "exact": "Exact amount",
     "completed": "Fully paid ✔",
-    "showReceipt": "Show receipt"
+    "showReceipt": "Show receipt",
+    "loyalty": {
+      "phonePlaceholder": "Customer phone number",
+      "attach": "Attach customer",
+      "stamps": "{{count}} stamp(s)",
+      "spend": "{{amount}} SAR toward reward",
+      "points": "{{count}} points",
+      "redeem": {
+        "stamp_card": "Redeem stamp reward",
+        "spend_threshold": "Redeem spend discount",
+        "points_per_riyal": "Redeem points"
+      }
+    }
   },
   "discount": {
     "title": "Apply discount",
@@ -99,11 +114,42 @@
     "total": "Total",
     "payments": "Payments",
     "thanks": "Thank you for visiting",
-    "newOrder": "New order"
+    "newOrder": "New order",
+    "refund": "Refund"
+  },
+  "refund": {
+    "title": "Refund order",
+    "amount": "Amount to refund",
+    "method": "Refund method",
+    "cash": "Cash",
+    "card": "Card",
+    "reason": "Reason (required)",
+    "reference": "Reference (optional)",
+    "submit": "Issue refund",
+    "cancel": "Cancel",
+    "success": "Refund issued",
+    "error": "Refund failed",
+    "amountRequired": "Enter an amount",
+    "reasonRequired": "Reason is required"
   },
   "sync": {
     "pending": "{{count}} order(s) waiting to sync",
     "syncing": "Syncing..."
+  },
+  "sessions": {
+    "empty": "No open table sessions right now",
+    "noParticipants": "No one has scanned this table's QR yet",
+    "noOrderYet": "No order placed on this session yet",
+    "stale": "Inactive — needs attention",
+    "unpaidBalance": "Unpaid balance",
+    "unpaidCloseWarning": "This table still has an unpaid balance of {{amount}} SAR. Closing anyway will not collect it — only do this if you're certain.",
+    "addItems": "Add items",
+    "splitAndPay": "Split & pay",
+    "close": "Close session",
+    "forceClose": "Close anyway",
+    "splitTitle": "Split bill — order #{{number}}",
+    "splitMode": { "equal": "Split equally", "by_item": "Each pays their own" },
+    "sharedBucket": "Shared / unassigned items"
   },
   "common": { "language": "العربية", "loading": "Loading...", "error": "Something went wrong" }
 }

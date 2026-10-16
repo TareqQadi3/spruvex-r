@@ -17,6 +17,7 @@ export const PERMISSIONS = {
   // Catalog (menu)
   "menu.view": "View menu categories, products and modifiers",
   "menu.manage": "Create and edit categories, products, modifiers and availability",
+  "menu.toggle_availability": "Quickly mark an item/option sold-out-today or unavailable, and pause an ordering channel — without full menu-edit rights",
 
   // Tables & floors
   "tables.view": "View floors, tables and their statuses",
@@ -60,6 +61,22 @@ export const PERMISSIONS = {
   // Billing (SaaS subscription)
   "billing.view": "View the subscription plan, trial status and usage",
   "billing.manage": "Change plan and manage the subscription",
+
+  // Loyalty program
+  "loyalty.manage": "Configure loyalty programs (stamps, spend threshold, points, tiers)",
+  "loyalty.redeem": "View a customer's loyalty balance and apply redemptions at checkout",
+
+  // Purchasing (suppliers & purchase invoices)
+  "purchases.create": "Create suppliers, enter and confirm purchase invoices",
+  "purchases.view": "View suppliers and purchase invoices",
+  "purchases.void": "Cancel a purchase invoice",
+
+  // Inter-branch stock transfers
+  "inventory.transfer.create": "Create, send and cancel stock transfers from a branch",
+  "inventory.transfer.receive": "Receive or reject an incoming stock transfer",
+
+  // Marketing
+  "marketing.manage_coupons": "Create and manage discount coupon codes",
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

@@ -76,8 +76,9 @@ export class ShiftsService {
   }
 
   /**
-   * Close foundation: expected cash = opening float + completed cash payments
-   * taken during the shift. Full reconciliation reporting lands in Phase 8.
+   * Close foundation: expected cash = opening float + completed cash
+   * payments taken during the shift - cash refunds processed during the
+   * shift. Full reconciliation reporting lands in Phase 8.
    */
   async close(id: string, dto: CloseShiftDto) {
     const ctx = this.tenantContext.contextOrThrow;
@@ -90,13 +91,24 @@ export class ShiftsService {
       throw new ConflictException("Shift is already closed");
     }
 
-    const cashPayments = await this.prisma.scoped.payment.findMany({
-      where: { shiftId: id, method: "cash", status: "completed" },
-      select: { amount: true },
-    });
+    const [cashPayments, cashRefunds] = await Promise.all([
+      this.prisma.scoped.payment.findMany({
+        where: { shiftId: id, method: "cash", status: "completed" },
+        select: { amount: true },
+      }),
+      // Refunds are posted to whichever shift is OPEN when they're
+      // processed (refunds.service.ts) — never a retroactive edit of the
+      // shift the original payment belonged to — so cash handed back
+      // during THIS shift reduces THIS shift's expected cash.
+      this.prisma.scoped.refund.findMany({
+        where: { shiftId: id, method: "cash" },
+        select: { amount: true },
+      }),
+    ]);
     const expectedHalalas =
       sarToHalalas(shift.openingCash.toString()) +
-      cashPayments.reduce((sum, p) => sum + sarToHalalas(p.amount.toString()), 0);
+      cashPayments.reduce((sum, p) => sum + sarToHalalas(p.amount.toString()), 0) -
+      cashRefunds.reduce((sum, r) => sum + sarToHalalas(r.amount.toString()), 0);
     const expectedCash = halalasToSar(expectedHalalas);
     const difference =
       dto.actualCash !== undefined

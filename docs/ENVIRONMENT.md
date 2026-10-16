@@ -39,9 +39,14 @@ Full reference lives in `.env.example` at the repo root (dev defaults) and
 
 | Variable | Required | Notes |
 |---|---|---|
-| `DATABASE_URL` | yes | `spruvex_app` connection — RLS always enforced |
-| `ADMIN_DATABASE_URL` | yes | `spruvex_admin` connection — migrations/seed/platform module |
+| `DATABASE_URL` | yes, unless derived | `spruvex_app` connection — RLS always enforced. If unset, derived from `ADMIN_DATABASE_URL` + `BOOTSTRAP_APP_ROLE_PASSWORD` (user swapped to `spruvex_app`) |
+| `ADMIN_DATABASE_URL` | yes | owner role connection (`spruvex_admin` locally, `neondb_owner` on Neon) — must have BYPASSRLS; migrations/seed/platform module |
+| `BOOTSTRAP_APP_ROLE_PASSWORD` | hosted only | password for the `spruvex_app` role created at boot when `RUN_DB_BOOTSTRAP=true` |
+| `RUN_DB_BOOTSTRAP` | no | `true` = on every boot, ensure the `spruvex_app` role + grants exist (idempotent) |
+| `RUN_DB_MIGRATE` | no | `true` = on every boot, `prisma migrate deploy` + sync permission/unit/plan catalogs + optional first platform admin (idempotent) |
+| `DASHBOARD_BASE_URL` | yes in production | dashboard origin returned to spruvex-site after a trial signup and used in emails |
 | `JWT_SECRET` | yes | HMAC secret for **both** tenant access tokens and platform admin tokens — generate a long random value per environment, never reuse across environments |
+| `SPRUVEX_SITE_API_KEY` | yes | shared secret spruvex-site sends as `x-spruvex-site-key` when calling `POST /public/trial-signup` — must match the value configured on spruvex-site exactly; generate with `openssl rand -hex 32` |
 | `JWT_ACCESS_TTL_SECONDS` | no (default 900) | tenant access token lifetime |
 | `REFRESH_TOKEN_TTL_DAYS` | no (default 30) | tenant refresh token lifetime |
 | `REDIS_URL` | no | Socket.io fan-out + health check; degrades gracefully (in-memory adapter) if unset/unreachable — fine for one instance, not for multiple |

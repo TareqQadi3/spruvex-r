@@ -9,7 +9,25 @@ import { useLocale, useLocalizedField } from "./LocaleProvider";
 import type { MenuModifier, MenuProduct } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
 
-export function ProductCard({ product, currency }: { product: MenuProduct; currency: string }) {
+const BADGE_LABEL_KEY: Record<string, string> = {
+  bestseller: "menu.badge.bestseller",
+  new: "menu.badge.new",
+  spicy: "menu.badge.spicy",
+  vegetarian: "menu.badge.vegetarian",
+  contains_nuts: "menu.badge.containsNuts",
+  contains_dairy: "menu.badge.containsDairy",
+  gluten_free: "menu.badge.glutenFree",
+};
+
+export function ProductCard({
+  product,
+  currency,
+  disabled,
+}: {
+  product: MenuProduct;
+  currency: string;
+  disabled?: boolean;
+}) {
   const { t, locale } = useLocale();
   const name = useLocalizedField();
   const description =
@@ -21,6 +39,7 @@ export function ProductCard({ product, currency }: { product: MenuProduct; curre
   const [error, setError] = useState<string | null>(null);
 
   function openPicker() {
+    if (disabled) return;
     if (product.modifierGroups.length === 0) {
       addLine(product, []);
       return;
@@ -52,24 +71,72 @@ export function ProductCard({ product, currency }: { product: MenuProduct; curre
     <>
       <button
         type="button"
+        data-menu-part="product-card"
         onClick={openPicker}
-        className="flex w-full items-start gap-3 rounded-xl border bg-card p-3 text-start shadow-sm transition-transform active:scale-[0.99]"
+        disabled={disabled}
+        aria-disabled={disabled}
+        className="flex w-full items-start gap-3 bg-card p-3 text-start transition-transform active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+        style={{
+          borderRadius: "var(--menu-card-radius, 0.75rem)",
+          border: "var(--menu-card-border, 1px solid hsl(var(--border)))",
+          boxShadow: "var(--menu-card-shadow, 0 1px 2px 0 rgb(0 0 0 / 0.05))",
+        }}
       >
         {product.imageUrl && (
           <img
+            data-menu-part="product-image"
             src={product.imageUrl}
             alt={name(product)}
             className="h-20 w-20 shrink-0 rounded-lg object-cover"
           />
         )}
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-snug">{name(product)}</h3>
-          {description && (
-            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{description}</p>
+          {product.badges.length > 0 && (
+            <div data-menu-part="product-badges" className="mb-1 flex flex-wrap gap-1">
+              {product.badges.map((badge) => (
+                <Badge key={badge} variant="muted">
+                  {BADGE_LABEL_KEY[badge] ? t(BADGE_LABEL_KEY[badge]) : badge}
+                </Badge>
+              ))}
+            </div>
           )}
-          <p className="mt-1.5 font-bold text-primary" dir="ltr">
-            {formatMoney(product.price, currency)}
-          </p>
+          <h3
+            data-menu-part="product-name"
+            className="leading-snug"
+            style={{
+              fontFamily: 'var(--menu-heading-font, "IBM Plex Sans Arabic", "Inter", system-ui, sans-serif)',
+              fontWeight: "var(--menu-heading-weight, 600)",
+            }}
+          >
+            {name(product)}
+          </h3>
+          {description && (
+            <p data-menu-part="product-description" className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+              {description}
+            </p>
+          )}
+          {product.isCombo && product.comboItems && product.comboItems.length > 0 && (
+            <p data-menu-part="combo-items" className="mt-0.5 text-xs text-muted-foreground">
+              {product.comboItems
+                .map((ci) => `${locale === "en" && ci.nameEn ? ci.nameEn : ci.name}${ci.quantity > 1 ? ` ×${ci.quantity}` : ""}`)
+                .join("، ")}
+            </p>
+          )}
+          <div className="mt-1.5 flex items-center justify-between">
+            <p
+              data-menu-part="product-price"
+              className="font-bold"
+              dir="ltr"
+              style={{ color: "hsl(var(--menu-primary, var(--primary)))" }}
+            >
+              {formatMoney(product.price, currency)}
+            </p>
+            {product.prepTimeMinutes != null && (
+              <span className="text-xs text-muted-foreground">
+                {t("menu.prepTime", { minutes: product.prepTimeMinutes })}
+              </span>
+            )}
+          </div>
         </div>
       </button>
 

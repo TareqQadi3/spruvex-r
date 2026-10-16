@@ -16,19 +16,32 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { BillingPage } from "./pages/dashboard/BillingPage";
 import { BranchesPage } from "./pages/dashboard/BranchesPage";
+import { CouponsPage } from "./pages/dashboard/CouponsPage";
 import { HomePage } from "./pages/dashboard/HomePage";
+import { IntegrationsPage } from "./pages/dashboard/IntegrationsPage";
+import { LoyaltyPage } from "./pages/dashboard/LoyaltyPage";
 import { SettingsPage } from "./pages/dashboard/SettingsPage";
 import { TeamPage } from "./pages/dashboard/TeamPage";
+import { ImportPage } from "./pages/import/ImportPage";
 import { IngredientsPage } from "./pages/inventory/IngredientsPage";
 import { InventoryLayout } from "./pages/inventory/InventoryLayout";
+import { ReorderAlertsPage } from "./pages/inventory/ReorderAlertsPage";
 import { StockPage } from "./pages/inventory/StockPage";
+import { StockTransfersPage } from "./pages/inventory/StockTransfersPage";
 import { CategoriesPage } from "./pages/menu/CategoriesPage";
 import { MenuLayout } from "./pages/menu/MenuLayout";
 import { ModifiersPage } from "./pages/menu/ModifiersPage";
 import { ProductEditorPage } from "./pages/menu/ProductEditorPage";
 import { ProductsPage } from "./pages/menu/ProductsPage";
 import { OnboardingWizard } from "./pages/onboarding/OnboardingWizard";
+import { PurchaseInvoicesPage } from "./pages/purchases/PurchaseInvoicesPage";
+import { PurchasesLayout } from "./pages/purchases/PurchasesLayout";
+import { SuppliersPage } from "./pages/purchases/SuppliersPage";
+import { BranchComparisonPage } from "./pages/reports/BranchComparisonPage";
+import { MenuProfitabilityPage } from "./pages/reports/MenuProfitabilityPage";
+import { ReportsLayout } from "./pages/reports/ReportsLayout";
 import { ReportsPage } from "./pages/reports/ReportsPage";
+import { VatReturnPage } from "./pages/reports/VatReturnPage";
 import { FloorsPage } from "./pages/tables/FloorsPage";
 import { TablesLayout } from "./pages/tables/TablesLayout";
 import { TablesPage } from "./pages/tables/TablesPage";
@@ -120,6 +133,10 @@ const router = createBrowserRouter([
       { path: "branches", element: <BranchesPage /> },
       { path: "team", element: <TeamPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "integrations", element: <IntegrationsPage /> },
+      { path: "loyalty", element: <LoyaltyPage /> },
+      { path: "coupons", element: <CouponsPage /> },
+      { path: "import", element: <ImportPage /> },
       { path: "billing", element: <BillingPage /> },
       {
         path: "menu",
@@ -147,9 +164,28 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <IngredientsPage /> },
           { path: "stock", element: <StockPage /> },
+          { path: "transfers", element: <StockTransfersPage /> },
+          { path: "reorder-alerts", element: <ReorderAlertsPage /> },
         ],
       },
-      { path: "reports", element: <ReportsPage /> },
+      {
+        path: "purchases",
+        element: <PurchasesLayout />,
+        children: [
+          { index: true, element: <PurchaseInvoicesPage /> },
+          { path: "suppliers", element: <SuppliersPage /> },
+        ],
+      },
+      {
+        path: "reports",
+        element: <ReportsLayout />,
+        children: [
+          { index: true, element: <ReportsPage /> },
+          { path: "vat-return", element: <VatReturnPage /> },
+          { path: "branch-comparison", element: <BranchComparisonPage /> },
+          { path: "menu-profitability", element: <MenuProfitabilityPage /> },
+        ],
+      },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

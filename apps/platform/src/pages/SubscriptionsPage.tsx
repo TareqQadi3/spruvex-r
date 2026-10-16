@@ -2,6 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { Badge, Card, CardContent, Select } from "@spruvex-r/ui";
+// Namespace import: `@spruvex-r/types` builds to CJS, and this app's bundler
+// (Vite/Rollup) cannot statically resolve a named runtime export re-exported
+// through the package's barrel file — importing the whole namespace sidesteps
+// that CJS-interop limitation.
+import * as SpruvexTypes from "@spruvex-r/types";
+const { PLAN_CATALOG } = SpruvexTypes;
 
 import { ApiError } from "../lib/api";
 import {
@@ -11,7 +17,6 @@ import {
 } from "../lib/platform-api";
 
 const STATUSES: SubscriptionStatus[] = ["trialing", "active", "past_due", "suspended", "cancelled"];
-const PLAN_KEYS = ["basic", "pro", "growth"];
 
 function localizedName(item: { name: string; nameEn?: string | null }, language: string): string {
   return language === "en" && item.nameEn ? item.nameEn : item.name;
@@ -74,9 +79,9 @@ export function SubscriptionsPage() {
                       disabled={setPlan.isPending}
                       onChange={(e) => setPlan.mutate({ id: sub.id, planKey: e.target.value })}
                     >
-                      {PLAN_KEYS.map((key) => (
-                        <option key={key} value={key}>
-                          {key}
+                      {PLAN_CATALOG.map((plan) => (
+                        <option key={plan.key} value={plan.key}>
+                          {localizedName(plan, i18n.language)}
                         </option>
                       ))}
                     </Select>

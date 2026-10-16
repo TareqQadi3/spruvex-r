@@ -62,15 +62,57 @@ export class CreateRestaurantDto {
   @MaxLength(2048)
   logoUrl?: string;
 
-  @IsOptional()
+  // --- Mandatory tax-invoice fields (plan: cannot complete onboarding's
+  // step 3 without these — see onboarding.md / OnboardingWizard.tsx). Every
+  // field ZATCA's seller PostalAddress block requires, per
+  // erp-pos-saas-architect/references/zatca.md's guidance to check current
+  // requirements before onboarding — collected once, up front, instead of
+  // discovered later as a blocked-invoice surprise.
+
   @IsString()
   @Matches(/^\d{15}$/, { message: "VAT number must be 15 digits" })
-  vatNumber?: string;
+  vatNumber!: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(20)
-  crNumber?: string;
+  crNumber!: string;
+
+  /** Street name/line. */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(300)
+  address!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  city!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  district!: string;
+
+  /** Building number — 4 digits per the KSA National Address standard. */
+  @IsString()
+  @Matches(/^\d{4}$/, { message: "Building number must be 4 digits" })
+  buildingNumber!: string;
+
+  /** Postal code — 5 digits per the KSA National Address standard. */
+  @IsString()
+  @Matches(/^\d{5}$/, { message: "Postal code must be 5 digits" })
+  postalCode!: string;
+
+  /** Extra address detail: floor, landmark, unit — whatever the street address alone doesn't cover. */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(300)
+  additionalAddress!: string;
+
+  @IsString()
+  @Matches(/^\+?[0-9]{8,15}$/, { message: "Phone must be 8-15 digits (optionally with +)" })
+  contactPhone!: string;
 }
 
 export class CreateBranchDto {
@@ -134,3 +176,15 @@ export class CreateStaffDto {
 
 /** Add one team member after onboarding (Team page "add member" action). */
 export class AddTeamMemberDto extends StaffUserDto {}
+
+/** Optional post-onboarding steps the dashboard reminder banner tracks. */
+export const OPTIONAL_SETUP_STEPS = ["logo", "receipt", "theme", "zatca", "staff", "menu", "tables"] as const;
+export type OptionalSetupStep = (typeof OPTIONAL_SETUP_STEPS)[number];
+
+export class MarkSetupStepDto {
+  @IsIn(OPTIONAL_SETUP_STEPS as unknown as string[])
+  step!: OptionalSetupStep;
+
+  @IsIn(["done", "skipped"])
+  status!: "done" | "skipped";
+}

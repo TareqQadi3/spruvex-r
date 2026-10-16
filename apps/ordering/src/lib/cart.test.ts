@@ -13,6 +13,8 @@ function product(price: string): MenuProduct {
     descriptionEn: null,
     imageUrl: null,
     price,
+    badges: [],
+    prepTimeMinutes: null,
     modifierGroups: [],
   };
 }

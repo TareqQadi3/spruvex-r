@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,12 +7,14 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 
 import { Public } from "../../shared/rbac/public.decorator";
-import { GuestCreateOrderDto, GuestTakeawayOrderDto } from "./dto/order.dto";
+import { ValidateCouponDto } from "../marketing/dto/coupon.dto";
+import { GuestDeliveryOrderDto, GuestTableOrderDto, GuestTakeawayOrderDto } from "./dto/order.dto";
 import { GuestOrderingService } from "./guest-ordering.service";
 
 /**
@@ -41,11 +44,15 @@ export class GuestOrderingController {
     return this.guest.menu(qrToken);
   }
 
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  // A shared table can have several phones behind the same restaurant WiFi
+  // IP, each placing multiple rounds — the old single-order-per-scan limit
+  // of 10/min was tuned before that was possible, so this matches the
+  // other guest table routes' limit instead of guessing a new number.
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post("tables/:qrToken/orders")
   createOrder(
     @Param("qrToken") qrToken: string,
-    @Body() dto: GuestCreateOrderDto,
+    @Body() dto: GuestTableOrderDto,
     @Headers("idempotency-key") idempotencyKey: string,
   ) {
     return this.guest.createOrder(qrToken, dto, idempotencyKey);
@@ -61,8 +68,15 @@ export class GuestOrderingController {
 
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get("restaurants/:slug/branches/:branchSlug/menu")
-  branchMenu(@Param("slug") slug: string, @Param("branchSlug") branchSlug: string) {
-    return this.guest.branchMenu(slug, branchSlug);
+  branchMenu(
+    @Param("slug") slug: string,
+    @Param("branchSlug") branchSlug: string,
+    @Query("channel") channel?: string,
+  ) {
+    if (channel !== undefined && channel !== "takeaway" && channel !== "delivery") {
+      throw new BadRequestException('channel must be "takeaway" or "delivery"');
+    }
+    return this.guest.branchMenu(slug, branchSlug, channel);
   }
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -74,6 +88,29 @@ export class GuestOrderingController {
     @Headers("idempotency-key") idempotencyKey: string,
   ) {
     return this.guest.createTakeawayOrder(slug, branchSlug, dto, idempotencyKey);
+  }
+
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("restaurants/:slug/branches/:branchSlug/coupons/validate")
+  validateCoupon(
+    @Param("slug") slug: string,
+    @Param("branchSlug") branchSlug: string,
+    @Body() dto: ValidateCouponDto,
+  ) {
+    return this.guest.validateCoupon(slug, branchSlug, dto);
+  }
+
+  // --- External ordering link: /restaurant/{slug} (delivery) ---
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post("restaurants/:slug/branches/:branchSlug/delivery-orders")
+  createDeliveryOrder(
+    @Param("slug") slug: string,
+    @Param("branchSlug") branchSlug: string,
+    @Body() dto: GuestDeliveryOrderDto,
+    @Headers("idempotency-key") idempotencyKey: string,
+  ) {
+    return this.guest.createDeliveryOrder(slug, branchSlug, dto, idempotencyKey);
   }
 
   // --- Guest order tracking (order UUID = capability) ---

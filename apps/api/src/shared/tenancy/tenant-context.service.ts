@@ -24,9 +24,19 @@ export interface RequestContext {
  */
 export const GUEST_ACTOR = "00000000-0000-0000-0000-000000000000";
 
-/** Maps the guest sentinel to null for created_by/changed_by columns. */
+/**
+ * Sentinel actor for money a delivery platform or payment gateway collected
+ * on the tenant's behalf — never a cashier, never touches a real shift's
+ * cash drawer. Also marks Shift.openedBy for the one perpetual "online
+ * payments" shift per branch that such payments attach to (see
+ * modules/integrations/online-payment.service.ts) instead of requiring a
+ * cashier to have a shift open.
+ */
+export const ONLINE_PAYMENTS_ACTOR = "00000000-0000-0000-0000-000000000002";
+
+/** Maps a sentinel actor to null for created_by/changed_by columns. */
 export function actorOrNull(userId: string | undefined): string | null {
-  return !userId || userId === GUEST_ACTOR ? null : userId;
+  return !userId || userId === GUEST_ACTOR || userId === ONLINE_PAYMENTS_ACTOR ? null : userId;
 }
 
 @Injectable()
