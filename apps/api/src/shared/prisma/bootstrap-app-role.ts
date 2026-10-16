@@ -1,13 +1,16 @@
 import { PrismaClient } from "@prisma/client";
 
 /**
- * One-time, idempotent bootstrap: creates the restricted `spruvex_app` DB
- * role that the app is normally supposed to connect with. Runs only when
- * RUN_DB_BOOTSTRAP=true (set that in Render, redeploy once, then unset it
- * and switch DATABASE_URL to the spruvex_app connection string).
+ * Idempotent bootstrap: creates the restricted `spruvex_app` DB role the app
+ * connects with, and grants it DML on everything the owner role creates.
+ * Runs only when RUN_DB_BOOTSTRAP=true. Safe to leave on: every statement is
+ * a no-op once applied.
  *
- * Needed because Render's free tier has no Shell/one-off-job access to run
- * this by hand - see docs/RENDER_DEPLOY.md step 3.
+ * Connects with ADMIN_DATABASE_URL (the managed-Postgres owner role, whatever
+ * the provider named it — `neondb_owner` on Neon) and grants default
+ * privileges FOR ROLE CURRENT_USER, so tables created later by
+ * `prisma migrate deploy` (which runs as that same owner) are covered.
+ * See docs/RENDER_DEPLOY.md.
  */
 export async function bootstrapAppRoleIfRequested(): Promise<void> {
   if (process.env.RUN_DB_BOOTSTRAP !== "true") {
@@ -22,12 +25,32 @@ export async function bootstrapAppRoleIfRequested(): Promise<void> {
     return;
   }
 
-  const prisma = new PrismaClient();
+  const adminUrl = process.env.ADMIN_DATABASE_URL;
+  if (!adminUrl) {
+    console.error("RUN_DB_BOOTSTRAP=true but ADMIN_DATABASE_URL is not set - skipping.");
+    return;
+  }
+
+  const prisma = new PrismaClient({ datasourceUrl: adminUrl });
   try {
-    const databaseName = new URL(process.env.DATABASE_URL ?? "").pathname.replace(
+    const databaseName = new URL(adminUrl).pathname.replace(
       "/",
       ""
     );
+
+    // Platform-level writes (tenant provisioning, catalogs) go through
+    // ADMIN_DATABASE_URL and rely on that role bypassing RLS — every tenant
+    // table is FORCE ROW LEVEL SECURITY. Neon's owner role has BYPASSRLS;
+    // fail loudly here rather than with an opaque RLS error on first signup.
+    const owner = await prisma.$queryRawUnsafe<{ rolbypassrls: boolean; rolsuper: boolean }[]>(
+      "SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"
+    );
+    if (!owner[0]?.rolbypassrls && !owner[0]?.rolsuper) {
+      throw new Error(
+        "ADMIN_DATABASE_URL's role lacks BYPASSRLS - use the database owner role " +
+          "(e.g. Neon's neondb_owner), not a restricted one."
+      );
+    }
 
     const roleExists = await prisma.$queryRawUnsafe<{ exists: boolean }[]>(
       "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'spruvex_app') AS exists"
@@ -38,7 +61,14 @@ export async function bootstrapAppRoleIfRequested(): Promise<void> {
       );
       console.log("[bootstrap] created role spruvex_app");
     } else {
-      console.log("[bootstrap] role spruvex_app already exists, skipping CREATE ROLE");
+      // Keep the role's password in sync with BOOTSTRAP_APP_ROLE_PASSWORD,
+      // which DATABASE_URL may be derived from (derive-app-database-url.ts).
+      // (Only the password: changing BYPASSRLS needs a superuser, and the
+      // role was created NOBYPASSRLS above.)
+      await prisma.$executeRawUnsafe(
+        `ALTER ROLE spruvex_app LOGIN PASSWORD '${password.replace(/'/g, "''")}'`
+      );
+      console.log("[bootstrap] role spruvex_app already exists, password re-synced");
     }
 
     // Quoted Postgres identifier, not a string literal — double any embedded
@@ -52,10 +82,10 @@ export async function bootstrapAppRoleIfRequested(): Promise<void> {
       "GRANT USAGE ON SCHEMA public TO spruvex_app"
     );
     await prisma.$executeRawUnsafe(
-      "ALTER DEFAULT PRIVILEGES FOR ROLE spruvex_admin IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO spruvex_app"
+      "ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO spruvex_app"
     );
     await prisma.$executeRawUnsafe(
-      "ALTER DEFAULT PRIVILEGES FOR ROLE spruvex_admin IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO spruvex_app"
+      "ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO spruvex_app"
     );
     await prisma.$executeRawUnsafe(
       "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO spruvex_app"

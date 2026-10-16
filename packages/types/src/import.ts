@@ -96,7 +96,7 @@ export const IMPORT_FIELD_CATALOG: Record<ImportDataType, ImportFieldDef[]> = {
 function normalizeHeader(raw: string): string {
   return raw
     .toLowerCase()
-    .replace(/[_\-]+/g, " ")
+    .replace(/[_-]+/g, " ")
     .replace(/[^\p{L}\p{N} ]/gu, "")
     .replace(/\s+/g, " ")
     .trim();

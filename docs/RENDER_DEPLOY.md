@@ -1,75 +1,62 @@
-# نشر SpruVex R على Render (رابط حقيقي مجاني)
+# نشر SpruVex R مجاناً: Render (الخدمات) + Neon (قاعدة البيانات)
 
-دليل خطوة بخطوة لنشر النظام كاملًا على [Render.com](https://render.com) — خدمة استضافة لها باقة مجانية حقيقية (بدون بطاقة ائتمان).
+## لماذا Neon بدل قاعدة Render؟
 
-> **تنبيه صادق:** هذا الدليل لم يُختبر بتشغيل فعلي (لا يوجد حساب Render أو صلاحية إنشاء خدمات من بيئة العمل الحالية) — لكن كل ملف مذكور هنا (`render.yaml`, الـ Dockerfiles) تم فحصه بعناية ومطابقته لمتطلبات Render الموثقة. إذا ظهرت مشكلة في أي خطوة، أرسل لي رسالة الخطأ وسأصلحها فورًا.
+قاعدة Postgres المجانية على Render **تُحذف بعد 30 يوماً** — وهذا ما حدث لـ `spruvex-r-db` (خطأ Prisma `P1001` في سجل `spruvex-r-api`).
+**Neon** (https://neon.tech) مجاني بلا بطاقة ائتمان و**لا يحذف القاعدة**: فقط "تنام" عند عدم الاستخدام وتستيقظ تلقائياً خلال ثوانٍ عند أول طلب. الحد المجاني (0.5 GB) يكفي التجربة بسهولة.
 
-## حدود الباقة المجانية (مهم معرفتها)
+## ما الذي يحدث تلقائياً (لا تحتاج تنفيذ SQL)
 
-- كل خدمة (API، لوحة التحكم، إلخ) "تنام" بعد 15 دقيقة من عدم الاستخدام، وتحتاج ~30 ثانية "لتستيقظ" عند أول طلب بعدها. هذا طبيعي وليس عطلًا.
-- قاعدة البيانات المجانية **تُحذف تلقائيًا بعد 30 يومًا** بدون تنبيه إضافي. هذا مناسب "لتجربة النظام على رابط حقيقي" الآن، لكن **غير مناسب لعميل حقيقي يدفع** — قبل ذلك يجب الترقية لباقة مدفوعة (تبدأ من حوالي 7$/شهر لكل خدمة).
+عند كل تشغيل لـ `spruvex-r-api` (كل خطوة آمنة للتكرار):
+
+1. ينشئ الدور المقيّد `spruvex_app` (NOBYPASSRLS — عزل بيانات كل مطعم) ويعطيه الصلاحيات (`RUN_DB_BOOTSTRAP=true`).
+2. يشغّل كل ترحيلات Prisma (`RUN_DB_MIGRATE=true`).
+3. يملأ جداول الصلاحيات ووحدات القياس والباقات، وينشئ مدير المنصة الأول إن وُضع `PLATFORM_ADMIN_EMAIL` و`PLATFORM_ADMIN_PASSWORD`.
+4. يبني رابط `DATABASE_URL` الخاص بـ `spruvex_app` بنفسه من رابط Neon + كلمة مرور يولّدها Render (`BOOTSTRAP_APP_ROLE_PASSWORD`).
+
+إذن أنت تلصق **رابطاً واحداً فقط**.
 
 ## الخطوات
 
-### 1. إنشاء حساب Render
-اذهب إلى https://render.com واضغط **Get Started** → سجّل عبر حساب GitHub الخاص بك (الأسهل، يربط المستودع مباشرة).
+### 1. أنشئ قاعدة Neon
+1. ادخل https://neon.tech ← **Sign up** بحساب GitHub.
+2. **Create project**: الاسم `spruvex-r`، إصدار Postgres الافتراضي، المنطقة **AWS US West 2 (Oregon)** — نفس منطقة خدمات Render الافتراضية، حتى لا يتأخر كل استعلام.
+3. من **Connect** (لوحة المشروع): **أطفئ "Connection pooling"**، ثم انسخ الرابط. يبدأ بـ `postgresql://neondb_owner:...` ولا يحتوي كلمة `-pooler`.
 
-### 2. ربط المستودع ونشر كل الخدمات دفعة واحدة
-1. من لوحة Render، اضغط **New +** → **Blueprint**.
-2. اختر مستودع `spruvex-r` (اربط حساب GitHub إن طُلب منك ذلك).
-3. اختر الفرع: `claude/spruvex-r-implementation-fythx2`.
-4. سيكتشف Render ملف `render.yaml` تلقائيًا ويعرض لك كل الخدمات السبع (API + 5 تطبيقات + قاعدة بيانات).
-5. اضغط **Apply** — سيبدأ Render ببناء ونشر كل شيء. **هذا سيفشل جزئيًا في البداية** (لأن قاعدة البيانات تحتاج إعدادًا يدويًا واحدًا — الخطوة التالية) — هذا متوقع تمامًا، تابع.
+### 2. اربطه بـ Render
+1. في Render افتح `spruvex-r-api` ← **Environment**.
+2. ضع رابط Neon في `ADMIN_DATABASE_URL`.
+3. **احذف** متغيّر `DATABASE_URL` القديم إن وُجد (سيُبنى تلقائياً).
+4. تأكد من وجود: `RUN_DB_BOOTSTRAP=true`, `RUN_DB_MIGRATE=true`, `BOOTSTRAP_APP_ROLE_PASSWORD` (أي قيمة طويلة عشوائية), `DASHBOARD_BASE_URL=https://spruvex-r-dashboard.onrender.com`, و `SPRUVEX_SITE_API_KEY` (قيمة عشوائية 32 حرفاً أو أكثر).
+   - أسهل طريقة: من Blueprint اضغط **Sync** ليطبّق `render.yaml` الجديد، ثم املأ `ADMIN_DATABASE_URL` فقط.
+5. **Save, rebuild, and deploy**. في السجل (Logs) يجب أن ترى:
+   `[bootstrap] spruvex_app role + grants done` ← `All migrations have been successfully applied` ← `[reference-data] ... synced`.
 
-### 3. الخطوة اليدوية الوحيدة: إنشاء دور قاعدة البيانات الثاني
+### 3. اربط موقع spruvex-site
+في خدمة `spruvex-site`، ضع:
+- `SPRUVEX_R_API_URL=https://spruvex-r-api.onrender.com`
+- `SPRUVEX_SITE_API_KEY` = **نفس القيمة بالضبط** الموجودة في `spruvex-r-api`.
 
-نظامنا يستخدم دورين منفصلين في قاعدة البيانات لأسباب أمنية (عزل بيانات كل مطعم عن الآخر). Render يُنشئ دورًا واحدًا فقط تلقائيًا (`spruvex_admin`) — يجب إنشاء الدور الثاني (`spruvex_app`) يدويًا مرة واحدة فقط:
-
-1. من لوحة Render، افتح قاعدة البيانات `spruvex-r-db` → انسخ **"External Connection String"**.
-2. افتح أي أداة اتصال بـ PostgreSQL (أو أرسل لي رابط الاتصال هذا وسأنفّذ الخطوة التالية نيابة عنك — كلمة المرور هذه مؤقتة على باقة مجانية ويمكن تغييرها لاحقًا).
-3. نفّذ هذا الأمر (استبدل `<كلمة-مرور-قوية>` بكلمة مرور من اختيارك):
-
-```sql
-CREATE ROLE spruvex_app LOGIN PASSWORD '<كلمة-مرور-قوية>' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
-GRANT CONNECT ON DATABASE spruvex_r TO spruvex_app;
-GRANT USAGE ON SCHEMA public TO spruvex_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE spruvex_admin IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO spruvex_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE spruvex_admin IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO spruvex_app;
-```
-
-4. كوّن رابط الاتصال الجديد: خذ نفس "External Connection String" لكن استبدل اسم المستخدم وكلمة المرور بـ `spruvex_app` والكلمة التي اخترتها.
-5. من خدمة `spruvex-r-api` في Render → **Environment** → أدخل هذا الرابط في متغيّر `DATABASE_URL`.
-6. اضغط **Manual Deploy** لإعادة تشغيل الخدمة.
-
-### 4. بناء الجداول وتعبئة البيانات التجريبية
-
-من خدمة `spruvex-r-api` في Render، افتح تبويب **Shell** (طرفية داخل الخادم الفعلي)، ونفّذ:
-
-```bash
-node_modules/.bin/prisma migrate deploy
-node_modules/.bin/prisma db seed
-```
-
-### 5. جاهز!
-
-افتح الروابط التالية (كل واحد سيأخذ ~30 ثانية للاستيقاظ أول مرة):
-
-| التطبيق | الرابط |
+### 4. تأكد أن الخدمات الست تعمل
+| الخدمة | الرابط |
 |---|---|
+| API | `https://spruvex-r-api.onrender.com/api/v1/health` ← يجب أن يعرض `"status":"ok"` |
 | لوحة التحكم | `https://spruvex-r-dashboard.onrender.com` |
 | نقطة البيع | `https://spruvex-r-pos.onrender.com` |
 | شاشة المطبخ | `https://spruvex-r-kds.onrender.com` |
 | طلب العميل | `https://spruvex-r-ordering.onrender.com` |
 | إدارة المنصة | `https://spruvex-r-platform.onrender.com` |
 
-بيانات الدخول التجريبية هي نفسها (`owner@demo.spruvex.local` / `SpruVex-Demo1` وغيرها) — راجع `docs/PILOT_TRIAL_CHECKLIST.md`.
+كل خدمة مجانية تنام بعد 15 دقيقة، وأول فتح يأخذ ~30-60 ثانية. هذا طبيعي.
 
-**إذا اخترت اسمًا مختلفًا للخدمات** عن `spruvex-r-api` وغيرها أثناء تطبيق الـ Blueprint، فالروابط أعلاه ستختلف تبعًا لذلك — Render يعرض الرابط الفعلي لكل خدمة في لوحته مباشرة.
+### 5. جرّب التسجيل المجاني
+من موقع spruvex-site سجّل مطعماً تجريبياً ← يصلك رمز التحقق على البريد ← بعد إدخاله تدخل لوحة التحكم مباشرة.
 
-## قبل قبول أول عميل حقيقي يدفع
+## إذا ظهرت مشكلة
+- `P1001` في السجل: رابط Neon خاطئ أو ناقص — انسخه من جديد.
+- `lacks BYPASSRLS`: استخدمت دوراً غير المالك؛ استخدم رابط `neondb_owner`.
+- التسجيل من الموقع يفشل بـ 401: قيمة `SPRUVEX_SITE_API_KEY` غير متطابقة بين الخدمتين.
 
-- رقّي قاعدة البيانات وكل خدمة لباقة مدفوعة (الباقة المجانية تُحذف قاعدة البيانات بعد 30 يومًا).
-- فعّل SSL/TLS الفعلي (Render يوفره تلقائيًا على نطاق `onrender.com`؛ إذا ربطت نطاقك الخاص لاحقًا، فعّل شهادته من إعدادات كل خدمة).
-- اضبط نسخة احتياطية دورية حقيقية لقاعدة البيانات (راجع `docs/DATABASE.md`).
+## قبل أول عميل يدفع
+- رقِّ خدمة الـ API لباقة مدفوعة (لا نوم + قرص دائم للصور المرفوعة).
+- Neon المجاني يحفظ سجل تغييرات لفترة قصيرة فقط؛ اضبط نسخاً احتياطياً دورياً (راجع `docs/DATABASE.md`).

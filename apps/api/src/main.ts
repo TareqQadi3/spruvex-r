@@ -1,3 +1,4 @@
+import "./shared/prisma/derive-app-database-url";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
@@ -11,11 +12,13 @@ import { requestLoggingMiddleware } from "./shared/monitoring/request-logging.mi
 import { bootstrapAppRoleIfRequested } from "./shared/prisma/bootstrap-app-role";
 import { repairLegacyEmailsIfRequested } from "./shared/prisma/repair-legacy-emails";
 import { runDbMigrationsIfRequested } from "./shared/prisma/run-db-migrations";
+import { syncReferenceDataIfRequested } from "./shared/prisma/sync-reference-data";
 
 async function bootstrap() {
   initSentry();
   await bootstrapAppRoleIfRequested();
   await runDbMigrationsIfRequested();
+  await syncReferenceDataIfRequested();
   await repairLegacyEmailsIfRequested();
 
   // rawBody: true preserves the exact request bytes alongside the parsed
