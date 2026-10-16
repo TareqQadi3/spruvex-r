@@ -93,11 +93,12 @@ services:
     dockerContext: .
     plan: free
     envVars:
+      # Must be the API's PUBLIC https URL, not `fromService: hostport`: the
+      # nginx proxy resolves it over public DNS (1.1.1.1) and needs a scheme,
+      # and Render's private `host:port` has neither. Syncing the old
+      # hostport value broke every login with a 5xx.
       - key: API_INTERNAL_ORIGIN
-        fromService:
-          type: web
-          name: spruvex-r-api
-          property: hostport
+        value: https://spruvex-r-api.onrender.com
 
   - type: web
     name: spruvex-r-pos
@@ -106,11 +107,12 @@ services:
     dockerContext: .
     plan: free
     envVars:
+      # Must be the API's PUBLIC https URL, not `fromService: hostport`: the
+      # nginx proxy resolves it over public DNS (1.1.1.1) and needs a scheme,
+      # and Render's private `host:port` has neither. Syncing the old
+      # hostport value broke every login with a 5xx.
       - key: API_INTERNAL_ORIGIN
-        fromService:
-          type: web
-          name: spruvex-r-api
-          property: hostport
+        value: https://spruvex-r-api.onrender.com
 
   - type: web
     name: spruvex-r-kds
@@ -119,11 +121,12 @@ services:
     dockerContext: .
     plan: free
     envVars:
+      # Must be the API's PUBLIC https URL, not `fromService: hostport`: the
+      # nginx proxy resolves it over public DNS (1.1.1.1) and needs a scheme,
+      # and Render's private `host:port` has neither. Syncing the old
+      # hostport value broke every login with a 5xx.
       - key: API_INTERNAL_ORIGIN
-        fromService:
-          type: web
-          name: spruvex-r-api
-          property: hostport
+        value: https://spruvex-r-api.onrender.com
 
   - type: web
     name: spruvex-r-platform
@@ -132,11 +135,12 @@ services:
     dockerContext: .
     plan: free
     envVars:
+      # Must be the API's PUBLIC https URL, not `fromService: hostport`: the
+      # nginx proxy resolves it over public DNS (1.1.1.1) and needs a scheme,
+      # and Render's private `host:port` has neither. Syncing the old
+      # hostport value broke every login with a 5xx.
       - key: API_INTERNAL_ORIGIN
-        fromService:
-          type: web
-          name: spruvex-r-api
-          property: hostport
+        value: https://spruvex-r-api.onrender.com
 
   - type: web
     name: spruvex-r-ordering
