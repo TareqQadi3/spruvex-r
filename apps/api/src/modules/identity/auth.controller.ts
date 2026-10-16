@@ -6,6 +6,7 @@ import { Public } from "../../shared/rbac/public.decorator";
 import { RequireAuthenticated } from "../../shared/rbac/require-authenticated.decorator";
 import { TenantContextService } from "../../shared/tenancy/tenant-context.service";
 import { AuthService } from "./auth.service";
+import { HandoffService } from "./handoff.service";
 import {
   ForgotPasswordDto,
   LoginDto,
@@ -15,6 +16,12 @@ import {
   ResetPasswordDto,
   VerifyOtpDto,
 } from "./dto/auth.dto";
+import { IsString } from "class-validator";
+
+class HandoffExchangeDto {
+  @IsString()
+  token!: string;
+}
 
 function requestMeta(req: Request) {
   return { ip: req.ip, userAgent: req.headers["user-agent"] };
@@ -24,6 +31,7 @@ function requestMeta(req: Request) {
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly handoff: HandoffService,
     private readonly tenantContext: TenantContextService,
   ) {}
 
@@ -87,6 +95,20 @@ export class AuthController {
   @Post("reset-password")
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.auth.resetPassword(dto);
+  }
+
+  /**
+   * One-time handoff exchange: the marketing site's verify proxy claims a
+   * token right after successful OTP verification (see SitePublicService),
+   * and the dashboard's /auth/callback page exchanges it here for a full
+   * session pair — landing the merchant inside the app with zero re-typing.
+   */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post("handoff")
+  exchangeHandoff(@Body() dto: HandoffExchangeDto, @Req() req: Request) {
+    return this.handoff.exchange(dto.token, requestMeta(req));
   }
 
   @RequireAuthenticated()

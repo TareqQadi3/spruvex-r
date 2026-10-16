@@ -44,6 +44,9 @@ export function StaffStep({ onDone, onSkip }: StepProps) {
       {error && <Alert variant="destructive">{error}</Alert>}
       <p className="text-sm text-muted-foreground">{t("onboarding.staffHint")}</p>
       <Alert>{t("onboarding.staffKitchenHint")}</Alert>
+      <p className="rounded-lg border bg-secondary/50 p-3 text-xs leading-relaxed text-muted-foreground">
+        {t("onboarding.staffSelfNote")}
+      </p>
       {(
         [
           { key: "staffManager", state: manager, set: setManager },

@@ -52,7 +52,13 @@
     "forgotSend": "Send code",
     "forgotNewPassword": "New password",
     "forgotSubmit": "Set password",
-    "backToLogin": "Back to sign in"
+    "backToLogin": "Back to sign in",
+    "handoffTitle": "Signing you in...",
+    "handoffFailedTitle": "Sign-in link expired",
+    "emailUnverifiedTitle": "Your email isn't verified yet",
+    "emailUnverifiedBody": "You started an account but never confirmed its email. Enter the code we just sent you to confirm and sign in — or resend the code.",
+    "resendCode": "Resend code",
+    "codeResent": "Code resent — check your inbox (and spam)"
   },
   "onboarding": {
     "title": "Set up your restaurant",
@@ -160,6 +166,7 @@
     "menuProductPriceHint": "In Saudi Riyals.",
     "staffHint": "Add your branch manager and cashier now, or skip and add them later.",
     "staffKitchenHint": "Create a separate \"kitchen\" account for whoever will run the kitchen display (KDS) — without it, they won't get live order updates.",
+    "staffSelfNote": "Running the restaurant yourself? Enter your own signed-in email in the manager field — the manager role is added to your existing account automatically, no new account is created. The password field is ignored in that case (your account keeps its current password).",
     "staffManager": "Branch manager",
     "staffCashier": "Cashier",
     "staffKitchen": "Kitchen",

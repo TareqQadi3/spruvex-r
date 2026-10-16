@@ -4,6 +4,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { ResendService } from "../../shared/email/resend.service";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { HandoffService } from "./handoff.service";
 import { DevOtpSender, OTP_SENDER } from "./otp/otp-sender";
 import { OtpService } from "./otp/otp.service";
 import { ResendOtpSender } from "./otp/resend-otp-sender";
@@ -11,7 +12,8 @@ import { TokenService } from "./token.service";
 
 /**
  * Identity module — registration, OTP verification, login/logout,
- * JWT access + rotating refresh tokens, account lockout.
+ * JWT access + rotating refresh tokens, account lockout, one-time
+ * handoff tokens (marketing-site → dashboard auto sign-in).
  */
 @Module({
   imports: [
@@ -31,6 +33,7 @@ import { TokenService } from "./token.service";
   providers: [
     AuthService,
     TokenService,
+    HandoffService,
     OtpService,
     ResendService,
     // Real email once a Resend key is configured; falls back to logging the
@@ -40,6 +43,6 @@ import { TokenService } from "./token.service";
       useClass: process.env.RESEND_API_KEY ? ResendOtpSender : DevOtpSender,
     },
   ],
-  exports: [AuthService, TokenService, OtpService, ResendService],
+  exports: [AuthService, TokenService, HandoffService, OtpService, ResendService],
 })
 export class IdentityModule {}
